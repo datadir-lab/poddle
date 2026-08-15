@@ -1,0 +1,127 @@
+# Testing poddle
+
+Four tiers, fast → slow. The fast tiers run on every push (container-free); the
+container-backed tiers run in a dedicated pipeline or locally when an engine is
+present.
+
+| Tier | Location | Needs | Run |
+|---|---|---|---|
+| **Unit** | `src/**/*_test.go` | nothing (fakes) | `task test` |
+| **Architecture** | `tests/architecture/` | nothing (`go list`) | `task arch` |
+| **Integration** | `src/**/*_integration_test.go` (white-box) · `tests/integration/` (black-box) | a container engine | `task integration` |
+| **E2E** | `tests/e2e/` | the built binary (+ engine for real flows) | `task e2e` |
+
+Integration/e2e are guarded by build tags (`//go:build integration`, `//go:build e2e`) so the default `go test ./...` stays fast and container-free. They **skip gracefully** when no engine is present.
+
+## Why some tests live in `src/` and some in `tests/`
+
+Go's `internal/` rule: `src/internal/*` is importable only from within `src/`.
+So a test that needs **white-box** access to a kernel package (e.g. driving the
+podman provider directly) must be **co-located** in that package. Tests under
+`tests/` are **black-box** — they drive the built binary or public surface only.
+
+- provider ↔ real podman → co-located (`src/internal/podman/*_integration_test.go`)
+- binary ↔ simulated remote host → `tests/integration/` (black-box, testcontainers)
+
+## The Engine architecture makes this tractable
+
+Commands depend on `engine.Engine`, not on podman:
+- **Unit** — inject a fake Runner/Engine; microsecond tests, no containers.
+- **Integration** — run the *real* in-process engine (podman) against a real engine.
+- **Remote** — exercise the remote Engine by pointing a target at a container that *plays the role of a remote host* (below).
+
+## Simulating a remote host with testcontainers
+
+poddle's remote path is `CLI → ssh → remote host (podman / poddled)`. To test it
+in CI without a real server, spin a container that **is** a remote host — sshd +
+podman — with `testcontainers-go`, point a target at `ssh://tester@localhost:<port>`,
+and run the remote flow. Because the provider is connection-aware
+(`podman.New(runner, conn)`), the same code path is exercised.
+
+### The remote-host image — `tests/integration/remotehost/Containerfile`
+
+```dockerfile
+FROM quay.io/podman/stable
+RUN dnf install -y openssh-server && ssh-keygen -A
+RUN useradd -m tester && mkdir -p /home/tester/.ssh
+COPY test_key.pub /home/tester/.ssh/authorized_keys
+RUN chown -R tester:tester /home/tester/.ssh \
+ && chmod 600 /home/tester/.ssh/authorized_keys
+RUN loginctl enable-linger tester || true    # keep the rootless podman socket alive
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"]
+```
+
+### The harness — `tests/integration/remote_test.go`
+
+```go
+//go:build integration
+
+package integration
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+// startRemoteHost boots the sshd+podman image and returns an ssh conn URL that
+// poddle's connection-aware provider can target.
+func startRemoteHost(t *testing.T) string {
+	t.Helper()
+	ctx := context.Background()
+	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			FromDockerfile: testcontainers.FromDockerfile{Context: "remotehost", Dockerfile: "Containerfile"},
+			ExposedPorts:   []string{"22/tcp"},
+			Privileged:     true, // podman-in-container needs it
+			WaitingFor:     wait.ForListeningPort("22/tcp").WithStartupTimeout(90 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("start remote host: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Terminate(ctx) })
+
+	host, _ := c.Host(ctx)
+	port, _ := c.MappedPort(ctx, "22/tcp")
+	return "ssh://tester@" + host + ":" + port.Port() + "/run/user/1000/podman/podman.sock"
+}
+
+func TestRemote_ListsSandboxes(t *testing.T) {
+	conn := startRemoteHost(t)
+	// Drive the built `poddle` binary with a target whose conn == this, run
+	// `poddle up` on the remote, then `poddle ls` and assert the sandbox shows.
+	_ = conn
+}
+```
+
+**Gotchas (honest):**
+- **Nested containers** — podman-in-container needs `--privileged` (or rootless + `/dev/fuse`, cgroups v2). The CI runner must allow it.
+- **Rootless socket** — the remote flow targets `/run/user/<uid>/podman/podman.sock`; enable it + linger in the image.
+- **Slow** — image build + boot. Keep these in a separate pipeline, not the per-push gate.
+- **SSH key** — generate a throwaway keypair for the fixture; never a real key.
+
+> Status: the harness above is the documented target. It lands together with the
+> remote Engine (`poddled` / remote-podman) on a container-capable host, where it
+> can actually be run and verified. Until then, `tests/integration/` holds the
+> black-box scaffolding and the white-box provider integration test is co-located.
+
+## CI mapping (Woodpecker)
+
+- `woodpecker/check.yaml` → `task ci` (vet + unit + arch + build) — **every push**, fast, container-free.
+- `woodpecker/e2e.yaml` → `task e2e` (+ `task integration` once the runner has an engine) — heavier; gate as needed.
+
+## Run locally
+
+```
+task test          # unit — always
+task arch          # boundaries — always
+task integration   # needs podman/docker; skips if absent
+task e2e           # builds + drives the binary
+task test-all      # everything
+```

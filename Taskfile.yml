@@ -36,6 +36,15 @@ tasks:
     cmds:
       - go run ./src/cli -- {{.CLI_ARGS}}
 
+  integration:
+    desc: Integration tests against a real container engine (skips without one)
+    cmds:
+      - go test -tags integration ./...
+
   ci:
-    desc: What CI runs
+    desc: What CI runs (fast, container-free)
     deps: [vet, test, arch, build]
+
+  test-all:
+    desc: Every tier (needs a container engine for integration/e2e)
+    deps: [vet, test, arch, integration, e2e, build]
