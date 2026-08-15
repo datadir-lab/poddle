@@ -17,16 +17,14 @@ import (
 
 func ptr(s string) *string { return &s }
 
-// TestE2E_Remote_UpAndLs boots a container that plays a remote host (sshd +
-// podman), points poddle at it via PODDLE_HOST=ssh://..., and runs up + ls
-// remotely. Needs the podman CLI (poddle's ssh client), ssh-keygen, and a
-// docker-compatible engine for testcontainers. Skips when any are missing.
+// TestE2E_Remote_Lifecycle boots a container that plays a remote host (sshd +
+// podman), points poddle at it via PODDLE_HOST=ssh://..., and runs the full
+// up -> ls -> down -> ls loop remotely. Needs the podman CLI (poddle's ssh
+// client), ssh-keygen, and a docker-compatible engine for testcontainers.
 //
 // NOTE: reliably bringing up the rootless podman API socket for `tester` inside
-// the container is the part that needs iteration on a real CI runner (privileged
-// / cgroups v2 / linger). The harness below is complete; that fixture detail is
-// finished on the runner.
-func TestE2E_Remote_UpAndLs(t *testing.T) {
+// the container is the fixture detail finalized on a real CI runner.
+func TestE2E_Remote_Lifecycle(t *testing.T) {
 	requirePodman(t)
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("ssh-keygen not available; skipping remote e2e")
@@ -88,19 +86,15 @@ func TestE2E_Remote_UpAndLs(t *testing.T) {
 	bin := buildBinary(t)
 	const name = "poddle-e2e-remote"
 
-	up := exec.Command(bin, "up", name, "--detach", "--image", "docker.io/library/alpine:latest")
-	up.Env = env
-	if out, err := up.CombinedOutput(); err != nil {
-		t.Fatalf("poddle up (remote): %v\n%s", err, out)
+	poddle(t, bin, env, "up", name, "--detach", "--image", "docker.io/library/alpine:latest")
+
+	if ls := poddle(t, bin, env, "ls"); !strings.Contains(ls, name) {
+		t.Fatalf("remote ls should list %q after up:\n%s", name, ls)
 	}
 
-	ls := exec.Command(bin, "ls")
-	ls.Env = env
-	out, err := ls.CombinedOutput()
-	if err != nil {
-		t.Fatalf("poddle ls (remote): %v\n%s", err, out)
-	}
-	if !strings.Contains(string(out), name) {
-		t.Fatalf("remote ls did not list %q:\n%s", name, out)
+	poddle(t, bin, env, "down", name)
+
+	if ls := poddle(t, bin, env, "ls"); strings.Contains(ls, name) {
+		t.Fatalf("remote ls should NOT list %q after down:\n%s", name, ls)
 	}
 }
