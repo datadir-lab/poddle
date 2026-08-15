@@ -14,6 +14,9 @@ when:
 steps:
   e2e:
     image: quay.io/podman/stable
+    # nested podman needs privileged (the repo must be marked "trusted" in
+    # Woodpecker for this to be honored).
+    privileged: true
     environment:
       DOCKER_HOST: unix:///run/podman/podman.sock
       TESTCONTAINERS_RYUK_DISABLED: "true"
