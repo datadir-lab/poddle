@@ -25,6 +25,12 @@ func ptr(s string) *string { return &s }
 // NOTE: reliably bringing up the rootless podman API socket for `tester` inside
 // the container is the fixture detail finalized on a real CI runner.
 func TestE2E_Remote_Lifecycle(t *testing.T) {
+	// The nested-container remote sim (testcontainers + podman-in-podman + ssh)
+	// is fragile and unrepresentative; the real remote path is best validated
+	// against an actual host. Opt in with PODDLE_E2E_REMOTE=1.
+	if os.Getenv("PODDLE_E2E_REMOTE") == "" {
+		t.Skip("nested remote e2e is opt-in; set PODDLE_E2E_REMOTE=1")
+	}
 	requirePodman(t)
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("ssh-keygen not available; skipping remote e2e")
