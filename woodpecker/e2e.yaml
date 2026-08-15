@@ -1,19 +1,29 @@
-# TEMP diagnostic: learn the Woodpecker runner's container environment so we can
-# wire the socket-mount (Docker-out-of-Docker) pattern correctly for the remote
-# e2e. Restored to the real e2e config after.
+# Integration + e2e.
+#
+# Two engines in play, deliberately:
+#  - the step's own privileged nested podman  -> integration + local e2e (poddle up/ls/down),
+#  - the host Docker engine via a mounted socket -> testcontainers spawns the remote-host
+#    container as a SIBLING (Docker-out-of-Docker), reachable from the step on the docker
+#    bridge. This is the recommended CI pattern (avoids nested-podman networking).
+#
+# Requires the repo to be security-trusted (privileged) AND volumes-trusted (socket mount).
+
 when:
   - event: [manual]
 
 steps:
-  diag:
+  e2e:
     image: quay.io/podman/stable
     privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+      PODDLE_E2E_REMOTE: "1"
     commands:
-      - 'echo "=== id ==="; id'
-      - 'echo "=== sockets present ==="; ls -la /var/run/docker.sock /run/docker.sock /run/podman/podman.sock 2>&1 || true'
-      - 'echo "=== any .sock ==="; find /run /var/run -maxdepth 3 -name "*.sock" 2>/dev/null | head -20 || true'
-      - 'echo "=== podman backend ==="; podman info --format "{{.Host.NetworkBackend}} / rootless={{.Host.Security.Rootless}}" 2>&1 | head -3 || true'
-      - 'echo "=== ip addr ==="; ip -brief addr 2>&1 || true'
-      - 'echo "=== routes ==="; ip route 2>&1 | head -5 || true'
-      - 'echo "=== /etc/hosts ==="; cat /etc/hosts'
-      - 'echo "=== woodpecker env ==="; env | grep -iE "DOCKER|WOODPECKER_BACKEND|CI_SYSTEM|CI_WORKSPACE" | sort'
+      - dnf install -y golang git openssh-clients
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task integration
+      - task e2e
