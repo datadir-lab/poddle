@@ -2,28 +2,26 @@
 #
 # Requirements (finalize on your Woodpecker runner):
 #   - podman available (poddle's engine + its ssh client),
-#   - a docker-compatible socket for testcontainers-go: point DOCKER_HOST at the
-#     podman socket, and disable Ryuk (needs privileges): TESTCONTAINERS_RYUK_DISABLED=true,
-#   - privileged / cgroups v2 so podman-in-container works for the remote e2e.
+#   - privileged so nested podman can run (repo must be security-trusted),
+#   - a docker-compatible socket for testcontainers-go (started below).
 
-# Heavy (dind/podman, privileged) — run on demand via `wp pipeline create ... `
-# or the UI, not on every push (VM167 is RAM-constrained, one workflow at a time).
 when:
   - event: [manual]
 
 steps:
   e2e:
     image: quay.io/podman/stable
-    # nested podman needs privileged (the repo must be marked "trusted" in
-    # Woodpecker for this to be honored).
     privileged: true
     environment:
-      DOCKER_HOST: unix:///run/podman/podman.sock
+      DOCKER_HOST: unix:///tmp/podman-run/podman.sock
       TESTCONTAINERS_RYUK_DISABLED: "true"
     commands:
       - dnf install -y golang git openssh-clients
       - export PATH=$PATH:$(go env GOPATH)/bin
       - go install github.com/go-task/task/v3/cmd/task@latest
-      - podman system service --time=0 unix:///run/podman/podman.sock &
+      # docker-compatible socket for testcontainers, in a writable path
+      - mkdir -p /tmp/podman-run
+      - podman system service --time=0 unix:///tmp/podman-run/podman.sock &
+      - for i in $(seq 1 20); do [ -S /tmp/podman-run/podman.sock ] && break; sleep 1; done
       - task integration
       - task e2e
