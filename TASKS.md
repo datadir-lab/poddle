@@ -10,7 +10,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 ### Broker
 
 - [x] **1.1** `internal/broker`: define `Credential{Mode,Vendor,Secret,BaseURL}` and `Handle{Value,Tenant,CredID,Scope}` types. Test: construct + zero-values.
-- [ ] **1.2** broker: in-memory `Vault` — `Store(tenant, cred) → credID`, `Get(tenant, credID)`, `Delete`. Test: store/get; get across a different tenant is denied.
+- [x] **1.2** broker: in-memory `Vault` — `Store(tenant, cred) → credID`, `Get(tenant, credID)`, `Delete`. Test: store/get; get across a different tenant is denied.
 - [ ] **1.3** broker: `IssueHandle(tenant, credID, scope) → Handle` (random, high-entropy) + `Resolve(handleValue) → (Credential, ok)` + `Revoke(handleValue)`. Test: resolve returns the cred; revoked handle no longer resolves; cross-tenant resolve denied.
 - [ ] **1.4** broker: injecting HTTP handler — reads the handle from the incoming `Authorization`, resolves it, rewrites `Authorization` to the real secret, reverse-proxies to the credential's upstream base URL. Test with an `httptest` upstream: assert the upstream saw the real auth + the original body/path.
 - [ ] **1.5** broker: `Serve(addr)` / `Stop()` returning the bound addr. Test: start, one request round-trips through to a fake upstream, stop.
