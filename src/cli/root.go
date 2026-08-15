@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
 
 	"github.com/datadir-lab/poddle/src/cli/ls"
@@ -20,10 +22,11 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	// The local engine: in-process, podman-backed. A remote engine (a client
-	// talking to poddled) will implement this same engine.Engine interface for
-	// remote targets — so commands behave identically wherever sandboxes run.
-	var eng engine.Engine = podman.New(exec.OS{}, "")
+	// The engine. PODDLE_HOST empty = local, in-process, podman-backed; set to
+	// ssh://user@host/run/user/<uid>/podman/podman.sock to target a remote host
+	// (same code path — the provider just adds --url). A full config/target
+	// slice and a remote poddled engine build on this seam later.
+	var eng engine.Engine = podman.New(exec.OS{}, os.Getenv("PODDLE_HOST"))
 
 	root.AddCommand(ls.NewCmd(eng))
 	root.AddCommand(up.NewCmd(eng))
