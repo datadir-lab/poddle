@@ -1,0 +1,16 @@
+# Main CI gate: vet + unit + architecture tests + build.
+#
+# NOTE: Woodpecker auto-discovers `.woodpecker/` (dotted) or `.woodpecker.yml`.
+# For this non-dotted `woodpecker/` folder, set the project's "Pipeline Path"
+# to `woodpecker/` in the Woodpecker repo settings so these files are picked up.
+
+when:
+  - event: [push, pull_request]
+
+steps:
+  ci:
+    image: golang:1.25
+    commands:
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task ci
