@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"git.dev.datadir.co/datadir/poddle/src/cli/down"
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
 	"git.dev.datadir.co/datadir/poddle/src/cli/up"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
@@ -24,12 +25,12 @@ func NewRootCmd() *cobra.Command {
 
 	// The engine. PODDLE_HOST empty = local, in-process, podman-backed; set to
 	// ssh://user@host/run/user/<uid>/podman/podman.sock to target a remote host
-	// (same code path — the provider just adds --url). A full config/target
-	// slice and a remote poddled engine build on this seam later.
+	// (same code path — the provider just adds --url).
 	var eng engine.Engine = podman.New(exec.OS{}, os.Getenv("PODDLE_HOST"))
 
 	root.AddCommand(ls.NewCmd(eng))
 	root.AddCommand(up.NewCmd(eng))
+	root.AddCommand(down.NewCmd(eng))
 	return root
 }
 

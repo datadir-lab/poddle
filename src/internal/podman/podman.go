@@ -44,8 +44,9 @@ func (p *Provider) List() ([]sandbox.Sandbox, error) {
 	return parseList(res.Stdout)
 }
 
-// Create starts a detached container for the spec and returns its id. The
-// container runs `sleep infinity` so it stays alive to be attached to.
+// Create starts a detached container for the spec and returns its id. It runs
+// `tail -f /dev/null` (portable across busybox/coreutils) to stay alive so it
+// can be attached to.
 func (p *Provider) Create(s sandbox.Spec) (string, error) {
 	args := p.podman("run", "-d",
 		"--name", s.Name,
@@ -62,7 +63,7 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 	if s.Memory != "" {
 		args = append(args, "--memory", s.Memory)
 	}
-	args = append(args, s.Image, "sleep", "infinity")
+	args = append(args, s.Image, "tail", "-f", "/dev/null")
 
 	res, err := p.Runner.Run("podman", args...)
 	if err != nil {
@@ -75,6 +76,16 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 func (p *Provider) Attach(id string) error {
 	args := p.podman("exec", "-it", id, "sh", "-c", "exec bash 2>/dev/null || exec sh")
 	return p.Runner.RunInteractive("podman", args...)
+}
+
+// Remove force-stops and deletes a sandbox by id or name.
+func (p *Provider) Remove(id string) error {
+	args := p.podman("rm", "-f", id)
+	res, err := p.Runner.Run("podman", args...)
+	if err != nil {
+		return fmt.Errorf("podman rm: %w: %s", err, res.Stderr)
+	}
+	return nil
 }
 
 // containerJSON mirrors the fields poddle needs from `podman ps --format json`.

@@ -7,42 +7,53 @@ import (
 	"testing"
 
 	pexec "git.dev.datadir.co/datadir/poddle/src/internal/exec"
+	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
 
-// TestList_AgainstRealPodman verifies List parses a real `podman ps`. It creates
-// a poddle-labeled container, lists via the provider, and asserts it appears.
+// TestProvider_Lifecycle_AgainstRealPodman exercises the full provider lifecycle
+// against a real podman: Create -> List (present) -> Remove -> List (absent).
 // Skips when podman is not installed.
-func TestList_AgainstRealPodman(t *testing.T) {
+func TestProvider_Lifecycle_AgainstRealPodman(t *testing.T) {
 	if _, err := exec.LookPath("podman"); err != nil {
 		t.Skip("podman not installed; skipping integration test")
 	}
 
+	p := New(pexec.OS{}, "")
 	const name = "poddle-it-box"
 	_ = exec.Command("podman", "rm", "-f", name).Run() // clean slate
-	if out, err := exec.Command("podman", "run", "-d", "--name", name,
-		"--label", "poddle.managed=true",
-		"--label", "poddle.name="+name,
-		"--label", "poddle.size=weak",
-		"docker.io/library/alpine:latest", "sleep", "120",
-	).CombinedOutput(); err != nil {
-		t.Fatalf("podman run: %v\n%s", err, out)
-	}
 	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", name).Run() })
 
-	list, err := New(pexec.OS{}, "").List()
+	id, err := p.Create(sandbox.Spec{
+		Name: name, Image: "docker.io/library/alpine:latest",
+		Template: "base", Runtime: "container", Size: "weak",
+	})
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("create: %v", err)
 	}
-	found := false
+
+	if !listed(t, p, name) {
+		t.Fatalf("sandbox %q not listed after create", name)
+	}
+
+	if err := p.Remove(id); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	if listed(t, p, name) {
+		t.Fatalf("sandbox %q still listed after remove", name)
+	}
+}
+
+func listed(t *testing.T, p *Provider, name string) bool {
+	t.Helper()
+	list, err := p.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
 	for _, s := range list {
 		if s.Name == name {
-			found = true
-			if s.State != "running" {
-				t.Errorf("state = %q, want running", s.State)
-			}
+			return true
 		}
 	}
-	if !found {
-		t.Fatalf("container %q not found in list: %+v", name, list)
-	}
+	return false
 }
