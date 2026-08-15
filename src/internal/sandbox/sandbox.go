@@ -12,3 +12,15 @@ type Sandbox struct {
 	Repo     string // poddle.repo label
 	State    string // normalized: running | stopped | paused
 }
+
+// Spec describes a sandbox to create.
+type Spec struct {
+	Name     string
+	Image    string
+	Template string  // label
+	Runtime  string  // label (default "container")
+	Size     string  // label
+	CPUs     float64 // 0 = leave unset
+	Memory   string  // e.g. "16g"; "" = leave unset
+	Repo     string  // label
+}
