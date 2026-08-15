@@ -44,6 +44,39 @@ func (p *Provider) List() ([]sandbox.Sandbox, error) {
 	return parseList(res.Stdout)
 }
 
+// Create starts a detached container for the spec and returns its id. The
+// container runs `sleep infinity` so it stays alive to be attached to.
+func (p *Provider) Create(s sandbox.Spec) (string, error) {
+	args := p.podman("run", "-d",
+		"--name", s.Name,
+		"--label", "poddle.managed=true",
+		"--label", "poddle.name="+s.Name,
+		"--label", "poddle.template="+s.Template,
+		"--label", "poddle.runtime="+s.Runtime,
+		"--label", "poddle.size="+s.Size,
+		"--label", "poddle.repo="+s.Repo,
+	)
+	if s.CPUs > 0 {
+		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
+	}
+	if s.Memory != "" {
+		args = append(args, "--memory", s.Memory)
+	}
+	args = append(args, s.Image, "sleep", "infinity")
+
+	res, err := p.Runner.Run("podman", args...)
+	if err != nil {
+		return "", fmt.Errorf("podman run: %w: %s", err, res.Stderr)
+	}
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+// Attach opens an interactive shell inside the sandbox (bash if present, else sh).
+func (p *Provider) Attach(id string) error {
+	args := p.podman("exec", "-it", id, "sh", "-c", "exec bash 2>/dev/null || exec sh")
+	return p.Runner.RunInteractive("podman", args...)
+}
+
 // containerJSON mirrors the fields poddle needs from `podman ps --format json`.
 type containerJSON struct {
 	ID     string            `json:"Id"`
