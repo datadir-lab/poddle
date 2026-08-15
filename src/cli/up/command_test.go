@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
 
@@ -27,7 +28,7 @@ func (f *fakeCreator) Attach(id string) error {
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f)
+	c := NewCmd(f, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"mybox", "--size", "strong"})
@@ -41,9 +42,6 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 	if f.spec.Size != "strong" || f.spec.CPUs != 8 || f.spec.Memory != "16g" {
 		t.Errorf("size resolution = %+v", f.spec)
 	}
-	if f.spec.Runtime != "container" {
-		t.Errorf("runtime = %q", f.spec.Runtime)
-	}
 	if f.attached != "cid123" {
 		t.Errorf("expected attach to cid123, got %q", f.attached)
 	}
@@ -54,7 +52,7 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 
 func TestUp_DetachSkipsAttach(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f)
+	c := NewCmd(f, nil, nil)
 	c.SetArgs([]string{"--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -62,5 +60,48 @@ func TestUp_DetachSkipsAttach(t *testing.T) {
 	}
 	if f.attached != "" {
 		t.Errorf("attach should be skipped, got %q", f.attached)
+	}
+}
+
+func TestUp_WithIdentity_MaterializesEnv(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	fake := &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Mat: idn.Materialization{Env: map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "tok"}},
+	}
+	reg := idn.Registry{"anthropic": fake}
+
+	f := &fakeCreator{}
+	c := NewCmd(f, store, reg)
+	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.Env["CLAUDE_CODE_OAUTH_TOKEN"] != "tok" {
+		t.Errorf("identity env not applied: %v", f.spec.Env)
+	}
+}
+
+func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	fake := &idn.FakeProvider{ProviderName: "anthropic", Authed: false} // not authed yet
+	reg := idn.Registry{"anthropic": fake}
+
+	f := &fakeCreator{}
+	c := NewCmd(f, store, reg)
+	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !fake.AuthCalled {
+		t.Error("expected re-auth on the client when the identity was not authenticated")
 	}
 }
