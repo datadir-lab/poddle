@@ -27,3 +27,18 @@ steps:
       - go install github.com/go-task/task/v3/cmd/task@latest
       - task integration
       - task e2e
+
+  # Always reap testcontainers leftovers on the host Docker (Ryuk is disabled
+  # here, so this is the safety net for crashes/timeouts). Runs on success OR
+  # failure, and reports anything still standing (should be none).
+  cleanup:
+    image: docker:cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    when:
+      - status: [success, failure]
+    commands:
+      - 'docker rm -f $(docker ps -aq --filter label=org.testcontainers=true) 2>/dev/null || true'
+      - 'docker network prune -f 2>/dev/null || true'
+      - 'docker image prune -f 2>/dev/null || true'
+      - 'echo "leftover testcontainers containers (expect none):"; docker ps -a --filter label=org.testcontainers=true'
