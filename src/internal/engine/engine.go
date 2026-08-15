@@ -7,7 +7,9 @@ package engine
 import "git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 
 // Engine is the set of operations poddle performs on sandboxes. It grows as
-// commands are added (Create, Attach, Remove, ...).
+// commands are added.
 type Engine interface {
 	List() ([]sandbox.Sandbox, error)
+	Create(spec sandbox.Spec) (id string, err error)
+	Attach(id string) error
 }

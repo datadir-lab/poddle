@@ -65,6 +65,57 @@ func TestList_EmptyOutput(t *testing.T) {
 	}
 }
 
+func TestCreate_BuildsRunArgs(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": "cid123\n"}}
+	p := New(f, "")
+
+	id, err := p.Create(sandbox.Spec{
+		Name: "box", Image: "debian:slim", Template: "base",
+		Runtime: "container", Size: "strong", CPUs: 8, Memory: "16g", Repo: "r",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if id != "cid123" {
+		t.Errorf("id = %q", id)
+	}
+	call := strings.Join(f.Calls[0], " ")
+	for _, w := range []string{
+		"podman run -d", "--name box",
+		"--label poddle.managed=true", "--label poddle.name=box",
+		"--label poddle.template=base", "--label poddle.runtime=container",
+		"--label poddle.size=strong", "--label poddle.repo=r",
+		"--cpus 8", "--memory 16g", "debian:slim sleep infinity",
+	} {
+		if !strings.Contains(call, w) {
+			t.Errorf("run args missing %q in %q", w, call)
+		}
+	}
+}
+
+func TestCreate_RemoteAddsURL(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": "x\n"}}
+	p := New(f, "ssh://h/sock")
+	if _, err := p.Create(sandbox.Spec{Name: "b", Image: "img"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !strings.Contains(strings.Join(f.Calls[0], " "), "--url ssh://h/sock run -d") {
+		t.Errorf("remote url missing: %v", f.Calls[0])
+	}
+}
+
+func TestAttach_BuildsInteractiveExec(t *testing.T) {
+	f := &exec.Fake{}
+	p := New(f, "")
+	if err := p.Attach("cid"); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	call := strings.Join(f.Calls[0], " ")
+	if !strings.Contains(call, "exec -it cid sh -c") {
+		t.Errorf("attach args = %v", f.Calls[0])
+	}
+}
+
 func TestMapState(t *testing.T) {
 	for in, want := range map[string]string{
 		"running": "running", "paused": "paused",
