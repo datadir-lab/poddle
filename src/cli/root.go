@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
+	"git.dev.datadir.co/datadir/poddle/src/cli/up"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
 	"git.dev.datadir.co/datadir/poddle/src/internal/podman"
@@ -25,6 +26,7 @@ func NewRootCmd() *cobra.Command {
 	var eng engine.Engine = podman.New(exec.OS{}, "")
 
 	root.AddCommand(ls.NewCmd(eng))
+	root.AddCommand(up.NewCmd(eng))
 	return root
 }
 
