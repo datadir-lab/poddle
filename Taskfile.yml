@@ -1,0 +1,41 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the poddle binary
+    cmds:
+      - go build -o bin/poddle ./src/cli
+
+  test:
+    desc: Run unit tests (co-located in src/)
+    cmds:
+      - go test ./src/...
+
+  arch:
+    desc: Run architecture / boundary tests
+    cmds:
+      - go test ./tests/architecture/...
+
+  e2e:
+    desc: Run end-to-end tests (drives the built binary)
+    cmds:
+      - go test -tags e2e ./tests/e2e/...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Tidy go.mod / go.sum
+    cmds:
+      - go mod tidy
+
+  run:
+    desc: 'Run poddle from source, e.g. task run -- up --size weak'
+    cmds:
+      - go run ./src/cli -- {{.CLI_ARGS}}
+
+  ci:
+    desc: What CI runs
+    deps: [vet, test, arch, build]

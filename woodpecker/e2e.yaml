@@ -1,0 +1,13 @@
+# End-to-end pipeline — runs separately from the main gate.
+# Later slices need Podman available on the runner.
+
+when:
+  - event: [push, pull_request]
+
+steps:
+  e2e:
+    image: golang:1.25
+    commands:
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e
