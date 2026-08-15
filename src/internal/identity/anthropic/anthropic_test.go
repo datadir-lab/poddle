@@ -1,0 +1,50 @@
+package anthropic
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/datadir-lab/poddle/src/internal/identity"
+)
+
+// Provider must satisfy the identity.Provider contract.
+var _ identity.Provider = (*Provider)(nil)
+
+func testIdentity(t *testing.T) identity.Identity {
+	t.Helper()
+	id, err := identity.NewStore(t.TempDir()).Create("work", "anthropic")
+	if err != nil {
+		t.Fatalf("create identity: %v", err)
+	}
+	return id
+}
+
+func TestIsAuthenticated_FalseWithoutToken(t *testing.T) {
+	ok, err := New().IsAuthenticated(testIdentity(t))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if ok {
+		t.Error("want false when no token stored")
+	}
+}
+
+func TestMaterialize_SetsOAuthTokenEnv(t *testing.T) {
+	p := New()
+	id := testIdentity(t)
+	if err := os.WriteFile(filepath.Join(id.Dir(), tokenFile), []byte("tok-123\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, _ := p.IsAuthenticated(id); !ok {
+		t.Fatal("expected authenticated once token stored")
+	}
+	m, err := p.Materialize(id)
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if m.Env["CLAUDE_CODE_OAUTH_TOKEN"] != "tok-123" {
+		t.Errorf("env = %v", m.Env)
+	}
+}
