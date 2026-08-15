@@ -1,0 +1,15 @@
+# Build output
+/bin/
+*.exe
+
+# Local env / secrets — never commit
+.env
+*.pem
+
+# Go
+/vendor/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
