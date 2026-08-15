@@ -58,7 +58,7 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 				Context:    "remotehost",
 				Dockerfile: "Containerfile",
 				BuildArgs:  map[string]*string{"PUBKEY": ptr(strings.TrimSpace(string(pub)))},
-				KeepImage:  true,
+				// don't keep the built image around after the run
 			},
 			ExposedPorts: []string{"22/tcp"},
 			Privileged:   true, // podman-in-container
