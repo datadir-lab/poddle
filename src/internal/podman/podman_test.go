@@ -72,6 +72,8 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 	id, err := p.Create(sandbox.Spec{
 		Name: "box", Image: "debian:slim", Template: "base",
 		Runtime: "container", Size: "strong", CPUs: 8, Memory: "16g", Repo: "r",
+		Mounts: []sandbox.Mount{{Host: "/h/.claude", Container: "/root/.claude", ReadOnly: true}},
+		Env:    map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "tok"},
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -85,7 +87,9 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 		"--label poddle.managed=true", "--label poddle.name=box",
 		"--label poddle.template=base", "--label poddle.runtime=container",
 		"--label poddle.size=strong", "--label poddle.repo=r",
-		"--cpus 8", "--memory 16g", "debian:slim tail -f /dev/null",
+		"--cpus 8", "--memory 16g",
+		"--volume /h/.claude:/root/.claude:ro", "--env CLAUDE_CODE_OAUTH_TOKEN=tok",
+		"debian:slim tail -f /dev/null",
 	} {
 		if !strings.Contains(call, w) {
 			t.Errorf("run args missing %q in %q", w, call)
