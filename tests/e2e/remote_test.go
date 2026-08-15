@@ -62,7 +62,10 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 			},
 			ExposedPorts: []string{"22/tcp"},
 			Privileged:   true, // podman-in-container
-			WaitingFor:   wait.ForListeningPort("22/tcp").WithStartupTimeout(120 * time.Second),
+			// Reach the sibling by its direct container IP (below), so skip the
+			// external host-port dial (the host-published port isn't reachable
+			// from a sibling step on this runner).
+			WaitingFor: wait.ForListeningPort("22/tcp").SkipExternalCheck().WithStartupTimeout(90 * time.Second),
 		},
 		Started: true,
 	})
@@ -71,11 +74,7 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = c.Terminate(ctx) })
 
-	host, err := c.Host(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	port, err := c.MappedPort(ctx, "22/tcp")
+	ip, err := c.ContainerIP(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +85,9 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conn := "ssh://root@" + host + ":" + port.Port() + "/run/podman/podman.sock"
+	// reach the sibling directly on the shared docker bridge — the host-published
+	// port isn't reachable from a sibling step on this runner.
+	conn := "ssh://root@" + ip + ":22/run/podman/podman.sock"
 	env := append(os.Environ(), "HOME="+home, "PODDLE_HOST="+conn)
 
 	bin := buildBinary(t)

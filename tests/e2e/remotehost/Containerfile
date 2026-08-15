@@ -15,4 +15,4 @@ RUN dnf install -y openssh-server && ssh-keygen -A \
 EXPOSE 22
 
 # rootful podman API socket + sshd in the foreground
-CMD ["bash", "-lc", "podman system service --time=0 unix:///run/podman/podman.sock & exec /usr/sbin/sshd -D -e"]
+CMD ["bash", "-lc", "mkdir -p /run/podman; podman system service --time=0 unix:///run/podman/podman.sock & exec /usr/sbin/sshd -D -e"]
