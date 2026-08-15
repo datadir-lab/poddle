@@ -1,27 +1,19 @@
-# Integration + e2e — needs a container engine on the runner.
-#
-# Requirements (finalize on your Woodpecker runner):
-#   - podman available (poddle's engine + its ssh client),
-#   - privileged so nested podman can run (repo must be security-trusted),
-#   - a docker-compatible socket for testcontainers-go (started below).
-
+# TEMP diagnostic: learn the Woodpecker runner's container environment so we can
+# wire the socket-mount (Docker-out-of-Docker) pattern correctly for the remote
+# e2e. Restored to the real e2e config after.
 when:
   - event: [manual]
 
 steps:
-  e2e:
+  diag:
     image: quay.io/podman/stable
     privileged: true
-    environment:
-      DOCKER_HOST: unix:///tmp/podman-run/podman.sock
-      TESTCONTAINERS_RYUK_DISABLED: "true"
     commands:
-      - dnf install -y golang git openssh-clients
-      - export PATH=$PATH:$(go env GOPATH)/bin
-      - go install github.com/go-task/task/v3/cmd/task@latest
-      # docker-compatible socket for testcontainers, in a writable path
-      - mkdir -p /tmp/podman-run
-      - podman system service --time=0 unix:///tmp/podman-run/podman.sock &
-      - for i in $(seq 1 20); do [ -S /tmp/podman-run/podman.sock ] && break; sleep 1; done
-      - task integration
-      - task e2e
+      - 'echo "=== id ==="; id'
+      - 'echo "=== sockets present ==="; ls -la /var/run/docker.sock /run/docker.sock /run/podman/podman.sock 2>&1 || true'
+      - 'echo "=== any .sock ==="; find /run /var/run -maxdepth 3 -name "*.sock" 2>/dev/null | head -20 || true'
+      - 'echo "=== podman backend ==="; podman info --format "{{.Host.NetworkBackend}} / rootless={{.Host.Security.Rootless}}" 2>&1 | head -3 || true'
+      - 'echo "=== ip addr ==="; ip -brief addr 2>&1 || true'
+      - 'echo "=== routes ==="; ip route 2>&1 | head -5 || true'
+      - 'echo "=== /etc/hosts ==="; cat /etc/hosts'
+      - 'echo "=== woodpecker env ==="; env | grep -iE "DOCKER|WOODPECKER_BACKEND|CI_SYSTEM|CI_WORKSPACE" | sort'
