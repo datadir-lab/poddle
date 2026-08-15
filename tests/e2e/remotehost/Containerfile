@@ -1,0 +1,22 @@
+# A container that plays a "remote host": sshd + a rootless podman API socket,
+# so poddle's connection-aware provider can drive it over ssh://tester@host.
+FROM quay.io/podman/stable
+
+ARG PUBKEY
+
+RUN dnf install -y openssh-server shadow-utils && ssh-keygen -A
+RUN useradd -m -u 1000 tester \
+ && mkdir -p /home/tester/.ssh \
+ && printf '%s\n' "$PUBKEY" > /home/tester/.ssh/authorized_keys \
+ && chown -R tester:tester /home/tester/.ssh \
+ && chmod 700 /home/tester/.ssh \
+ && chmod 600 /home/tester/.ssh/authorized_keys \
+ && mkdir -p /run/user/1000 && chown tester:tester /run/user/1000
+
+EXPOSE 22
+
+# Start the rootless podman API socket for `tester`, then sshd in the foreground.
+# NOTE: rootless podman-in-container is environment-sensitive (privileged /
+# cgroups v2 / /dev/fuse); this is the fixture detail that gets finalized on the
+# CI runner.
+CMD ["bash", "-lc", "su - tester -c 'XDG_RUNTIME_DIR=/run/user/1000 podman system service --time=0 unix:///run/user/1000/podman/podman.sock &' ; exec /usr/sbin/sshd -D -e"]
