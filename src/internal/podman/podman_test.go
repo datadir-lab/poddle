@@ -85,7 +85,7 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 		"--label poddle.managed=true", "--label poddle.name=box",
 		"--label poddle.template=base", "--label poddle.runtime=container",
 		"--label poddle.size=strong", "--label poddle.repo=r",
-		"--cpus 8", "--memory 16g", "debian:slim sleep infinity",
+		"--cpus 8", "--memory 16g", "debian:slim tail -f /dev/null",
 	} {
 		if !strings.Contains(call, w) {
 			t.Errorf("run args missing %q in %q", w, call)
@@ -113,6 +113,28 @@ func TestAttach_BuildsInteractiveExec(t *testing.T) {
 	call := strings.Join(f.Calls[0], " ")
 	if !strings.Contains(call, "exec -it cid sh -c") {
 		t.Errorf("attach args = %v", f.Calls[0])
+	}
+}
+
+func TestRemove_BuildsArgs(t *testing.T) {
+	f := &exec.Fake{}
+	p := New(f, "")
+	if err := p.Remove("cid"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if strings.Join(f.Calls[0], " ") != "podman rm -f cid" {
+		t.Errorf("remove args = %v", f.Calls[0])
+	}
+}
+
+func TestRemove_RemoteAddsURL(t *testing.T) {
+	f := &exec.Fake{}
+	p := New(f, "ssh://h/sock")
+	if err := p.Remove("cid"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if strings.Join(f.Calls[0], " ") != "podman --url ssh://h/sock rm -f cid" {
+		t.Errorf("remote remove args = %v", f.Calls[0])
 	}
 }
 
