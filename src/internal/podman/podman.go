@@ -6,6 +6,7 @@ package podman
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/datadir-lab/poddle/src/internal/exec"
@@ -62,6 +63,16 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 	}
 	if s.Memory != "" {
 		args = append(args, "--memory", s.Memory)
+	}
+	for _, m := range s.Mounts {
+		v := m.Host + ":" + m.Container
+		if m.ReadOnly {
+			v += ":ro"
+		}
+		args = append(args, "--volume", v)
+	}
+	for _, k := range sortedKeys(s.Env) {
+		args = append(args, "--env", k+"="+s.Env[k])
 	}
 	args = append(args, s.Image, "tail", "-f", "/dev/null")
 
@@ -138,4 +149,13 @@ func mapState(s string) string {
 	default:
 		return strings.ToLower(s)
 	}
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
