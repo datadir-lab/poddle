@@ -5,7 +5,7 @@
 # to `woodpecker/` in the Woodpecker repo settings so these files are picked up.
 
 when:
-  - event: [push, pull_request]
+  - event: [push, pull_request, manual]
 
 steps:
   ci:

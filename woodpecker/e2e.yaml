@@ -6,8 +6,10 @@
 #     podman socket, and disable Ryuk (needs privileges): TESTCONTAINERS_RYUK_DISABLED=true,
 #   - privileged / cgroups v2 so podman-in-container works for the remote e2e.
 
+# Heavy (dind/podman, privileged) — run on demand via `wp pipeline create ... `
+# or the UI, not on every push (VM167 is RAM-constrained, one workflow at a time).
 when:
-  - event: [push, pull_request]
+  - event: [manual]
 
 steps:
   e2e:
