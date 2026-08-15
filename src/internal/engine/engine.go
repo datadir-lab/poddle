@@ -12,4 +12,5 @@ type Engine interface {
 	List() ([]sandbox.Sandbox, error)
 	Create(spec sandbox.Spec) (id string, err error)
 	Attach(id string) error
+	Remove(id string) error
 }
