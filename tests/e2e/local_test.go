@@ -16,26 +16,40 @@ func requirePodman(t *testing.T) {
 	}
 }
 
-// TestE2E_Local_UpAndLs starts a poddle directly on the runner's local podman,
-// then lists it. This is the "starts directly on the runner" e2e.
-func TestE2E_Local_UpAndLs(t *testing.T) {
+// poddle runs the built binary (optionally with env) and fails the test on a
+// non-zero exit, returning combined output.
+func poddle(t *testing.T, bin string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	if env != nil {
+		cmd.Env = env
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("poddle %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return string(out)
+}
+
+// TestE2E_Local_Lifecycle runs the full up -> ls -> down -> ls loop against the
+// runner's local podman, asserting the poddle appears, then is gone after down.
+func TestE2E_Local_Lifecycle(t *testing.T) {
 	requirePodman(t)
 
 	bin := buildBinary(t)
 	const name = "poddle-e2e-local"
-	_ = exec.Command("podman", "rm", "-f", name).Run()
+	_ = exec.Command("podman", "rm", "-f", name).Run() // clean slate
 	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", name).Run() })
 
-	if out, err := exec.Command(bin, "up", name, "--detach",
-		"--image", "docker.io/library/alpine:latest").CombinedOutput(); err != nil {
-		t.Fatalf("poddle up: %v\n%s", err, out)
+	poddle(t, bin, nil, "up", name, "--detach", "--image", "docker.io/library/alpine:latest")
+
+	if ls := poddle(t, bin, nil, "ls"); !strings.Contains(ls, name) {
+		t.Fatalf("ls should list %q after up:\n%s", name, ls)
 	}
 
-	out, err := exec.Command(bin, "ls").CombinedOutput()
-	if err != nil {
-		t.Fatalf("poddle ls: %v\n%s", err, out)
-	}
-	if !strings.Contains(string(out), name) {
-		t.Fatalf("ls did not list %q:\n%s", name, out)
+	poddle(t, bin, nil, "down", name)
+
+	if ls := poddle(t, bin, nil, "ls"); strings.Contains(ls, name) {
+		t.Fatalf("ls should NOT list %q after down:\n%s", name, ls)
 	}
 }
