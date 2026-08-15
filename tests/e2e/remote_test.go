@@ -88,7 +88,10 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 	// reach the sibling directly on the shared docker bridge — the host-published
 	// port isn't reachable from a sibling step on this runner.
 	conn := "ssh://root@" + ip + ":22/run/podman/podman.sock"
-	env := append(os.Environ(), "HOME="+home, "PODDLE_HOST="+conn)
+	// podman's ssh client authenticates via ssh-agent; start one with the key.
+	authSock, stopAgent := startSSHAgent(t, key)
+	t.Cleanup(stopAgent)
+	env := append(os.Environ(), "HOME="+home, "PODDLE_HOST="+conn, "SSH_AUTH_SOCK="+authSock)
 
 	bin := buildBinary(t)
 	const name = "poddle-e2e-remote"
@@ -103,5 +106,39 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 
 	if ls := poddle(t, bin, env, "ls"); strings.Contains(ls, name) {
 		t.Fatalf("remote ls should NOT list %q after down:\n%s", name, ls)
+	}
+}
+
+// startSSHAgent boots an ssh-agent, adds the key, and returns its socket path
+// plus a stop function.
+func startSSHAgent(t *testing.T, key string) (sock string, stop func()) {
+	t.Helper()
+	out, err := exec.Command("ssh-agent", "-s").Output()
+	if err != nil {
+		t.Fatalf("ssh-agent: %v", err)
+	}
+	var pid string
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "SSH_AUTH_SOCK="):
+			sock = strings.SplitN(strings.TrimPrefix(line, "SSH_AUTH_SOCK="), ";", 2)[0]
+		case strings.HasPrefix(line, "SSH_AGENT_PID="):
+			pid = strings.SplitN(strings.TrimPrefix(line, "SSH_AGENT_PID="), ";", 2)[0]
+		}
+	}
+	if sock == "" {
+		t.Fatal("could not parse SSH_AUTH_SOCK from ssh-agent")
+	}
+	add := exec.Command("ssh-add", key)
+	add.Env = append(os.Environ(), "SSH_AUTH_SOCK="+sock)
+	if o, err := add.CombinedOutput(); err != nil {
+		t.Fatalf("ssh-add: %v\n%s", err, o)
+	}
+	return sock, func() {
+		if pid != "" {
+			k := exec.Command("ssh-agent", "-k")
+			k.Env = append(os.Environ(), "SSH_AGENT_PID="+pid)
+			_ = k.Run()
+		}
 	}
 }
