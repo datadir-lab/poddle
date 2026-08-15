@@ -4,13 +4,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
+	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
 	"git.dev.datadir.co/datadir/poddle/src/internal/podman"
 )
 
 // NewRootCmd builds the root poddle command and registers the feature slices.
-// It is the composition root: infrastructure (runner, provider) is constructed
-// here once and injected into each slice.
+// It is the composition root: the engine is constructed here once and injected
+// into each slice.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "poddle",
@@ -18,11 +19,12 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	// conn "" = local Podman. Remote host (ssh://…) is wired from user config
-	// in a later slice; the provider already supports it.
-	provider := podman.New(exec.OS{}, "")
+	// The local engine: in-process, podman-backed. A remote engine (a client
+	// talking to poddled) will implement this same engine.Engine interface for
+	// remote targets — so commands behave identically wherever sandboxes run.
+	var eng engine.Engine = podman.New(exec.OS{}, "")
 
-	root.AddCommand(ls.NewCmd(provider))
+	root.AddCommand(ls.NewCmd(eng))
 	return root
 }
 

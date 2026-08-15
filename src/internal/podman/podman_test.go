@@ -4,9 +4,13 @@ import (
 	"strings"
 	"testing"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
+
+// Provider must satisfy the engine.Engine contract.
+var _ engine.Engine = (*Provider)(nil)
 
 func TestList_BuildsArgsAndParses(t *testing.T) {
 	out := `[{"Id":"abc123def4567890","State":"running","Labels":{"poddle.managed":"true","poddle.name":"app","poddle.template":"python","poddle.runtime":"container","poddle.size":"strong","poddle.repo":"https://f/me/app.git"}}]`
