@@ -80,7 +80,7 @@ func TestE2E_Remote_Lifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conn := "ssh://tester@" + host + ":" + port.Port() + "/run/user/1000/podman/podman.sock"
+	conn := "ssh://root@" + host + ":" + port.Port() + "/run/podman/podman.sock"
 	env := append(os.Environ(), "HOME="+home, "PODDLE_HOST="+conn)
 
 	bin := buildBinary(t)
