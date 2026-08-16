@@ -12,7 +12,8 @@ type Engine interface {
 	List() ([]sandbox.Sandbox, error)
 	Create(spec sandbox.Spec) (id string, err error)
 	Attach(id string) error
-	Exec(id string, command string) error         // run a one-shot command in the sandbox (streams)
-	ExecDetached(id string, command string) error // run a command in the background in the sandbox
+	Exec(id string, command string) error                // run a one-shot command in the sandbox (streams)
+	ExecDetached(id string, command string) error        // run a command in the background in the sandbox
+	Resize(id string, cpus float64, memory string) error // live-update a running sandbox's cpu/memory
 	Remove(id string) error
 }

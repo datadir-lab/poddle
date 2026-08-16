@@ -2,6 +2,7 @@ package up
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ type fakeCreator struct {
 	execed    string
 	detached  string
 	removed   string
+	resized   []string
 	createErr error
 	attachErr error
 	log       *[]string // optional lifecycle recorder (nil = off)
@@ -71,6 +73,11 @@ func (f *fakeCreator) Remove(id string) error {
 
 func (f *fakeCreator) ExecDetached(id, command string) error {
 	f.detached = command
+	return nil
+}
+
+func (f *fakeCreator) Resize(id string, cpus float64, memory string) error {
+	f.resized = append(f.resized, fmt.Sprintf("%s:%g:%s", id, cpus, memory))
 	return nil
 }
 
