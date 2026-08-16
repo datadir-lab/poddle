@@ -28,7 +28,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 
 ### Harness abstraction (pod-side runtime)
 
-- [ ] **1.8** `internal/harness`: `Harness` interface — `Name()`, `Provisions() []string`, `Supports(vendor) bool`, `Materialize(brokerAddr, handle) → sandbox env`. Add a fake. Test the fake + a registry.
+- [x] **1.8** `internal/harness`: `Harness` interface — `Name()`, `Provisions() []string`, `Supports(vendor) bool`, `Env(brokerAddr, handle) → map[string]string` (renamed from `Materialize`: env-only, and avoids confusion with the `Provider.Materialize` removed at 1.11). `Registry` + `Get`, `FakeHarness`. Imports nothing from broker (strings only). TDD: fake Env/Supports/Provisions + registry tests written failing first, then implemented.
 - [ ] **1.9** `harness/claudecode`: `Provisions()=["npm i -g @anthropic-ai/claude-code"]`, `Supports("anthropic")`, `Materialize()` → `ANTHROPIC_BASE_URL=<brokerAddr>` + `ANTHROPIC_AUTH_TOKEN=<handle>`. Test.
 
 ### Wire up `up` (remove the secret path)
