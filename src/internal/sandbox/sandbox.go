@@ -24,12 +24,13 @@ type Mount struct {
 type Spec struct {
 	Name     string
 	Image    string
-	Template string  // label
-	Runtime  string  // label (default "container")
-	Size     string  // label
-	CPUs     float64 // 0 = leave unset
-	Memory   string  // e.g. "16g"; "" = leave unset
-	Repo     string  // label
+	Template string            // label
+	Runtime  string            // label (default "container")
+	Size     string            // label
+	CPUs     float64           // 0 = leave unset
+	Memory   string            // e.g. "16g"; "" = leave unset
+	Repo     string            // label
 	Mounts   []Mount           // credential/workspace mounts (e.g. an identity)
 	Env      map[string]string // env vars injected into the sandbox
+	Setup    []string          // shell commands run in the pod after create (e.g. harness install)
 }

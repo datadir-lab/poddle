@@ -17,8 +17,8 @@ import (
 
 // App bundles the dependencies shared across commands.
 type App struct {
-	Engine     engine.Engine      // container/remote backend
-	Identities *identity.Store    // client-side identity store
-	Providers  identity.Registry  // auth vendors (anthropic, …)
-	Harnesses  harness.Registry   // pod-side runtimes (claude-code, …)
+	Engine     engine.Engine     // container/remote backend
+	Identities *identity.Store   // client-side identity store
+	Providers  identity.Registry // auth vendors (anthropic, …)
+	Harnesses  harness.Registry  // pod-side runtimes (claude-code, …)
 }
