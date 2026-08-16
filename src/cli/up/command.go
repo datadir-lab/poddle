@@ -2,12 +2,10 @@
 package up
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,33 +19,25 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/secure"
 )
 
-// brokerBindAddr is where the up-scoped broker listens in Phase 1: all
-// interfaces on an ephemeral port, so the pod's container can reach it via the
-// podman bridge. It is handle-gated (401 without a valid handle); Phase 2 binds
-// tighter (bridge-only / unix socket / tunnel).
-const brokerBindAddr = "0.0.0.0:0"
-
 // podBrokerHost is how a pod addresses the host from inside a podman/docker
 // container. It's a container-runtime detail; when a second engine (k8s) lands
 // it graduates to an engine capability.
 const podBrokerHost = "host.containers.internal"
 
-// credBroker is the broker capability `up` needs. The real *broker.Broker
-// satisfies it; tests pass a spy. (Named to avoid clashing with the broker
-// package import.)
-type credBroker interface {
-	Serve(addr string) (string, error)
-	Addr() string
-	SetEgressMode(mode string)
-	Store(broker.Credential) (string, error)
-	IssueHandle(credID, scope string, ttl time.Duration) (broker.Handle, error)
-	Revoke(handleValue string)
-	Stop(ctx context.Context) error
+// podBroker is the persistent-broker capability `up` needs: ensure poddled is
+// running, learn its pod-facing gateway address, and issue a pod-scoped handle
+// for a credential. Handles live until `down` revokes them (not until up exits),
+// so a detached pod keeps working. The real *poddled.Client satisfies it; tests
+// pass a spy.
+type podBroker interface {
+	EnsureRunning() error
+	Gateway() (string, error)
+	IssueHandle(pod, scope string, cred broker.Credential) (string, error)
 }
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
-// resolves a pod-side runtime. b is the up-scoped secretless broker.
-func NewCmd(a *app.App, b credBroker) *cobra.Command {
+// resolves a pod-side runtime. b talks to the persistent poddled broker.
+func NewCmd(a *app.App, b podBroker) *cobra.Command {
 	var image, size, identityName, harnessName, execCmd, templateName string
 	var detach bool
 
@@ -143,18 +133,18 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 				identityName = chosen
 			}
 
-			// The broker serves when there's any brokered credential — an
-			// identity and/or connectors — and is torn down when the session ends.
+			// Any brokered credential — an identity and/or connectors — is issued
+			// against the persistent poddled broker. The handles live until
+			// `down` revokes them, so the pod (attached or detached) keeps
+			// working. poddled auto-starts on first use.
 			if identityName != "" || len(tpl.Connectors) > 0 {
-				if detach {
-					return fmt.Errorf("--detach with an identity or connector needs poddled (Phase 2); attach to keep the broker alive")
+				if err := b.EnsureRunning(); err != nil {
+					return fmt.Errorf("start poddled: %w", err)
 				}
-				b.SetEgressMode(tpl.Egress) // secret-safety: scrub secrets from brokered egress
-				addr, err := b.Serve(brokerBindAddr)
+				addr, err := b.Gateway()
 				if err != nil {
-					return fmt.Errorf("serve broker: %w", err)
+					return fmt.Errorf("broker gateway: %w", err)
 				}
-				defer func() { _ = b.Stop(context.Background()) }()
 				_, port, err := net.SplitHostPort(addr)
 				if err != nil {
 					return fmt.Errorf("broker address %q: %w", addr, err)
@@ -162,18 +152,14 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 				podBrokerAddr := net.JoinHostPort(podBrokerHost, port)
 
 				if identityName != "" {
-					handle, err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec)
-					if err != nil {
+					if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
 						return err
 					}
-					defer b.Revoke(handle)
 				}
 				for _, cn := range tpl.Connectors {
-					handle, err := applyConnector(b, a.Connections, a.ConnectorsDir, cn, name, podBrokerAddr, &spec)
-					if err != nil {
+					if err := applyConnector(b, a.Connections, a.ConnectorsDir, cn, name, podBrokerAddr, &spec); err != nil {
 						return err
 					}
-					defer b.Revoke(handle)
 				}
 			}
 
@@ -204,80 +190,72 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 
 // applyIdentity wires an identity into the pod secretlessly: re-authenticate on
 // the client if stale (never a dead cred into the pod), take the real
-// Credential, seal it in the broker, and fold ONLY the harness's broker-pointing
-// env + install commands into the spec. Returns the issued handle so the caller
-// can revoke it on teardown. The real secret never touches the pod.
-func applyIdentity(b credBroker, store *idn.Store, reg idn.Registry, h harness.Harness, name, podBrokerURL string, spec *sandbox.Spec) (string, error) {
+// Credential, issue a pod-scoped handle for it at poddled, and fold ONLY the
+// harness's broker-pointing env + install commands into the spec. The real
+// secret never touches the pod.
+func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Harness, name, podBrokerURL string, spec *sandbox.Spec) error {
 	id, err := store.Get(name)
 	if err != nil {
-		return "", fmt.Errorf("identity %q: %w", name, err)
+		return fmt.Errorf("identity %q: %w", name, err)
 	}
 	p, ok := reg.Get(id.Provider)
 	if !ok {
-		return "", fmt.Errorf("unknown provider %q for identity %q", id.Provider, name)
+		return fmt.Errorf("unknown provider %q for identity %q", id.Provider, name)
 	}
 	authed, err := p.IsAuthenticated(id)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !authed {
 		if err := p.Authenticate(id); err != nil {
-			return "", fmt.Errorf("authenticate %q: %w", name, err)
+			return fmt.Errorf("authenticate %q: %w", name, err)
 		}
 	}
 	cred, err := p.Credential(id)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !h.Supports(cred.Vendor) {
-		return "", fmt.Errorf("harness %q does not support vendor %q", h.Name(), cred.Vendor)
+		return fmt.Errorf("harness %q does not support vendor %q", h.Name(), cred.Vendor)
 	}
 
-	credID, err := b.Store(cred)
+	handle, err := b.IssueHandle(spec.Name, spec.Name, cred) // scope = pod name
 	if err != nil {
-		return "", err
-	}
-	handle, err := b.IssueHandle(credID, spec.Name, 0) // 0 → DefaultHandleTTL, scope = pod name
-	if err != nil {
-		return "", err
+		return err
 	}
 
 	if spec.Env == nil {
 		spec.Env = map[string]string{}
 	}
-	for k, v := range h.Env(podBrokerURL, handle.Value) {
+	for k, v := range h.Env(podBrokerURL, handle) {
 		spec.Env[k] = v
 	}
 	spec.Setup = append(spec.Setup, h.Provisions()...)
-	return handle.Value, nil
+	return nil
 }
 
-// applyConnector seals a connection's service token in the broker, issues a
-// handle, and folds the connector's pod wiring (env + setup) into the spec.
+// applyConnector issues a pod-scoped handle for a connection's service token at
+// poddled and folds the connector's pod wiring (env + setup) into the spec.
 // Connector setup (e.g. git url.insteadOf) is PREPENDED so it runs before the
 // repo clone. The real token never enters the pod.
-func applyConnector(b credBroker, store *connector.Store, connectorsDir, connName, podName, podBrokerAddr string, spec *sandbox.Spec) (string, error) {
+func applyConnector(b podBroker, store *connector.Store, connectorsDir, connName, podName, podBrokerAddr string, spec *sandbox.Spec) error {
 	conn, err := store.Get(connName)
 	if err != nil {
-		return "", fmt.Errorf("connection %q: %w", connName, err)
+		return fmt.Errorf("connection %q: %w", connName, err)
 	}
 	def, err := connector.LoadDefinition(connectorsDir, conn.Connector)
 	if err != nil {
-		return "", err
+		return err
 	}
 	cred, err := connector.Credential(conn, def)
 	if err != nil {
-		return "", err
+		return err
 	}
-	credID, err := b.Store(cred)
+	handle, err := b.IssueHandle(podName, podName+"/"+connName, cred)
 	if err != nil {
-		return "", err
+		return err
 	}
-	handle, err := b.IssueHandle(credID, podName+"/"+connName, 0)
-	if err != nil {
-		return "", err
-	}
-	env, setup := connector.Wiring(def, cred, podBrokerAddr, handle.Value)
+	env, setup := connector.Wiring(def, cred, podBrokerAddr, handle)
 	if len(env) > 0 {
 		if spec.Env == nil {
 			spec.Env = map[string]string{}
@@ -287,7 +265,7 @@ func applyConnector(b credBroker, store *connector.Store, connectorsDir, connNam
 		}
 	}
 	spec.Setup = append(setup, spec.Setup...) // connector setup before the clone
-	return handle.Value, nil
+	return nil
 }
 
 const (
