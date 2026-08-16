@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -19,7 +20,7 @@ type Gateway struct {
 func NewGateway(h *Handles) *Gateway { return &Gateway{handles: h} }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cred, err := g.handles.Resolve(bearer(r.Header.Get("Authorization")))
+	cred, err := g.handles.Resolve(handleFromAuth(r.Header.Get("Authorization")))
 	if err != nil {
 		http.Error(w, "invalid or revoked handle", http.StatusUnauthorized)
 		return
@@ -50,6 +51,9 @@ func applyAuth(h http.Header, cred Credential) {
 		h.Set("X-Api-Key", cred.Secret)
 	case ModeSubscription:
 		h.Set("Authorization", "Bearer "+cred.Secret)
+	case ModeBasic:
+		// Secret is "user:token".
+		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(cred.Secret)))
 	case ModeEndpoint:
 		if cred.Secret != "" {
 			h.Set("Authorization", "Bearer "+cred.Secret)
@@ -57,9 +61,17 @@ func applyAuth(h http.Header, cred Credential) {
 	}
 }
 
-func bearer(auth string) string {
+// handleFromAuth extracts the pod's handle from an incoming Authorization
+// header: a Bearer token (LLM harnesses) or a Basic username (git).
+func handleFromAuth(auth string) string {
 	if v, ok := strings.CutPrefix(auth, "Bearer "); ok {
 		return v
+	}
+	if v, ok := strings.CutPrefix(auth, "Basic "); ok {
+		if dec, err := base64.StdEncoding.DecodeString(v); err == nil {
+			user, _, _ := strings.Cut(string(dec), ":")
+			return user
+		}
 	}
 	return auth
 }
