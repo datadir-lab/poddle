@@ -48,6 +48,23 @@ func TestClient_GatewayIssueRevoke(t *testing.T) {
 	}
 }
 
+func TestClient_Status(t *testing.T) {
+	c := startDaemon(t)
+	if _, err := c.IssueHandle("box", "box", broker.Credential{Mode: broker.ModeSubscription, Secret: "s", BaseURL: "http://x"}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Gateway == "" {
+		t.Error("status should report a gateway address")
+	}
+	if s.Pods["box"] != 1 {
+		t.Errorf("status pods = %v, want box:1", s.Pods)
+	}
+}
+
 func TestClient_EnsureRunning_AlreadyUp(t *testing.T) {
 	c := startDaemon(t)
 	if err := c.EnsureRunning(); err != nil {

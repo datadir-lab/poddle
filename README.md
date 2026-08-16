@@ -1,35 +1,143 @@
 # poddle
 
-Self-hostable, secret-safe dev sandboxes for coding agents.
+**Self-hostable, secret-safe dev sandboxes for coding agents.**
 
-`poddle up` provisions an isolated, reproducible sandbox on your own infra —
-wired to your self-hosted stack (Forgejo / Woodpecker), with your coding agent
-authed via your subscription and your secrets kept out by construction.
+`poddle up` spins an isolated, reproducible pod on your own infra, wired to your
+stack (git host, CI, registries, databases) — and **no real secret ever enters
+the pod**. The agent gets a revocable *handle*; a broker on your host holds the
+real credential and swaps it in on the wire. Revoke a pod and its access is
+dead instantly.
 
-> **Status:** scaffolding only — no implementation yet.
+```bash
+poddle up                       # interactive secretless sandbox
+poddle task "add tests for X"   # run an agent headless, to completion
+poddle task "big refactor" -d   # …or in the background (poddle logs / down)
+```
 
-## Layout
+## Why
+
+Giving a coding agent real access means handing it your API keys, git tokens,
+and DB passwords. poddle doesn't. The pod holds only opaque handles; the broker
+holds the credentials and injects them per-request, logs attribution, and can
+redact secrets from outbound traffic. Everything runs on **your** infra — local
+podman today, a remote SSH host with one flag.
+
+## Install
+
+```bash
+go install git.dev.datadir.co/datadir/poddle/src@latest   # installs `poddle`
+# or, from a checkout:
+task build      # -> ./bin/poddle
+```
+
+Requires [podman](https://podman.io) on the host that runs the pods.
+
+## Quickstart
+
+```bash
+# 1. Add a login for your agent (token via stdin — never argv). Re-auth is
+#    prompted when stale; the real token stays on your machine.
+poddle identity add work --provider anthropic
+
+# 2. Broker a service or two (git host, CI, registry, database).
+echo "$GITHUB_PAT" | poddle connect add gh  --connector github
+echo "$PG_PASS"    | poddle connect add db  --connector postgres \
+                       --url postgres://10.0.0.9:5432/shop --user app
+
+# 3. Describe the pod (optional; sensible defaults otherwise).
+cat > .poddle.toml <<'TOML'
+image      = "docker.io/library/node:22"
+identity   = "work"
+connectors = ["gh", "db"]
+TOML
+
+# 4. Go.
+poddle up                       # attach an interactive session
+poddle task "fix the failing parser test and open a PR"
+```
+
+Inside the pod, `git`, `psql`, `npm`, … just work — each authenticated through
+the broker with a handle. The real credentials are never present.
+
+## How it works
 
 ```
-src/cli/              CLI entry + one vertical slice per command (up, ls, ...)
-src/internal/         shared kernel (private): runner, podman provider, config
-tests/architecture/   structural rules enforcing slice boundaries
-tests/e2e/            end-to-end tests driving the built binary
+   pod  ──handle──▶  broker (your host)  ──real credential──▶  service
+        never sees          holds creds in memory,            git / CI /
+        the secret          injects on the wire,              registry / DB /
+                            redacts egress, revocable         LLM API
+```
+
+- **HTTP services** (LLM APIs, git over HTTP, CI, npm/pypi): a reverse-proxy
+  gateway swaps the handle for the real header on each request.
+- **Databases** (Postgres, Redis): auth binds to the connection, so the broker
+  *terminates* it — authenticates the pod with its handle, does the real
+  handshake (Postgres **SCRAM-SHA-256**, Redis `AUTH`) with the real password,
+  then splices the sockets. The pod never learns the password.
+
+The broker runs as a persistent daemon (`poddled`, auto-started) so pods keep
+working after the client exits, and can be reattached.
+
+## What's brokered
+
+| Kind | Connectors |
+|---|---|
+| **Git** | github · gitlab · forgejo · gitea · bitbucket |
+| **CI** | woodpecker · drone · argocd · jenkins |
+| **Registries** | npm · pypi · docker |
+| **Databases** | postgres · redis |
+| **LLM** | anthropic (claude-code) |
+
+New HTTP services are a few lines of declarative TOML — no code.
+
+## Commands
+
+```
+poddle up [name]            create a secretless pod and attach (--detach to leave it)
+poddle task "<prompt>"      run a coding agent headless to completion (--detach for background)
+poddle logs <pod>           show a detached task's output (--follow to stream)
+poddle attach <pod>         reconnect to a running pod
+poddle run <pod> <cmd>...   run a command in a running pod
+poddle ls                   list pods
+poddle down <pod>           revoke the pod's handles and remove it
+poddle identity add|ls|rm   manage agent logins
+poddle connect add|ls|rm    manage brokered service connections
+poddle daemon status        is poddled running? what is it serving?
+poddle version
+```
+
+## Secret-safety
+
+- **`block_paths`** — mounts that would expose host secrets (`~/.ssh`, `~/.aws`,
+  poddle's own token store, …) are refused before the pod is created.
+- **credential scan** — bind mounts are scanned for `.env`/keys/`.npmrc`; warn
+  (default) or `secret_scan = "block"`.
+- **egress redaction** — the broker scrubs its managed secrets plus
+  high-confidence patterns (private keys, `AKIA…`, `ghp_…`, …) from outbound
+  bodies (`egress = redact | block | off`).
+
+## Self-host & remote
+
+`PODDLE_HOST=ssh://user@host` runs pods on a remote machine over the same code
+path. The broker binds an owner-only Unix control socket; credentials live in
+memory (memguard), never on disk.
+
+## Development
+
+```
+src/cli/              CLI entry + one vertical slice per command
+src/internal/         private kernel: broker, poddled, l4, connector, podman, …
+tests/e2e/            end-to-end tests driving the built binary against podman
 woodpecker/           CI pipelines
 Taskfile.yml          all dev commands
 ```
 
-## Commands (via [Task](https://taskfile.dev))
-
-```
-task build   # build the binary
-task test    # unit tests (co-located in src/)
-task arch    # architecture / boundary tests
-task e2e     # end-to-end tests
-task ci      # what CI runs (vet + test + arch + build)
+```bash
+task build    # build the binary
+task test     # unit tests (co-located in src/)
+task arch     # architecture / boundary tests
+task ci       # what CI runs (fmt + vet + test + arch + build)
+task e2e-*    # end-to-end suites (need podman): e2e-up, e2e-connector, e2e-l4, e2e-task, …
 ```
 
-## Module
-
-`git.dev.datadir.co/datadir/poddle` — imports carry the `src/` segment, e.g.
-`git.dev.datadir.co/datadir/poddle/src/internal/podman`.
+Module `git.dev.datadir.co/datadir/poddle` — imports carry the `src/` segment.
