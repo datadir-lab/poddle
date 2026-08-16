@@ -18,13 +18,21 @@ func (f *fakeRemover) Remove(id string) error {
 	return f.err
 }
 
-func TestDown_RemovesByArg(t *testing.T) {
+type spyRevoker struct{ revoked string }
+
+func (s *spyRevoker) RevokePod(pod string) error { s.revoked = pod; return nil }
+
+func TestDown_RevokesThenRemoves(t *testing.T) {
 	f := &fakeRemover{}
-	c := NewCmd(&app.App{Engine: f})
+	r := &spyRevoker{}
+	c := NewCmd(&app.App{Engine: f}, r)
 	c.SetArgs([]string{"mybox"})
 
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
+	}
+	if r.revoked != "mybox" {
+		t.Errorf("revoked = %q, want mybox", r.revoked)
 	}
 	if f.removed != "mybox" {
 		t.Errorf("removed = %q, want mybox", f.removed)
