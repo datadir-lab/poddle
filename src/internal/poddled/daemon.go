@@ -35,20 +35,22 @@ type brokerAPI interface {
 // Daemon is the persistent broker plus a pod→handles registry (so `down` can
 // revoke everything a pod was issued) and the L4 datastore listeners.
 type Daemon struct {
-	broker      brokerAPI
-	mu          sync.Mutex
-	pods        map[string][]string
-	l4Redis     net.Listener
-	l4RedisAddr string
+	broker         brokerAPI
+	mu             sync.Mutex
+	pods           map[string][]string
+	l4Redis        net.Listener
+	l4RedisAddr    string
+	l4Postgres     net.Listener
+	l4PostgresAddr string
 }
 
 // New returns a Daemon wrapping b.
 func New(b brokerAPI) *Daemon { return &Daemon{broker: b, pods: map[string][]string{}} }
 
 // Start sets the (daemon-global) egress mode, binds the injecting HTTP gateway
-// (returning its address), and — when l4RedisBind is non-empty — the L4 Redis
-// listener pods reach for datastore access.
-func (d *Daemon) Start(gatewayBind, egress, l4RedisBind string) (string, error) {
+// (returning its address), and — when their bind addresses are non-empty — the
+// L4 Redis and Postgres listeners pods reach for datastore access.
+func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind string) (string, error) {
 	d.broker.SetEgressMode(egress)
 	addr, err := d.broker.Serve(gatewayBind)
 	if err != nil {
@@ -61,18 +63,28 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind string) (string, error) 
 		}
 		d.l4Redis = ln
 		d.l4RedisAddr = ln.Addr().String()
-		go d.acceptRedis(ln)
+		go d.accept(ln, l4.ServeRedis)
+	}
+	if l4PostgresBind != "" {
+		ln, err := net.Listen("tcp", l4PostgresBind)
+		if err != nil {
+			return "", err
+		}
+		d.l4Postgres = ln
+		d.l4PostgresAddr = ln.Addr().String()
+		go d.accept(ln, l4.ServePostgres)
 	}
 	return addr, nil
 }
 
-func (d *Daemon) acceptRedis(ln net.Listener) {
+// accept serves each accepted connection with the given L4 handler.
+func (d *Daemon) accept(ln net.Listener, serve func(net.Conn, l4.Resolver) error) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		go func() { _ = l4.ServeRedis(conn, d) }()
+		go func() { _ = serve(conn, d) }()
 	}
 }
 
@@ -90,6 +102,9 @@ func (d *Daemon) Resolve(handle string) (l4.Target, error) {
 func (d *Daemon) Stop(ctx context.Context) error {
 	if d.l4Redis != nil {
 		_ = d.l4Redis.Close()
+	}
+	if d.l4Postgres != nil {
+		_ = d.l4Postgres.Close()
 	}
 	return d.broker.Stop(ctx)
 }
@@ -112,7 +127,7 @@ func (d *Daemon) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("GET /gateway", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"addr": d.broker.Addr(), "redis": d.l4RedisAddr})
+		writeJSON(w, http.StatusOK, map[string]string{"addr": d.broker.Addr(), "redis": d.l4RedisAddr, "postgres": d.l4PostgresAddr})
 	})
 	mux.HandleFunc("POST /pods/{pod}/handles", func(w http.ResponseWriter, r *http.Request) {
 		var req issueReq

@@ -80,7 +80,8 @@ var builtins = map[string]Definition{
 	"pypi":   {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite, `pip config set global.trusted-host {broker}`}},
 	"docker": {Mode: "basic", Setup: []string{dockerLogin}}, // Basic self-hosted registry; base_url per connection
 	// datastores — the L4 broker terminates auth + splices (not the HTTP gateway)
-	"redis": {Transport: "l4-redis"}, // base_url = redis://host:port per connection
+	"redis":    {Transport: "l4-redis"},    // base_url = redis://host:port per connection
+	"postgres": {Transport: "l4-postgres"}, // base_url = postgres://host:5432/db per connection
 
 	// GitHub Actions has no connector of its own: it is the GitHub REST API
 	// (api.github.com/repos/.../actions), reached with the `github` connector's
@@ -134,9 +135,9 @@ func Credential(conn Connection, def Definition) (broker.Credential, error) {
 
 	// L4 datastores: the credential carries a DSN with the real user:password so
 	// the L4 broker can authenticate to the upstream. The pod never sees it.
-	if def.Transport == "l4-redis" {
+	if scheme, ok := strings.CutPrefix(def.Transport, "l4-"); ok {
 		if !strings.Contains(baseURL, "://") {
-			baseURL = "redis://" + baseURL
+			baseURL = scheme + "://" + baseURL
 		}
 		u, err := url.Parse(baseURL)
 		if err != nil {

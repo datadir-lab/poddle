@@ -4,6 +4,7 @@ package up
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -33,6 +34,7 @@ type podBroker interface {
 	EnsureRunning() error
 	Gateway() (string, error)
 	RedisAddr() (string, error)
+	PostgresAddr() (string, error)
 	IssueHandle(pod, scope string, cred broker.Credential) (string, error)
 }
 
@@ -157,7 +159,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 						return err
 					}
 				}
-				var redisPodAddr string // resolved lazily, only if a datastore needs it
+				var redisPodAddr, pgPodAddr string // resolved lazily, only if needed
 				for _, cn := range tpl.Connectors {
 					conn, err := a.Connections.Get(cn)
 					if err != nil {
@@ -167,25 +169,25 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					if def.Transport == "l4-redis" {
-						if redisPodAddr == "" {
-							raddr, err := b.RedisAddr()
-							if err != nil {
-								return fmt.Errorf("redis broker: %w", err)
-							}
-							_, rport, err := net.SplitHostPort(raddr)
-							if err != nil {
-								return fmt.Errorf("redis address %q: %w", raddr, err)
-							}
-							redisPodAddr = net.JoinHostPort(podBrokerHost, rport)
+					switch def.Transport {
+					case "l4-redis":
+						if redisPodAddr, err = podL4Addr(redisPodAddr, b.RedisAddr); err != nil {
+							return err
 						}
 						if err := applyRedisDatastore(b, conn, def, name, redisPodAddr, &spec); err != nil {
 							return err
 						}
-						continue
-					}
-					if err := applyConnector(b, conn, def, name, podBrokerAddr, &spec); err != nil {
-						return err
+					case "l4-postgres":
+						if pgPodAddr, err = podL4Addr(pgPodAddr, b.PostgresAddr); err != nil {
+							return err
+						}
+						if err := applyPostgresDatastore(b, conn, def, name, pgPodAddr, &spec); err != nil {
+							return err
+						}
+					default:
+						if err := applyConnector(b, conn, def, name, podBrokerAddr, &spec); err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -311,6 +313,61 @@ func applyRedisDatastore(b podBroker, conn connector.Connection, def connector.D
 	spec.Env["REDIS_PASSWORD"] = handle
 	spec.Env["REDIS_URL"] = "redis://:" + handle + "@" + redisPodAddr
 	return nil
+}
+
+// applyPostgresDatastore issues a handle for a Postgres connection at poddled and
+// points the pod at the broker's L4 Postgres address with the handle as its
+// password (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE). The real DSN stays in
+// the broker.
+func applyPostgresDatastore(b podBroker, conn connector.Connection, def connector.Definition, podName, pgPodAddr string, spec *sandbox.Spec) error {
+	cred, err := connector.Credential(conn, def)
+	if err != nil {
+		return err
+	}
+	handle, err := b.IssueHandle(podName, podName+"/"+conn.Name, cred)
+	if err != nil {
+		return err
+	}
+	host, port, err := net.SplitHostPort(pgPodAddr)
+	if err != nil {
+		return err
+	}
+	if spec.Env == nil {
+		spec.Env = map[string]string{}
+	}
+	spec.Env["PGHOST"] = host
+	spec.Env["PGPORT"] = port
+	spec.Env["PGPASSWORD"] = handle
+	if conn.User != "" {
+		spec.Env["PGUSER"] = conn.User
+	}
+	base := conn.BaseURL
+	if !strings.Contains(base, "://") {
+		base = "postgres://" + base
+	}
+	if u, err := url.Parse(base); err == nil {
+		if db := strings.TrimPrefix(u.Path, "/"); db != "" {
+			spec.Env["PGDATABASE"] = db
+		}
+	}
+	return nil
+}
+
+// podL4Addr returns cached if set, else fetches the daemon's L4 address and
+// rewrites its host to how a pod reaches the broker.
+func podL4Addr(cached string, fetch func() (string, error)) (string, error) {
+	if cached != "" {
+		return cached, nil
+	}
+	addr, err := fetch()
+	if err != nil {
+		return "", fmt.Errorf("l4 broker: %w", err)
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("l4 address %q: %w", addr, err)
+	}
+	return net.JoinHostPort(podBrokerHost, port), nil
 }
 
 const (
