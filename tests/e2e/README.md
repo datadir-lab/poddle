@@ -34,3 +34,11 @@ claude as a sibling), override:
 
 - `PODDLE_E2E_BROKER_HOST` — how the claude container addresses the broker (CI: `127.0.0.1`).
 - `PODDLE_E2E_DOCKER_NETWORK` — extra `--network` for the claude container (CI: `container:<step>` to share the step's netns).
+
+### `task e2e-up` (full `poddle up`, provider-parameterized)
+
+`TestE2E_Up_Secretless` drives the real `poddle up --identity --exec` binary
+against **podman** for each provider case in the `upCases` table (`anthropic`
+today). Select which run with **`PODDLE_E2E_PROVIDERS`** (comma list; empty =
+all). Adding a provider/harness = one row in `upCases` + its own mock upstream.
+`woodpecker/e2e-up.yaml` runs it on every push (nested podman).
