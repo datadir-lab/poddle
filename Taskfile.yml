@@ -52,7 +52,7 @@ tasks:
       - go test -tags e2e -v -run TestE2E_Poddled ./tests/e2e/...
 
   e2e-l4:
-    desc: L4 broker e2e (needs podman) — a pod hits real Redis through the broker with only a handle
+    desc: L4 broker e2e (needs podman) — a pod hits real Redis + Postgres through the broker with only a handle
     cmds:
       - go test -tags e2e -v -run TestE2E_L4 ./tests/e2e/...
 

@@ -1,10 +1,12 @@
-# L4 broker e2e — secretless Redis through the TCP broker.
+# L4 broker e2e — secretless Redis + Postgres through the TCP broker.
 #
-# On this step's nested podman: a real redis:7 upstream (password-protected) is
-# started; `poddle up --detach` gives a pod a Redis connection wired to poddled's
-# L4 listener with a handle as its password; `poddle run redis-cli PING` proves
-# the broker swapped the handle for the real password (PONG) and that the pod's
-# password is a handle, never the real one. Manual.
+# On this step's nested podman: a real redis:7 and a real postgres:16 upstream
+# (both password-protected, on the host network) are started; `poddle up
+# --detach` gives a pod datastore connections wired to poddled's L4 listeners
+# with a handle as the password; `poddle run redis-cli PING` / `psql SELECT`
+# prove the broker swapped the handle for the real password (Redis AUTH,
+# Postgres SCRAM-SHA-256) and that the pod's password is a handle, never the
+# real one. Manual.
 #
 # Requires the repo to be security-trusted (privileged, for nested podman).
 
