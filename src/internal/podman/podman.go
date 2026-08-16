@@ -106,6 +106,17 @@ func (p *Provider) Exec(id, command string) error {
 	return p.Runner.RunInteractive("podman", args...)
 }
 
+// ExecDetached runs command in the background in the sandbox (podman exec -d)
+// and returns as soon as it has started.
+func (p *Provider) ExecDetached(id, command string) error {
+	args := p.podman("exec", "-d", id, "sh", "-c", command)
+	res, err := p.Runner.Run("podman", args...)
+	if err != nil {
+		return fmt.Errorf("podman exec -d: %w: %s", err, res.Stderr)
+	}
+	return nil
+}
+
 // Remove force-stops and deletes a sandbox by id or name.
 func (p *Provider) Remove(id string) error {
 	args := p.podman("rm", "-f", id)

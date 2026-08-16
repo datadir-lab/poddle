@@ -33,6 +33,7 @@ type fakeCreator struct {
 	spec      sandbox.Spec
 	attached  string
 	execed    string
+	detached  string
 	removed   string
 	createErr error
 	attachErr error
@@ -65,6 +66,11 @@ func (f *fakeCreator) Attach(id string) error {
 
 func (f *fakeCreator) Remove(id string) error {
 	f.removed = id
+	return nil
+}
+
+func (f *fakeCreator) ExecDetached(id, command string) error {
+	f.detached = command
 	return nil
 }
 
