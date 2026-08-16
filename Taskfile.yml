@@ -37,9 +37,9 @@ tasks:
       - go test -tags e2e -v -run TestE2E_Templates ./tests/e2e/...
 
   e2e-connector:
-    desc: Connector e2e (needs podman) — git clone through the broker (Basic auth swap)
+    desc: Connector e2e (needs podman) — git/npm/woodpecker through the broker (Basic + Bearer swap)
     cmds:
-      - go test -tags e2e -v -run TestE2E_Connector ./tests/e2e/...
+      - go test -tags e2e -v -run TestE2E_Connectors ./tests/e2e/...
 
   vet:
     desc: Run go vet
