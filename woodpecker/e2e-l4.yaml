@@ -1,0 +1,22 @@
+# L4 broker e2e — secretless Redis through the TCP broker.
+#
+# On this step's nested podman: a real redis:7 upstream (password-protected) is
+# started; `poddle up --detach` gives a pod a Redis connection wired to poddled's
+# L4 listener with a handle as its password; `poddle run redis-cli PING` proves
+# the broker swapped the handle for the real password (PONG) and that the pod's
+# password is a handle, never the real one. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-l4:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-l4
