@@ -13,3 +13,6 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Agent scratch / parallel git worktrees
+.claude/worktrees/
