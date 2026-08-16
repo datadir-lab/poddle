@@ -33,11 +33,25 @@ type Definition struct {
 // HTTP; broker→host may be HTTPS, e.g. github/gitlab — no TLS interception).
 const gitRewrite = `git config --global url."http://{handle}:x@{broker}/".insteadOf "{base_url}/"`
 
-// builtins are the connector definitions poddle ships.
+// pipRewrite points pip at the broker's /simple index with the handle as the
+// Basic username (creds in the URL → pip sends Basic preemptively). The broker
+// swaps it for the real user:token — for PyPI tokens the user is "__token__".
+const pipRewrite = `pip config set global.index-url http://{handle}:x@{broker}/simple/`
+
+// builtins are the connector definitions poddle ships. Git hosts share the
+// Basic + url.insteadOf pattern; Drone/Woodpecker share the Bearer + server/token
+// env pattern (Woodpecker is a Drone fork). Gitea and Forgejo are the same API.
 var builtins = map[string]Definition{
-	"forgejo": {Mode: "basic", Setup: []string{gitRewrite}}, // self-hosted → base_url per connection
-	"github":  {Mode: "basic", BaseURL: "https://github.com", Setup: []string{gitRewrite}},
-	"gitlab":  {Mode: "basic", BaseURL: "https://gitlab.com", Setup: []string{gitRewrite}},
+	// git hosts — Basic auth + git url.insteadOf rewrite
+	"forgejo":   {Mode: "basic", Setup: []string{gitRewrite}}, // self-hosted → base_url per connection
+	"gitea":     {Mode: "basic", Setup: []string{gitRewrite}}, // self-hosted (Forgejo's upstream)
+	"github":    {Mode: "basic", BaseURL: "https://github.com", Setup: []string{gitRewrite}},
+	"gitlab":    {Mode: "basic", BaseURL: "https://gitlab.com", Setup: []string{gitRewrite}},
+	"bitbucket": {Mode: "basic", BaseURL: "https://bitbucket.org", Setup: []string{gitRewrite}},
+	// CI — Bearer + server/token env the tool's CLI reads
+	"woodpecker": {Mode: "bearer", Env: map[string]string{"WOODPECKER_SERVER": "http://{broker}", "WOODPECKER_TOKEN": "{handle}"}},
+	"drone":      {Mode: "bearer", Env: map[string]string{"DRONE_SERVER": "http://{broker}", "DRONE_TOKEN": "{handle}"}},
+	// registries — package-manager config pointed at the broker
 	"npm": {
 		Mode:    "bearer",
 		BaseURL: "https://registry.npmjs.org",
@@ -46,10 +60,7 @@ var builtins = map[string]Definition{
 			`npm config set //{broker}/:_authToken {handle}`,
 		},
 	},
-	"woodpecker": {
-		Mode: "bearer",
-		Env:  map[string]string{"WOODPECKER_SERVER": "http://{broker}", "WOODPECKER_TOKEN": "{handle}"},
-	},
+	"pypi": {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite}}, // user = "__token__"
 }
 
 // LoadDefinition returns the definition for name: a user file in userDir
