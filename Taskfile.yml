@@ -27,9 +27,14 @@ tasks:
       - go test -tags e2e -v -run TestE2E_Secretless ./src/internal/broker/...
 
   e2e-up:
-    desc: poddle up e2e (needs podman) — secretless identity/exec + live resize
+    desc: Full poddle up --identity --exec secretless e2e (needs podman)
     cmds:
-      - go test -tags e2e -v -run TestE2E_Up ./tests/e2e/...
+      - go test -tags e2e -v -run TestE2E_Up_Secretless ./tests/e2e/...
+
+  e2e-resize:
+    desc: Resize e2e (needs podman) — live CPU update on a running pod
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Up_Resize ./tests/e2e/...
 
   e2e-templates:
     desc: Templates e2e (needs podman) — extends nesting, scripts, repo clone, harness install
