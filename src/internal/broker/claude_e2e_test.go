@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -92,16 +93,28 @@ func TestE2E_Secretless_RealClaudeCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The container reaches the host-bound broker via the docker host alias.
-	brokerURL := "http://host.docker.internal:" + port
+	// How the claude container reaches the host-bound broker. Locally (Docker
+	// Desktop) that's the host alias. In CI the broker listens inside the step
+	// container, so the claude container shares the step's netns
+	// (PODDLE_E2E_DOCKER_NETWORK=container:<step>) and reaches it on 127.0.0.1
+	// (PODDLE_E2E_BROKER_HOST=127.0.0.1).
+	host := os.Getenv("PODDLE_E2E_BROKER_HOST")
+	if host == "" {
+		host = "host.docker.internal"
+	}
+	brokerURL := "http://" + net.JoinHostPort(host, port)
 
-	cmd := exec.Command("docker", "run", "--rm", "-i",
-		"--add-host", "host.docker.internal:host-gateway",
+	args := []string{"run", "--rm", "-i", "--add-host", "host.docker.internal:host-gateway"}
+	if dockerNet := os.Getenv("PODDLE_E2E_DOCKER_NETWORK"); dockerNet != "" {
+		args = append(args, "--network", dockerNet)
+	}
+	args = append(args,
 		"-e", "ANTHROPIC_BASE_URL="+brokerURL,
 		"-e", "ANTHROPIC_AUTH_TOKEN="+handle.Value, // the HANDLE, never the secret
 		"-e", "IS_SANDBOX=1",
 		"-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
 		"node:22", "bash", "-s")
+	cmd := exec.Command("docker", args...)
 	cmd.Stdin = strings.NewReader(claudeRunScript)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
