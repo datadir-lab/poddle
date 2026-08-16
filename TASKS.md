@@ -18,7 +18,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 ### Hardening (before wiring `up`)
 
 - [x] **1.H1** broker: handle TTL — `Handle.ExpiresAt`, `IssueHandle(…, ttl)` (`ttl<=0`→`DefaultHandleTTL`=12h), injectable clock, `Resolve` returns new `ErrExpired` and lazy-deletes expired records. Tests: resolves before expiry; `ErrExpired` after; lazy delete; default TTL.
-- [ ] **1.H2** broker: vault memory hardening — store secrets in `memguard` enclaves (locked + encrypted-at-rest-in-memory, wiped on `Delete`); `Store`/`Get`/`Delete` signatures unchanged; `memguard.Purge()` on shutdown. Note: per-request injection into a `net/http` header is unavoidably a short-lived plaintext string — hardening protects the long-lived vault copy, the high-value target.
+- [x] **1.H2** broker: vault memory hardening — secrets sealed in `memguard` enclaves (page-locked + encrypted-at-rest-in-memory); `Store`/`Get`/`Delete` signatures unchanged; `Get` copies out a transient plaintext then destroys the LockedBuffer; package `Purge()` wraps `memguard.Purge()` for shutdown (wired in root at 1.13). Note: per-request injection into a `net/http` header is unavoidably a short-lived plaintext string — hardening protects the long-lived vault copy, the high-value target.
 - [ ] **1.H3** broker: gateway tests (completes 1.4) — httptest upstream asserts per-mode header injection (`x-api-key` vs `Bearer`), handle stripped, path+query+body preserved, invalid/revoked/expired → 401.
 - [ ] **1.H4** broker: full round-trip test — real Vault+Handles+Gateway in front of an httptest fake vendor: all 3 modes, SSE streaming pass-through, revoked→401, expired→401, cross-tenant isolation. In-package (httptest), not testcontainers.
 
