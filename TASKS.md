@@ -34,7 +34,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 ### Composition + broker facade
 
 - [x] **1.A** `internal/app`: `App` composition struct (`Engine`, `Identities`, `Providers`, `Harnesses`) built once in `root` and injected into every command. Replaces the growing per-command param lists; commands drop their narrow interfaces and read `a.*`. Test fakes satisfy `engine.Engine` via the embedded-interface trick. In `internal` (not `main`/`cli/app`) so slices can import it without breaking slice-independence. **The broker is deliberately NOT on App** — it's up-scoped in Phase 1, poddled-owned in Phase 2 (see 1.B). TDD: all four command tests flipped to `*app.App` → red → green.
-- [ ] **1.B** `broker.Broker` facade composing `Vault`+`Handles`+`Server` (tenant `"local"`): `NewBroker`, `Serve(addr)→bound`, `Addr`, `Store(cred)→credID`, `IssueHandle(credID,scope,ttl)`, `Revoke`, `Stop(ctx)`. Constructed **inside `up`**, not on App. Test (delegation + a small serve/round-trip/stop).
+- [x] **1.B** `broker.Broker` facade composing `Vault`+`Handles`+`Server` (tenant `"local"`, hidden from callers): `NewBroker`, `Serve(addr)→bound`, `Addr` (also added to `Server`), `Store(cred)→credID`, `IssueHandle(credID,scope,ttl)`, `Revoke`, `Stop(ctx)`. Constructed **inside `up`**, not on App. TDD (red→green, race-clean): store/issue/resolve, revoke, addr-empty-until-serve, serve→handle round-trip→stop.
 
 ### Wire up `up` (remove the secret path)
 
