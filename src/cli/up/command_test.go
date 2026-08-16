@@ -73,7 +73,8 @@ func (s *spyBroker) Serve(addr string) (string, error) {
 	*s.log = append(*s.log, "serve")
 	return "127.0.0.1:12345", nil
 }
-func (s *spyBroker) Addr() string { return "127.0.0.1:12345" }
+func (s *spyBroker) Addr() string           { return "127.0.0.1:12345" }
+func (s *spyBroker) SetEgressMode(m string) { *s.log = append(*s.log, "egress:"+m) }
 func (s *spyBroker) Store(broker.Credential) (string, error) {
 	*s.log = append(*s.log, "store")
 	return "cid", nil
@@ -416,7 +417,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// exec replaces attach in the lifecycle; broker still torn down after.
-	want := []string{"serve", "store", "issue", "create", "exec", "revoke:poddle_spy", "stop"}
+	want := []string{"egress:", "serve", "store", "issue", "create", "exec", "revoke:poddle_spy", "stop"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -468,7 +469,7 @@ func TestUp_Identity_ServesAndTearsDown(t *testing.T) {
 	}
 	// Broker is served and wired before create/attach, then revoked + stopped
 	// once the (instant, faked) attached session ends.
-	want := []string{"serve", "store", "issue", "create", "attach", "revoke:poddle_spy", "stop"}
+	want := []string{"egress:", "serve", "store", "issue", "create", "attach", "revoke:poddle_spy", "stop"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
