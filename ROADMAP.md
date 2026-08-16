@@ -31,6 +31,10 @@ The credential model, done right, from day one.
 - `poddled` service on the pod host; the **broker runs in poddled** (persistent, outlives the client).
 - **Assigned identity** = pod-lifetime creds → spin up, close the client, agent keeps working, **reattach later**.
 - Remote pods + reverse-tunnel egress to the broker (ssh-agent-forwarding model).
+- **Dynamic vertical sizing** — right-size a *running* pod, no restart (cgroup live update):
+  - **Burstable by default**: `size` = a CPU *ceiling*; CPU is work-conserving, so idle pods float to ~0 and busy pods burst to the ceiling for free — no monitoring needed. Memory gets a generous safety cap.
+  - **`poddle resize <pod> <size>`** — deterministic live resize (`podman/docker update`); the workload scales *itself* via **task hooks** (`before_task: resize strong` / `after_task: resize weak`) or an agent-callable command. Fits bursty work (e.g. a `docker compose` test) with **no detection lag**.
+  - **Reactive VPA in poddled** (opt-in): watch cgroup stats, auto-resize CPU within `min`/`max`, and **grow** memory on pressure. Honest caveats — reactive scaling lags bursts (prefer hooks for those), and memory can't safely shrink below live usage (grow-only).
 
 ## Phase 3 — Collaboration
 
@@ -42,6 +46,7 @@ The credential model, done right, from day one.
 - **Multi-tenant broker** with process-level tenant walls; `on-prem` and `cloud` deployments (single- vs multi-tenant).
 - **Cloud UI** (pods · identities · audit · team) + optional **desktop app**.
 - Governance/compliance (DORA / AI-Act), SSO/SCIM, support/SLA; optional **managed pods**.
+- **Usage-based vertical autoscaling** for managed pods: bill by *actual* CPU/mem used (not allocated), with VPA right-sizing — the premium cost differentiator vs flat-size sandboxes (this is where dynamic sizing turns into real $ savings, not just host-contention relief).
 
 ## Cross-cutting
 
