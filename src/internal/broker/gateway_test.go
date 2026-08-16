@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -138,6 +139,34 @@ func TestGateway_EndpointNoSecretSendsNoAuth(t *testing.T) {
 	}
 	if rec.apikey != "" {
 		t.Errorf("no auth expected, got X-Api-Key = %q", rec.apikey)
+	}
+}
+
+func TestGateway_BasicMode_HandleFromUsername(t *testing.T) {
+	up, rec := upstreamRecording(t)
+	g, handle := gatewayWith(t, Credential{Mode: ModeBasic, Vendor: "forgejo", Secret: "realuser:realtoken", BaseURL: up.URL})
+	gw := serve(t, g)
+
+	// git presents the handle as the Basic-auth username.
+	creds := base64.StdEncoding.EncodeToString([]byte(handle + ":x"))
+	req, _ := http.NewRequest(http.MethodGet, gw.URL+"/datadir/repo.git/info/refs", nil)
+	req.Header.Set("Authorization", "Basic "+creds)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("realuser:realtoken"))
+	if rec.auth != want {
+		t.Errorf("upstream Authorization = %q, want %q", rec.auth, want)
+	}
+	if strings.Contains(rec.auth, handle) {
+		t.Errorf("handle leaked to upstream: %q", rec.auth)
 	}
 }
 
