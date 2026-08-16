@@ -1,13 +1,17 @@
 package identity
 
+import "github.com/datadir-lab/poddle/src/internal/broker"
+
 // Provider is an auth vendor — anthropic, openai, local. Each is a vertical
 // slice. Authenticate and IsAuthenticated run on the CLIENT (where the human
-// and browser are); Materialize describes how to inject the identity's creds
-// into a sandbox.
+// and browser are). Credential yields the real secret for the broker to hold;
+// Materialize is the old inject-into-pod path, kept until `up` switches to the
+// broker (1.11) and then removed.
 type Provider interface {
 	Name() string
 	Authenticate(id Identity) error
 	IsAuthenticated(id Identity) (bool, error)
+	Credential(id Identity) (broker.Credential, error)
 	Materialize(id Identity) (Materialization, error)
 }
 
