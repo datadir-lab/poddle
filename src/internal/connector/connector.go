@@ -74,8 +74,9 @@ var builtins = map[string]Definition{
 			`npm config set //{broker}/:_authToken {handle}`,
 		},
 	},
-	"pypi":   {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite}}, // user = "__token__"
-	"docker": {Mode: "basic", Setup: []string{dockerLogin}},                             // Basic self-hosted registry; base_url per connection
+	// pypi: user = "__token__"; trusted-host lets pip use the broker's HTTP index.
+	"pypi":   {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite, `pip config set global.trusted-host {broker}`}},
+	"docker": {Mode: "basic", Setup: []string{dockerLogin}}, // Basic self-hosted registry; base_url per connection
 
 	// GitHub Actions has no connector of its own: it is the GitHub REST API
 	// (api.github.com/repos/.../actions), reached with the `github` connector's
