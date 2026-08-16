@@ -24,16 +24,17 @@ type Mount struct {
 
 // Template is a pod blueprint parsed from one TOML file.
 type Template struct {
-	Extends  any               `toml:"extends"` // string or []string
-	Image    string            `toml:"image"`
-	Size     string            `toml:"size"`
-	Harness  string            `toml:"harness"`
-	Identity string            `toml:"identity"`
-	Repo     string            `toml:"repo"`
-	Env      map[string]string `toml:"env"`
-	Mounts   []Mount           `toml:"mounts"`
-	Setup    []string          `toml:"setup"`   // inline commands
-	Scripts  []string          `toml:"scripts"` // script files (absolute after load), read + run
+	Extends    any               `toml:"extends"` // string or []string
+	Image      string            `toml:"image"`
+	Size       string            `toml:"size"`
+	Harness    string            `toml:"harness"`
+	Identity   string            `toml:"identity"`
+	Repo       string            `toml:"repo"`
+	Env        map[string]string `toml:"env"`
+	Mounts     []Mount           `toml:"mounts"`
+	Setup      []string          `toml:"setup"`      // inline commands
+	Scripts    []string          `toml:"scripts"`    // script files (absolute after load), read + run
+	Connectors []string          `toml:"connectors"` // connection names to broker into the pod
 }
 
 // extendsList normalizes the string-or-list `extends` into a slice.
@@ -146,13 +147,14 @@ func resolve(t Template, ts map[string]Template, seen map[string]bool) (Template
 // lists append (base then over), maps merge (over keys win).
 func merge(base, over Template) Template {
 	m := Template{
-		Image:    pick(over.Image, base.Image),
-		Size:     pick(over.Size, base.Size),
-		Harness:  pick(over.Harness, base.Harness),
-		Identity: pick(over.Identity, base.Identity),
-		Repo:     pick(over.Repo, base.Repo),
-		Setup:    concat(base.Setup, over.Setup),
-		Scripts:  concat(base.Scripts, over.Scripts),
+		Image:      pick(over.Image, base.Image),
+		Size:       pick(over.Size, base.Size),
+		Harness:    pick(over.Harness, base.Harness),
+		Identity:   pick(over.Identity, base.Identity),
+		Repo:       pick(over.Repo, base.Repo),
+		Setup:      concat(base.Setup, over.Setup),
+		Scripts:    concat(base.Scripts, over.Scripts),
+		Connectors: concat(base.Connectors, over.Connectors),
 	}
 	m.Mounts = append(append([]Mount{}, base.Mounts...), over.Mounts...)
 	if len(m.Mounts) == 0 {

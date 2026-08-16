@@ -11,6 +11,7 @@ package app
 
 import (
 	"github.com/datadir-lab/poddle/src/internal/config"
+	"github.com/datadir-lab/poddle/src/internal/connector"
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	"github.com/datadir-lab/poddle/src/internal/identity"
@@ -19,10 +20,12 @@ import (
 
 // App bundles the dependencies shared across commands.
 type App struct {
-	Engine     engine.Engine     // container/remote backend
-	Identities *identity.Store   // client-side identity store
-	Providers  identity.Registry // auth vendors (anthropic, …)
-	Harnesses  harness.Registry  // pod-side runtimes (claude-code, …)
-	Prompter   prompt.Prompter   // interactive prompts; nil = non-interactive (no prompting)
-	Templates  config.Resolver   // template resolver; nil = no templates
+	Engine        engine.Engine     // container/remote backend
+	Identities    *identity.Store   // client-side identity store
+	Providers     identity.Registry // auth vendors (anthropic, …)
+	Harnesses     harness.Registry  // pod-side runtimes (claude-code, …)
+	Prompter      prompt.Prompter   // interactive prompts; nil = non-interactive (no prompting)
+	Templates     config.Resolver   // template resolver; nil = no templates
+	Connections   *connector.Store  // client-side service connections
+	ConnectorsDir string            // dir with user connector definitions (overrides built-ins)
 }
