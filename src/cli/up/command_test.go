@@ -2,11 +2,9 @@ package up
 
 import (
 	"bytes"
-	"context"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
@@ -64,31 +62,33 @@ func (f *fakeCreator) Attach(id string) error {
 	return f.attachErr
 }
 
-// spyBroker satisfies up's broker seam and records the lifecycle call order.
+// spyBroker satisfies up's podBroker seam and records the call order.
 type spyBroker struct {
 	log *[]string
 }
 
-func (s *spyBroker) Serve(addr string) (string, error) {
-	*s.log = append(*s.log, "serve")
+func (s *spyBroker) EnsureRunning() error { *s.log = append(*s.log, "ensure"); return nil }
+func (s *spyBroker) Gateway() (string, error) {
+	*s.log = append(*s.log, "gateway")
 	return "127.0.0.1:12345", nil
 }
-func (s *spyBroker) Addr() string           { return "127.0.0.1:12345" }
-func (s *spyBroker) SetEgressMode(m string) { *s.log = append(*s.log, "egress:"+m) }
-func (s *spyBroker) Store(broker.Credential) (string, error) {
-	*s.log = append(*s.log, "store")
-	return "cid", nil
-}
-func (s *spyBroker) IssueHandle(credID, scope string, ttl time.Duration) (broker.Handle, error) {
+func (s *spyBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	*s.log = append(*s.log, "issue")
-	return broker.Handle{Value: "poddle_spy"}, nil
+	return "poddle_spy", nil
 }
-func (s *spyBroker) Revoke(v string)            { *s.log = append(*s.log, "revoke:"+v) }
-func (s *spyBroker) Stop(context.Context) error { *s.log = append(*s.log, "stop"); return nil }
+
+// stubBroker is a no-op podBroker for tests that don't exercise brokered creds.
+type stubBroker struct{}
+
+func (stubBroker) EnsureRunning() error     { return nil }
+func (stubBroker) Gateway() (string, error) { return "127.0.0.1:0", nil }
+func (stubBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
+	return "poddle_stub", nil
+}
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"mybox", "--size", "strong"})
@@ -112,7 +112,7 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 
 func TestUp_DetachSkipsAttach(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -125,7 +125,7 @@ func TestUp_DetachSkipsAttach(t *testing.T) {
 
 func TestUp_UnknownHarness_Errors(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"mybox", "--harness", "bogus", "--detach"})
 
 	if err := c.Execute(); err == nil {
@@ -151,7 +151,7 @@ func TestUp_WithIdentity_Secretless(t *testing.T) {
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"mybox", "--identity", "work"}) // fake Attach returns instantly; no --detach
 
 	if err := c.Execute(); err != nil {
@@ -185,7 +185,7 @@ func TestUp_NoIdentity_SelectExisting(t *testing.T) {
 	f := &fakeCreator{}
 	// options: ["work (anthropic)", "+ Add new", "None"] → pick index 0 (existing).
 	pr := &prompt.FakePrompter{Selects: []int{0}}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, stubBroker{})
 	c.SetArgs([]string{"mybox"}) // no --identity, no --detach
 
 	if err := c.Execute(); err != nil {
@@ -202,7 +202,7 @@ func TestUp_NoIdentity_None(t *testing.T) {
 	f := &fakeCreator{}
 	// empty store → options ["+ Add new", "None"] → pick index 1 (None).
 	pr := &prompt.FakePrompter{Selects: []int{1}}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, stubBroker{})
 	c.SetArgs([]string{"mybox"})
 
 	if err := c.Execute(); err != nil {
@@ -226,7 +226,7 @@ func TestUp_NoIdentity_AddNew(t *testing.T) {
 	f := &fakeCreator{}
 	// identity select ["+ Add new"(0), "None"(1)] → 0; provider select ["anthropic"(0)] → 0; name input → "work".
 	pr := &prompt.FakePrompter{Selects: []int{0, 0}, Inputs: []string{"work"}}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, stubBroker{})
 	c.SetArgs([]string{"mybox"})
 
 	if err := c.Execute(); err != nil {
@@ -248,7 +248,7 @@ func TestUp_Detach_NoPrompt(t *testing.T) {
 	reg := idn.Registry{"anthropic": &idn.FakeProvider{ProviderName: "anthropic"}}
 	f := &fakeCreator{}
 	pr := &prompt.FakePrompter{} // errors if prompted
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, stubBroker{})
 	c.SetArgs([]string{"mybox", "--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -270,7 +270,7 @@ func TestUp_ExplicitIdentity_NoPrompt(t *testing.T) {
 	}}
 	f := &fakeCreator{}
 	pr := &prompt.FakePrompter{} // errors if prompted
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, stubBroker{})
 	c.SetArgs([]string{"mybox", "--identity", "work"})
 
 	if err := c.Execute(); err != nil {
@@ -294,7 +294,7 @@ func TestUp_Template_Applied(t *testing.T) {
 		Image: "docker.io/library/node:22", Size: "strong",
 		Env: map[string]string{"FOO": "bar"}, Setup: []string{"echo hi"},
 	}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, stubBroker{})
 	c.SetArgs([]string{"box"}) // no flags → template values apply
 
 	if err := c.Execute(); err != nil {
@@ -348,7 +348,7 @@ func TestUp_Connector_WiredIntoPodBeforeClone(t *testing.T) {
 func TestUp_Template_RepoClonedFirst(t *testing.T) {
 	f := &fakeCreator{}
 	tpl := config.Template{Repo: "https://git.example/r.git", Setup: []string{"echo after"}}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, stubBroker{})
 	c.SetArgs([]string{"box"})
 
 	if err := c.Execute(); err != nil {
@@ -368,7 +368,7 @@ func TestUp_Template_RepoClonedFirst(t *testing.T) {
 func TestUp_Template_CLIOverrides(t *testing.T) {
 	f := &fakeCreator{}
 	tpl := config.Template{Image: "docker.io/library/node:22", Size: "strong"}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, stubBroker{})
 	c.SetArgs([]string{"box", "--image", "alpine", "--size", "weak"})
 
 	if err := c.Execute(); err != nil {
@@ -384,7 +384,7 @@ func TestUp_Template_CLIOverrides(t *testing.T) {
 
 func TestUp_Exec_RunsCommandNotAttach(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"box", "--exec", "echo hi"})
 
 	if err := c.Execute(); err != nil {
@@ -416,8 +416,8 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	// exec replaces attach in the lifecycle; broker still torn down after.
-	want := []string{"egress:", "serve", "store", "issue", "create", "exec", "revoke:poddle_spy", "stop"}
+	// exec replaces attach; the handle persists (poddled outlives up — no revoke).
+	want := []string{"ensure", "gateway", "issue", "create", "exec"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -426,7 +426,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 	}
 }
 
-func TestUp_DetachWithIdentity_Errors(t *testing.T) {
+func TestUp_DetachWithIdentity_Works(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
 		t.Fatal(err)
@@ -436,19 +436,25 @@ func TestUp_DetachWithIdentity_Errors(t *testing.T) {
 		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
 	}}
 
-	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, broker.NewBroker())
+	var log []string
+	f := &fakeCreator{log: &log}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, &spyBroker{log: &log})
 	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
 
-	if err := c.Execute(); err == nil {
-		t.Error("expected an error for --detach with --identity")
+	if err := c.Execute(); err != nil {
+		t.Fatalf("--detach with --identity now works (poddled persists the handle): %v", err)
 	}
-	if f.spec.Name != "" {
-		t.Error("pod should not be created when --detach + --identity is rejected")
+	if f.spec.Name != "mybox" {
+		t.Errorf("detached pod should be created, got %q", f.spec.Name)
+	}
+	// Detached: handle issued + pod created, but NOT attached and NOT revoked.
+	want := []string{"ensure", "gateway", "issue", "create"}
+	if !reflect.DeepEqual(log, want) {
+		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
 }
 
-func TestUp_Identity_ServesAndTearsDown(t *testing.T) {
+func TestUp_Identity_IssuesHandleAndAttaches(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
 		t.Fatal(err)
@@ -467,9 +473,9 @@ func TestUp_Identity_ServesAndTearsDown(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	// Broker is served and wired before create/attach, then revoked + stopped
+	// Handles are issued before create/attach and persist (poddled outlives up).
 	// once the (instant, faked) attached session ends.
-	want := []string{"egress:", "serve", "store", "issue", "create", "attach", "revoke:poddle_spy", "stop"}
+	want := []string{"ensure", "gateway", "issue", "create", "attach"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -513,7 +519,7 @@ func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, broker.NewBroker())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"mybox", "--identity", "work"})
 
 	if err := c.Execute(); err != nil {
