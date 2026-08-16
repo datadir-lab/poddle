@@ -33,6 +33,7 @@ type fakeCreator struct {
 	spec      sandbox.Spec
 	attached  string
 	execed    string
+	removed   string
 	createErr error
 	attachErr error
 	log       *[]string // optional lifecycle recorder (nil = off)
@@ -62,6 +63,11 @@ func (f *fakeCreator) Attach(id string) error {
 	return f.attachErr
 }
 
+func (f *fakeCreator) Remove(id string) error {
+	f.removed = id
+	return nil
+}
+
 // spyBroker satisfies up's podBroker seam and records the call order.
 type spyBroker struct {
 	log *[]string
@@ -74,6 +80,10 @@ func (s *spyBroker) Gateway() (string, error) {
 }
 func (s *spyBroker) RedisAddr() (string, error)    { return "127.0.0.1:16379", nil }
 func (s *spyBroker) PostgresAddr() (string, error) { return "127.0.0.1:15432", nil }
+func (s *spyBroker) RevokePod(pod string) error {
+	*s.log = append(*s.log, "revoke:"+pod)
+	return nil
+}
 func (s *spyBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	*s.log = append(*s.log, "issue")
 	return "poddle_spy", nil
@@ -86,6 +96,7 @@ func (stubBroker) EnsureRunning() error          { return nil }
 func (stubBroker) Gateway() (string, error)      { return "127.0.0.1:0", nil }
 func (stubBroker) RedisAddr() (string, error)    { return "127.0.0.1:0", nil }
 func (stubBroker) PostgresAddr() (string, error) { return "127.0.0.1:0", nil }
+func (stubBroker) RevokePod(string) error        { return nil }
 func (stubBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	return "poddle_stub", nil
 }

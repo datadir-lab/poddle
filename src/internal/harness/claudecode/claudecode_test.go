@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
@@ -30,6 +31,26 @@ func TestProvisions(t *testing.T) {
 	want := []string{"npm i -g @anthropic-ai/claude-code"}
 	if got := New().Provisions(); !reflect.DeepEqual(got, want) {
 		t.Errorf("provisions = %v, want %v", got, want)
+	}
+}
+
+func TestTaskCommand(t *testing.T) {
+	got := New().TaskCommand("fix the bug in it's parser", 5)
+	for _, want := range []string{
+		"IS_SANDBOX=1",
+		"hasCompletedOnboarding",
+		`claude -p 'fix the bug in it'\''s parser'`, // single-quote escaped
+		"--max-turns 5",
+		"--dangerously-skip-permissions",
+		"</dev/null",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("task command missing %q in:\n%s", want, got)
+		}
+	}
+	// default max-turns when unset
+	if !strings.Contains(New().TaskCommand("x", 0), "--max-turns 24") {
+		t.Error("expected a default max-turns")
 	}
 }
 

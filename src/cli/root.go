@@ -82,6 +82,7 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(ls.NewCmd(a))
 	root.AddCommand(up.NewCmd(a, poddled.NewClient(""))) // persistent broker (auto-started)
+	root.AddCommand(up.NewTaskCmd(a, poddled.NewClient("")))
 	root.AddCommand(attach.NewCmd(a))
 	root.AddCommand(run.NewCmd(a))
 	root.AddCommand(down.NewCmd(a, poddled.NewClient("")))

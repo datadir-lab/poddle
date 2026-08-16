@@ -17,6 +17,10 @@ type Harness interface {
 	// Env is the pod environment that points the harness at the broker at
 	// brokerAddr, presenting handle instead of any real secret.
 	Env(brokerAddr, handle string) map[string]string
+	// TaskCommand is the shell command that runs the agent headless on prompt
+	// to completion (non-interactive), for `poddle task`. maxTurns bounds the
+	// agent's loop. Returns "" if the harness has no headless mode.
+	TaskCommand(prompt string, maxTurns int) string
 }
 
 // Registry maps harness names to implementations.
