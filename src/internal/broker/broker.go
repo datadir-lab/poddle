@@ -16,6 +16,9 @@ const (
 	ModeAPIKey Mode = "api-key"
 	// ModeEndpoint: a local/self-hosted LLM base URL (+ optional key).
 	ModeEndpoint Mode = "endpoint"
+	// ModeBasic: HTTP Basic auth (git/Forgejo) → Authorization: Basic. Secret
+	// holds "user:token".
+	ModeBasic Mode = "basic"
 )
 
 // Credential is a real secret plus how/where to use it. It lives ONLY in the
