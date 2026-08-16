@@ -5,6 +5,7 @@ package secure
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,89 @@ func CheckMounts(mounts []sandbox.Mount, extra []string) error {
 		}
 	}
 	return nil
+}
+
+// Finding is a credential-looking file discovered inside a mount.
+type Finding struct {
+	Path string // absolute host path
+	Rule string // why it matched (e.g. ".env", "private key")
+}
+
+// scanMaxDepth bounds how deep ScanMounts descends into a mounted directory.
+const scanMaxDepth = 2
+
+// ScanMounts shallow-walks each mounted directory for files that look like
+// credentials. It is advisory — the caller decides warn vs block. Noisy build
+// dirs are skipped and the walk is depth-bounded to stay cheap on big repos.
+func ScanMounts(mounts []sandbox.Mount) []Finding {
+	var out []Finding
+	for _, m := range mounts {
+		host := resolve(m.Host)
+		info, err := os.Stat(host)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			if rule := credRule(filepath.Base(host)); rule != "" {
+				out = append(out, Finding{Path: host, Rule: rule})
+			}
+			continue
+		}
+		_ = filepath.WalkDir(host, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if p == host {
+					return nil
+				}
+				rel, _ := filepath.Rel(host, p)
+				depth := strings.Count(rel, string(filepath.Separator)) + 1
+				if depth >= scanMaxDepth || skipDir(d.Name()) {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if rule := credRule(d.Name()); rule != "" {
+				out = append(out, Finding{Path: p, Rule: rule})
+			}
+			return nil
+		})
+	}
+	return out
+}
+
+// skipDir reports directories not worth scanning for secrets.
+func skipDir(name string) bool {
+	switch name {
+	case ".git", "node_modules", "vendor", ".venv", "venv", "dist", "build", "target":
+		return true
+	}
+	return false
+}
+
+// credRule returns a short reason if name looks like a credential file, else "".
+func credRule(name string) string {
+	lower := strings.ToLower(name)
+	switch lower {
+	case ".env", ".git-credentials", ".npmrc", ".pypirc", ".netrc", ".dockercfg",
+		"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
+		return name
+	}
+	if strings.HasPrefix(lower, ".env.") {
+		switch lower {
+		case ".env.example", ".env.sample", ".env.template", ".env.dist":
+			return ""
+		}
+		return name
+	}
+	if strings.HasSuffix(lower, ".pem") || strings.HasSuffix(lower, ".key") {
+		return "private key"
+	}
+	if strings.HasPrefix(lower, "service-account") && strings.HasSuffix(lower, ".json") {
+		return "service account key"
+	}
+	return ""
 }
 
 // resolve makes a path absolute, expands a leading ~, and resolves symlinks on

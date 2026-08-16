@@ -36,6 +36,7 @@ type Template struct {
 	Scripts    []string          `toml:"scripts"`     // script files (absolute after load), read + run
 	Connectors []string          `toml:"connectors"`  // connection names to broker into the pod
 	BlockPaths []string          `toml:"block_paths"` // host paths that must never enter the pod
+	SecretScan string            `toml:"secret_scan"` // credential-file scan on mounts: off | warn (default) | block
 }
 
 // extendsList normalizes the string-or-list `extends` into a slice.
@@ -153,6 +154,7 @@ func merge(base, over Template) Template {
 		Harness:    pick(over.Harness, base.Harness),
 		Identity:   pick(over.Identity, base.Identity),
 		Repo:       pick(over.Repo, base.Repo),
+		SecretScan: pick(over.SecretScan, base.SecretScan),
 		Setup:      concat(base.Setup, over.Setup),
 		Scripts:    concat(base.Scripts, over.Scripts),
 		Connectors: concat(base.Connectors, over.Connectors),

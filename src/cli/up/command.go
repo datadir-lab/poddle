@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -98,6 +99,25 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 			// always-on deny-list plus the template's block_paths).
 			if err := secure.CheckMounts(spec.Mounts, tpl.BlockPaths); err != nil {
 				return err
+			}
+			// Warn (or, with secret_scan="block", refuse) when a mounted dir
+			// carries credential files. The repo path is a clone, so uncommitted
+			// secrets are already absent; this catches explicit bind mounts.
+			if findings := secure.ScanMounts(spec.Mounts); len(findings) > 0 {
+				mode := tpl.SecretScan
+				if mode == "" {
+					mode = "warn"
+				}
+				if mode != "off" {
+					var b strings.Builder
+					for _, f := range findings {
+						fmt.Fprintf(&b, "  - %s (%s)\n", f.Path, f.Rule)
+					}
+					if mode == "block" {
+						return fmt.Errorf("secret_scan: credential files inside mounts (set secret_scan=\"warn\" to allow):\n%s", b.String())
+					}
+					fmt.Fprintf(cmd.ErrOrStderr(), "poddle: warning — credential files inside bind mounts:\n%s", b.String())
+				}
 			}
 			setupCmds, err := tpl.SetupCommands()
 			if err != nil {
