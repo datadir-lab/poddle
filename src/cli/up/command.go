@@ -54,7 +54,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 			if len(args) > 0 {
 				name = args[0]
 			}
-			spec, _, err := buildSpec(cmd, a, b, buildOpts{
+			spec, _, _, err := buildSpec(cmd, a, b, buildOpts{
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				allowSelect: !detach && execCmd == "" && a.Prompter != nil,
@@ -98,8 +98,10 @@ type buildOpts struct {
 // issues broker handles (identity + connectors) against poddled — returning a
 // ready-to-create spec and the resolved harness. It does not create the pod, so
 // both `up` and `task` share it.
-func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbox.Spec, harness.Harness, error) {
-	fail := func(err error) (sandbox.Spec, harness.Harness, error) { return sandbox.Spec{}, nil, err }
+func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbox.Spec, harness.Harness, config.Template, error) {
+	fail := func(err error) (sandbox.Spec, harness.Harness, config.Template, error) {
+		return sandbox.Spec{}, nil, config.Template{}, err
+	}
 
 	var tpl config.Template
 	if a.Templates != nil {
@@ -227,7 +229,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 			}
 		}
 	}
-	return spec, h, nil
+	return spec, h, tpl, nil
 }
 
 // applyIdentity wires an identity into the pod secretlessly: re-authenticate on

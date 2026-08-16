@@ -98,6 +98,7 @@ poddle task "<prompt>"      run a coding agent headless to completion (--detach 
 poddle logs <pod>           show a detached task's output (--follow to stream)
 poddle attach <pod>         reconnect to a running pod
 poddle run <pod> <cmd>...   run a command in a running pod
+poddle resize <pod> <size>  change a running pod's CPU/memory live (no restart)
 poddle ls                   list pods
 poddle down <pod>           revoke the pod's handles and remove it
 poddle identity add|ls|rm   manage agent logins
@@ -115,6 +116,13 @@ poddle version
 - **egress redaction** — the broker scrubs its managed secrets plus
   high-confidence patterns (private keys, `AKIA…`, `ghp_…`, …) from outbound
   bodies (`egress = redact | block | off`).
+
+## Sizing
+
+`size` (weak/strong) is a **CPU ceiling, not a reservation** — idle pods float
+to ~0 and burst up to the cap for free, so oversubscription is fine. Resize a
+*running* pod live with `poddle resize <pod> strong` (no restart), or let a task
+burst itself: `before_task = "strong"` / `after_task = "weak"` in a template.
 
 ## Self-host & remote
 

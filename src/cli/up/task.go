@@ -35,7 +35,7 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 			if name == "" {
 				name = "poddle-task-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 			}
-			spec, h, err := buildSpec(cmd, a, b, buildOpts{
+			spec, h, tpl, err := buildSpec(cmd, a, b, buildOpts{
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				requireIdentity: true, // an autonomous agent needs an LLM login
@@ -53,9 +53,16 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				return err
 			}
 
+			// before_task hook: burst the pod up for the run.
+			if tpl.BeforeTask != "" {
+				c, m := resolveSize(tpl.BeforeTask)
+				_ = a.Engine.Resize(name, c, m)
+			}
+
 			if detach {
 				// Run the agent in the background, its output to a log the pod
 				// keeps; leave the pod up for `poddle logs`/`attach`/`down`.
+				// (after_task can't fire — the CLI is gone when the agent ends.)
 				wrapped := "( " + taskCmd + " ) > " + TaskLogPath + " 2>&1"
 				if err := a.Engine.ExecDetached(id, wrapped); err != nil {
 					return err
@@ -66,13 +73,18 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				return nil
 			}
 
-			if !keep {
-				defer func() {
-					_ = b.RevokePod(name)     // best-effort: kill the pod's handles
-					_ = a.Engine.Remove(name) // then the container
-				}()
+			runErr := a.Engine.Exec(id, taskCmd)
+			if keep {
+				// after_task hook: drop the (kept) pod back down.
+				if tpl.AfterTask != "" {
+					c, m := resolveSize(tpl.AfterTask)
+					_ = a.Engine.Resize(name, c, m)
+				}
+			} else {
+				_ = b.RevokePod(name)     // best-effort: kill the pod's handles
+				_ = a.Engine.Remove(name) // then the container
 			}
-			return a.Engine.Exec(id, taskCmd)
+			return runErr
 		},
 	}
 	c.Flags().StringVar(&image, "image", "docker.io/library/debian:stable-slim", "base image")
