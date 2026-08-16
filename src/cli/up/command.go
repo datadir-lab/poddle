@@ -32,6 +32,7 @@ const podBrokerHost = "host.containers.internal"
 type podBroker interface {
 	EnsureRunning() error
 	Gateway() (string, error)
+	RedisAddr() (string, error)
 	IssueHandle(pod, scope string, cred broker.Credential) (string, error)
 }
 
@@ -156,8 +157,34 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 						return err
 					}
 				}
+				var redisPodAddr string // resolved lazily, only if a datastore needs it
 				for _, cn := range tpl.Connectors {
-					if err := applyConnector(b, a.Connections, a.ConnectorsDir, cn, name, podBrokerAddr, &spec); err != nil {
+					conn, err := a.Connections.Get(cn)
+					if err != nil {
+						return fmt.Errorf("connection %q: %w", cn, err)
+					}
+					def, err := connector.LoadDefinition(a.ConnectorsDir, conn.Connector)
+					if err != nil {
+						return err
+					}
+					if def.Transport == "l4-redis" {
+						if redisPodAddr == "" {
+							raddr, err := b.RedisAddr()
+							if err != nil {
+								return fmt.Errorf("redis broker: %w", err)
+							}
+							_, rport, err := net.SplitHostPort(raddr)
+							if err != nil {
+								return fmt.Errorf("redis address %q: %w", raddr, err)
+							}
+							redisPodAddr = net.JoinHostPort(podBrokerHost, rport)
+						}
+						if err := applyRedisDatastore(b, conn, def, name, redisPodAddr, &spec); err != nil {
+							return err
+						}
+						continue
+					}
+					if err := applyConnector(b, conn, def, name, podBrokerAddr, &spec); err != nil {
 						return err
 					}
 				}
@@ -238,20 +265,12 @@ func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Ha
 // poddled and folds the connector's pod wiring (env + setup) into the spec.
 // Connector setup (e.g. git url.insteadOf) is PREPENDED so it runs before the
 // repo clone. The real token never enters the pod.
-func applyConnector(b podBroker, store *connector.Store, connectorsDir, connName, podName, podBrokerAddr string, spec *sandbox.Spec) error {
-	conn, err := store.Get(connName)
-	if err != nil {
-		return fmt.Errorf("connection %q: %w", connName, err)
-	}
-	def, err := connector.LoadDefinition(connectorsDir, conn.Connector)
-	if err != nil {
-		return err
-	}
+func applyConnector(b podBroker, conn connector.Connection, def connector.Definition, podName, podBrokerAddr string, spec *sandbox.Spec) error {
 	cred, err := connector.Credential(conn, def)
 	if err != nil {
 		return err
 	}
-	handle, err := b.IssueHandle(podName, podName+"/"+connName, cred)
+	handle, err := b.IssueHandle(podName, podName+"/"+conn.Name, cred)
 	if err != nil {
 		return err
 	}
@@ -265,6 +284,32 @@ func applyConnector(b podBroker, store *connector.Store, connectorsDir, connName
 		}
 	}
 	spec.Setup = append(setup, spec.Setup...) // connector setup before the clone
+	return nil
+}
+
+// applyRedisDatastore issues a handle for a Redis connection at poddled and
+// points the pod at the broker's L4 Redis address with the handle as its
+// password. The real DSN (user+password) stays in the broker.
+func applyRedisDatastore(b podBroker, conn connector.Connection, def connector.Definition, podName, redisPodAddr string, spec *sandbox.Spec) error {
+	cred, err := connector.Credential(conn, def)
+	if err != nil {
+		return err
+	}
+	handle, err := b.IssueHandle(podName, podName+"/"+conn.Name, cred)
+	if err != nil {
+		return err
+	}
+	host, port, err := net.SplitHostPort(redisPodAddr)
+	if err != nil {
+		return err
+	}
+	if spec.Env == nil {
+		spec.Env = map[string]string{}
+	}
+	spec.Env["REDIS_HOST"] = host
+	spec.Env["REDIS_PORT"] = port
+	spec.Env["REDIS_PASSWORD"] = handle
+	spec.Env["REDIS_URL"] = "redis://:" + handle + "@" + redisPodAddr
 	return nil
 }
 
