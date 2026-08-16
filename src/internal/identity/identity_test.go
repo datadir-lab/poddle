@@ -1,6 +1,13 @@
 package identity
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/datadir-lab/poddle/src/internal/broker"
+)
+
+// FakeProvider must satisfy the Provider contract.
+var _ Provider = (*FakeProvider)(nil)
 
 func TestStore_CreateListGetRemove(t *testing.T) {
 	s := NewStore(t.TempDir())
@@ -48,6 +55,22 @@ func TestStore_ListEmpty(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Errorf("want empty, got %v", list)
+	}
+}
+
+func TestFakeProvider_Credential(t *testing.T) {
+	want := broker.Credential{
+		Mode: broker.ModeSubscription, Vendor: "anthropic",
+		Secret: "tok", BaseURL: "https://api.anthropic.com",
+	}
+	f := &FakeProvider{ProviderName: "anthropic", Cred: want}
+
+	got, err := f.Credential(Identity{})
+	if err != nil {
+		t.Fatalf("credential: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 

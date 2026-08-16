@@ -24,8 +24,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 
 ### Provider (auth) — refactor to hand a Credential, not a secret env
 
-- [ ] **1.6** `identity.Provider`: replace `Materialize()` with `Credential(id) → broker.Credential`. Update `FakeProvider`. Test the fake.
-- [ ] **1.7** `identity/anthropic`: implement `Credential()` (stored token → `Credential{Mode:"subscription", Vendor:"anthropic", Secret:token, BaseURL:"https://api.anthropic.com"}`); delete `Materialize`. Test.
+- [x] **1.6 + 1.7 (merged)** `identity.Provider`: **add** `Credential(id) → broker.Credential` to the interface and implement on `FakeProvider` and `identity/anthropic` (stored token → `Credential{Mode:subscription, Vendor:anthropic, Secret:token, BaseURL:https://api.anthropic.com}`). Merged because adding an interface method forces every implementer (incl. anthropic via the root registry) to satisfy it in the same commit to stay green. `Materialize` **kept** — `up` still uses it until 1.11, which deletes it. `identity` now imports `broker` (allowed: no slice/kernel rule broken, no cycle). TDD: fake + anthropic `Credential` tests (incl. error when no token) written failing first, then implemented.
 
 ### Harness abstraction (pod-side runtime)
 
@@ -35,7 +34,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 ### Wire up `up` (remove the secret path)
 
 - [ ] **1.10** `up`: add `--harness` flag; resolve it from the harness registry (default `claude-code`). Test.
-- [ ] **1.11** `up`: when `--identity` set → `provider.IsAuthenticated` (re-auth if stale) → `broker.Store(provider.Credential)` → `IssueHandle` → `harness.Materialize(brokerAddr, handle)` → fold env + `Provisions()` into the spec. **Delete the old `CLAUDE_CODE_OAUTH_TOKEN` injection.** Test with fake broker/provider/harness (assert: handle in env, real secret NOT in env).
+- [ ] **1.11** `up`: when `--identity` set → `provider.IsAuthenticated` (re-auth if stale) → `broker.Store(provider.Credential)` → `IssueHandle` → `harness.Materialize(brokerAddr, handle)` → fold env + `Provisions()` into the spec. **Delete the old `CLAUDE_CODE_OAUTH_TOKEN` injection**, and once `applyIdentity` no longer calls it, remove `Provider.Materialize` from the interface + `FakeProvider` + anthropic (orphaned after 1.6). Test with fake broker/provider/harness (assert: handle in env, real secret NOT in env).
 - [ ] **1.12** `up`/`down` lifecycle: start the local broker gateway for the pod on `up`; `down` → `Revoke(handle)` + stop the gateway. Test the lifecycle (issue on up, revoked on down).
 - [ ] **1.13** `root.go`: construct the broker + harness registry + provider registry once; inject into `up` and `identity`. `task ci` + smoke `up --help` / `identity --help`.
 

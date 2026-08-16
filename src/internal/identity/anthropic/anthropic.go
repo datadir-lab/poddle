@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/identity"
 )
 
@@ -56,6 +57,22 @@ func (p *Provider) IsAuthenticated(id identity.Identity) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// Credential returns the stored subscription token as a broker.Credential for
+// the broker to hold. The token is read plaintext here and sealed into the
+// vault by the caller (broker.Store) — the same unavoidable boundary as Get.
+func (p *Provider) Credential(id identity.Identity) (broker.Credential, error) {
+	b, err := os.ReadFile(p.tokenPath(id))
+	if err != nil {
+		return broker.Credential{}, fmt.Errorf("read token: %w", err)
+	}
+	return broker.Credential{
+		Mode:    broker.ModeSubscription,
+		Vendor:  "anthropic",
+		Secret:  strings.TrimSpace(string(b)),
+		BaseURL: "https://api.anthropic.com",
+	}, nil
 }
 
 // Materialize injects the stored token as CLAUDE_CODE_OAUTH_TOKEN.
