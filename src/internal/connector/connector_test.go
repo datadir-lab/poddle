@@ -87,7 +87,7 @@ func TestBuiltins_AllPresent(t *testing.T) {
 	for _, name := range []string{
 		"forgejo", "gitea", "github", "gitlab", "bitbucket",
 		"woodpecker", "drone", "argocd", "jenkins",
-		"npm", "pypi", "docker", "redis",
+		"npm", "pypi", "docker", "redis", "postgres",
 	} {
 		if _, err := LoadDefinition("", name); err != nil {
 			t.Errorf("built-in connector %q missing: %v", name, err)
@@ -219,6 +219,15 @@ func TestCredential_RedisAssemblesDSN(t *testing.T) {
 	conn2, _ := s.Create("c2", "redis", "10.0.0.5:6379", "", "PW", "")
 	if cred, _ := Credential(conn2, def); cred.BaseURL != "redis://:PW@10.0.0.5:6379" {
 		t.Errorf("redis DSN (no user) = %q", cred.BaseURL)
+	}
+}
+
+func TestCredential_PostgresAssemblesDSN(t *testing.T) {
+	s := NewStore(t.TempDir())
+	def, _ := LoadDefinition("", "postgres")
+	conn, _ := s.Create("db", "postgres", "postgres://10.0.0.9:5432/shop", "appuser", "PGPASS", "")
+	if cred, _ := Credential(conn, def); cred.BaseURL != "postgres://appuser:PGPASS@10.0.0.9:5432/shop" {
+		t.Errorf("postgres DSN = %q", cred.BaseURL)
 	}
 }
 
