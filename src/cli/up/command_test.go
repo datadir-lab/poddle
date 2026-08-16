@@ -2,8 +2,11 @@ package up
 
 import (
 	"bytes"
+	"context"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
@@ -30,17 +33,45 @@ type fakeCreator struct {
 	attached  string
 	createErr error
 	attachErr error
+	log       *[]string // optional lifecycle recorder (nil = off)
 }
 
 func (f *fakeCreator) Create(s sandbox.Spec) (string, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, "create")
+	}
 	f.spec = s
 	return "cid123", f.createErr
 }
 
 func (f *fakeCreator) Attach(id string) error {
+	if f.log != nil {
+		*f.log = append(*f.log, "attach")
+	}
 	f.attached = id
 	return f.attachErr
 }
+
+// spyBroker satisfies up's broker seam and records the lifecycle call order.
+type spyBroker struct {
+	log *[]string
+}
+
+func (s *spyBroker) Serve(addr string) (string, error) {
+	*s.log = append(*s.log, "serve")
+	return "127.0.0.1:12345", nil
+}
+func (s *spyBroker) Addr() string { return "127.0.0.1:12345" }
+func (s *spyBroker) Store(broker.Credential) (string, error) {
+	*s.log = append(*s.log, "store")
+	return "cid", nil
+}
+func (s *spyBroker) IssueHandle(credID, scope string, ttl time.Duration) (broker.Handle, error) {
+	*s.log = append(*s.log, "issue")
+	return broker.Handle{Value: "poddle_spy"}, nil
+}
+func (s *spyBroker) Revoke(v string)            { *s.log = append(*s.log, "revoke:"+v) }
+func (s *spyBroker) Stop(context.Context) error { *s.log = append(*s.log, "stop"); return nil }
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
@@ -126,6 +157,55 @@ func TestUp_WithIdentity_Secretless(t *testing.T) {
 	// Harness provisions are folded into the spec.
 	if len(f.spec.Setup) == 0 {
 		t.Error("expected harness provisions in spec.Setup")
+	}
+}
+
+func TestUp_DetachWithIdentity_Errors(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, broker.NewBroker())
+	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
+
+	if err := c.Execute(); err == nil {
+		t.Error("expected an error for --detach with --identity")
+	}
+	if f.spec.Name != "" {
+		t.Error("pod should not be created when --detach + --identity is rejected")
+	}
+}
+
+func TestUp_Identity_ServesAndTearsDown(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+
+	var log []string
+	f := &fakeCreator{log: &log}
+	spy := &spyBroker{log: &log}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, spy)
+	c.SetArgs([]string{"mybox", "--identity", "work"}) // fake Attach returns instantly
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// Broker is served and wired before create/attach, then revoked + stopped
+	// once the (instant, faked) attached session ends.
+	want := []string{"serve", "store", "issue", "create", "attach", "revoke:poddle_spy", "stop"}
+	if !reflect.DeepEqual(log, want) {
+		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
 }
 
