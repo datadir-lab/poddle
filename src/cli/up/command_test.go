@@ -72,6 +72,7 @@ func (s *spyBroker) Gateway() (string, error) {
 	*s.log = append(*s.log, "gateway")
 	return "127.0.0.1:12345", nil
 }
+func (s *spyBroker) RedisAddr() (string, error) { return "127.0.0.1:16379", nil }
 func (s *spyBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	*s.log = append(*s.log, "issue")
 	return "poddle_spy", nil
@@ -80,8 +81,9 @@ func (s *spyBroker) IssueHandle(pod, scope string, _ broker.Credential) (string,
 // stubBroker is a no-op podBroker for tests that don't exercise brokered creds.
 type stubBroker struct{}
 
-func (stubBroker) EnsureRunning() error     { return nil }
-func (stubBroker) Gateway() (string, error) { return "127.0.0.1:0", nil }
+func (stubBroker) EnsureRunning() error       { return nil }
+func (stubBroker) Gateway() (string, error)   { return "127.0.0.1:0", nil }
+func (stubBroker) RedisAddr() (string, error) { return "127.0.0.1:0", nil }
 func (stubBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	return "poddle_stub", nil
 }
