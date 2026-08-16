@@ -38,6 +38,13 @@ const gitRewrite = `git config --global url."http://{handle}:x@{broker}/".instea
 // swaps it for the real user:token — for PyPI tokens the user is "__token__".
 const pipRewrite = `pip config set global.index-url http://{handle}:x@{broker}/simple/`
 
+// dockerLogin writes a Docker/Podman auths entry for the broker with the handle
+// as the Basic user (base64'd in-pod, no plaintext secret). The broker swaps it
+// for the real user:token. Targets Basic-auth self-hosted registries; the pod's
+// container tooling must allow {broker} as an insecure (HTTP) registry, and this
+// does NOT cover Docker Hub's Bearer token handshake.
+const dockerLogin = `mkdir -p ~/.docker && printf '{"auths":{"%s":{"auth":"%s"}}}\n' "{broker}" "$(printf '%s:x' "{handle}" | base64 | tr -d '\n')" > ~/.docker/config.json`
+
 // builtins are the connector definitions poddle ships. Git hosts share the
 // Basic + url.insteadOf pattern; Drone/Woodpecker share the Bearer + server/token
 // env pattern (Woodpecker is a Drone fork). Gitea and Forgejo are the same API.
@@ -51,7 +58,14 @@ var builtins = map[string]Definition{
 	// CI — Bearer + server/token env the tool's CLI reads
 	"woodpecker": {Mode: "bearer", Env: map[string]string{"WOODPECKER_SERVER": "http://{broker}", "WOODPECKER_TOKEN": "{handle}"}},
 	"drone":      {Mode: "bearer", Env: map[string]string{"DRONE_SERVER": "http://{broker}", "DRONE_TOKEN": "{handle}"}},
-	// registries — package-manager config pointed at the broker
+	// argocd: ARGOCD_SERVER is host:port; --plaintext forces HTTP through the broker.
+	// ⚠ the argocd CLI defaults to gRPC-web/TLS — this leg is not runtime-verified.
+	"argocd": {Mode: "bearer", Env: map[string]string{"ARGOCD_SERVER": "{broker}", "ARGOCD_AUTH_TOKEN": "{handle}", "ARGOCD_OPTS": "--plaintext"}},
+	// jenkins: Basic via the handle in JENKINS_URL's userinfo (curl/most clients
+	// honor it). ⚠ the official jenkins-cli.jar takes -auth separately — pass the
+	// handle there. base_url per connection (self-hosted).
+	"jenkins": {Mode: "basic", Env: map[string]string{"JENKINS_URL": "http://{handle}:x@{broker}"}},
+	// registries — package-manager / container config pointed at the broker
 	"npm": {
 		Mode:    "bearer",
 		BaseURL: "https://registry.npmjs.org",
@@ -60,7 +74,12 @@ var builtins = map[string]Definition{
 			`npm config set //{broker}/:_authToken {handle}`,
 		},
 	},
-	"pypi": {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite}}, // user = "__token__"
+	"pypi":   {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite}}, // user = "__token__"
+	"docker": {Mode: "basic", Setup: []string{dockerLogin}},                             // Basic self-hosted registry; base_url per connection
+
+	// GitHub Actions has no connector of its own: it is the GitHub REST API
+	// (api.github.com/repos/.../actions), reached with the `github` connector's
+	// token (or `gh`, which reads GH_TOKEN). Use `github`.
 }
 
 // LoadDefinition returns the definition for name: a user file in userDir
