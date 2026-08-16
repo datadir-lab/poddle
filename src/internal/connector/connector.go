@@ -22,16 +22,29 @@ import (
 // Definition is a declarative connector type. Env/Setup values use the
 // placeholders {broker} (broker host:port), {handle}, and {base_url}.
 type Definition struct {
-	Mode  string            `toml:"mode"`  // bearer | basic | api-key | endpoint
-	Env   map[string]string `toml:"env"`   // pod env
-	Setup []string          `toml:"setup"` // pod setup commands
+	Mode    string            `toml:"mode"`     // bearer | basic | api-key | endpoint
+	BaseURL string            `toml:"base_url"` // default upstream; a connection may override
+	Env     map[string]string `toml:"env"`      // pod env
+	Setup   []string          `toml:"setup"`    // pod setup commands
 }
+
+// gitRewrite routes any {base_url} git op through the broker with the handle as
+// the Basic username. The broker swaps it for the real user:token (pod→broker is
+// HTTP; broker→host may be HTTPS, e.g. github/gitlab — no TLS interception).
+const gitRewrite = `git config --global url."http://{handle}:x@{broker}/".insteadOf "{base_url}/"`
 
 // builtins are the connector definitions poddle ships.
 var builtins = map[string]Definition{
-	"forgejo": {
-		Mode:  "basic",
-		Setup: []string{`git config --global url."http://{handle}:x@{broker}/".insteadOf "{base_url}/"`},
+	"forgejo": {Mode: "basic", Setup: []string{gitRewrite}}, // self-hosted → base_url per connection
+	"github":  {Mode: "basic", BaseURL: "https://github.com", Setup: []string{gitRewrite}},
+	"gitlab":  {Mode: "basic", BaseURL: "https://gitlab.com", Setup: []string{gitRewrite}},
+	"npm": {
+		Mode:    "bearer",
+		BaseURL: "https://registry.npmjs.org",
+		Setup: []string{
+			`npm config set registry http://{broker}/`,
+			`npm config set //{broker}/:_authToken {handle}`,
+		},
 	},
 	"woodpecker": {
 		Mode: "bearer",
@@ -83,11 +96,15 @@ func Credential(conn Connection, def Definition) (broker.Credential, error) {
 	if def.Mode == "basic" {
 		secret = conn.User + ":" + token
 	}
+	baseURL := conn.BaseURL // a connection's URL overrides the definition default
+	if baseURL == "" {
+		baseURL = def.BaseURL
+	}
 	return broker.Credential{
 		Mode:    brokerMode(def.Mode),
 		Vendor:  conn.Connector,
 		Secret:  secret,
-		BaseURL: conn.BaseURL,
+		BaseURL: baseURL,
 	}, nil
 }
 
