@@ -8,6 +8,7 @@ import (
 	"golang.org/x/term"
 
 	"git.dev.datadir.co/datadir/poddle/src/cli/connect"
+	"git.dev.datadir.co/datadir/poddle/src/cli/daemon"
 	"git.dev.datadir.co/datadir/poddle/src/cli/down"
 	cliidentity "git.dev.datadir.co/datadir/poddle/src/cli/identity"
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
@@ -82,6 +83,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(down.NewCmd(a))
 	root.AddCommand(cliidentity.NewCmd(a))
 	root.AddCommand(connect.NewCmd(a))
+	root.AddCommand(daemon.NewCmd())
 	return root
 }
 
