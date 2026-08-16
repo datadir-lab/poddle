@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/datadir-lab/poddle/src/cli/down"
 	cliidentity "github.com/datadir-lab/poddle/src/cli/identity"
@@ -18,6 +19,7 @@ import (
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/identity/anthropic"
 	"github.com/datadir-lab/poddle/src/internal/podman"
+	"github.com/datadir-lab/poddle/src/internal/prompt"
 )
 
 // NewRootCmd builds the root poddle command and registers the feature slices.
@@ -53,6 +55,10 @@ func NewRootCmd() *cobra.Command {
 		Identities: store,
 		Providers:  reg,
 		Harnesses:  harnesses,
+	}
+	// Interactive prompts only on a real terminal; scripts/CI get no Prompter.
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		a.Prompter = prompt.NewHuh()
 	}
 
 	root.AddCommand(ls.NewCmd(a))

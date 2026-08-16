@@ -13,6 +13,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	"github.com/datadir-lab/poddle/src/internal/identity"
+	"github.com/datadir-lab/poddle/src/internal/prompt"
 )
 
 // App bundles the dependencies shared across commands.
@@ -21,4 +22,5 @@ type App struct {
 	Identities *identity.Store   // client-side identity store
 	Providers  identity.Registry // auth vendors (anthropic, …)
 	Harnesses  harness.Registry  // pod-side runtimes (claude-code, …)
+	Prompter   prompt.Prompter   // interactive prompts; nil = non-interactive (no prompting)
 }
