@@ -12,6 +12,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
@@ -43,7 +44,7 @@ type credBroker interface {
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
 // resolves a pod-side runtime. b is the up-scoped secretless broker.
 func NewCmd(a *app.App, b credBroker) *cobra.Command {
-	var image, size, identityName, harnessName, execCmd string
+	var image, size, identityName, harnessName, execCmd, templateName string
 	var detach bool
 
 	c := &cobra.Command{
@@ -51,6 +52,22 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 		Short: "Create a sandbox and connect to it",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Resolve the template (project default, or --template), then let
+			// explicit CLI flags override it.
+			var tpl config.Template
+			if a.Templates != nil {
+				var err error
+				if tpl, err = a.Templates.Resolve(templateName); err != nil {
+					return err
+				}
+			}
+			harnessName = flagOr(cmd, "harness", harnessName, tpl.Harness)
+			image = flagOr(cmd, "image", image, tpl.Image)
+			size = flagOr(cmd, "size", size, tpl.Size)
+			if identityName == "" && tpl.Identity != "" {
+				identityName = tpl.Identity
+			}
+
 			h, ok := a.Harnesses.Get(harnessName)
 			if !ok {
 				return fmt.Errorf("unknown harness %q", harnessName)
@@ -62,8 +79,24 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 			cpus, mem := resolveSize(size)
 			spec := sandbox.Spec{
 				Name: name, Image: image, Template: "base",
-				Runtime: "container", Size: size, CPUs: cpus, Memory: mem,
+				Runtime: "container", Size: size, CPUs: cpus, Memory: mem, Repo: tpl.Repo,
 			}
+
+			// Fold the template's env, mounts, and setup (inline + scripts) in.
+			if len(tpl.Env) > 0 {
+				spec.Env = map[string]string{}
+				for k, v := range tpl.Env {
+					spec.Env[k] = v
+				}
+			}
+			for _, m := range tpl.Mounts {
+				spec.Mounts = append(spec.Mounts, sandbox.Mount{Host: m.Host, Container: m.Container, ReadOnly: m.ReadOnly})
+			}
+			setupCmds, err := tpl.SetupCommands()
+			if err != nil {
+				return err
+			}
+			spec.Setup = append(spec.Setup, setupCmds...)
 
 			// No --identity on an interactive TTY: let the user pick one (or add
 			// one, or a plain sandbox). Scripts/CI (no Prompter), --detach, and
@@ -113,6 +146,7 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 	c.Flags().StringVar(&size, "size", "weak", "resource size (weak|strong)")
 	c.Flags().StringVar(&identityName, "identity", "", "coding-agent login to use in the sandbox")
 	c.Flags().StringVar(&harnessName, "harness", "claude-code", "coding-agent runtime to run in the sandbox")
+	c.Flags().StringVar(&templateName, "template", "", "template to base the sandbox on (from .poddle/ or ~/.config/poddle/templates)")
 	c.Flags().StringVar(&execCmd, "exec", "", "run a command in the sandbox instead of attaching, then tear down")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "create without attaching")
 	return c
@@ -245,6 +279,15 @@ func providerNames(reg idn.Registry) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// flagOr returns the flag value if the user set it explicitly, else the
+// template value when non-empty, else the flag's default.
+func flagOr(cmd *cobra.Command, name, flagVal, tplVal string) string {
+	if !cmd.Flags().Changed(name) && tplVal != "" {
+		return tplVal
+	}
+	return flagVal
 }
 
 // resolveSize maps a size tier to concrete cpu/memory limits.

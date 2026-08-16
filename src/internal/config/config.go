@@ -73,6 +73,28 @@ func (t Template) SetupCommands() ([]string, error) {
 	return cmds, nil
 }
 
+// Resolver resolves a template name to a fully-merged Template. name == ""
+// means the project default.
+type Resolver interface {
+	Resolve(name string) (Template, error)
+}
+
+// DirResolver loads templates lazily from a user templates dir and a project
+// dir on each Resolve — so a malformed project file only fails the command that
+// needs a template, not the whole CLI.
+type DirResolver struct {
+	UserDir    string
+	ProjectDir string
+}
+
+func (r DirResolver) Resolve(name string) (Template, error) {
+	cfg, err := Load(r.UserDir, r.ProjectDir)
+	if err != nil {
+		return Template{}, err
+	}
+	return cfg.Resolve(name)
+}
+
 // Config is a resolved namespace of named templates plus an optional project
 // default (the root .poddle.toml).
 type Config struct {

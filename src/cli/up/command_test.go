@@ -10,6 +10,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
@@ -275,6 +276,56 @@ func TestUp_ExplicitIdentity_NoPrompt(t *testing.T) {
 	}
 	if h := f.spec.Env["HANDLE"]; !strings.HasPrefix(h, "poddle_") {
 		t.Errorf("explicit identity should be wired in; env = %v", f.spec.Env)
+	}
+}
+
+type fakeTemplates struct {
+	tpl config.Template
+	err error
+}
+
+func (f fakeTemplates) Resolve(name string) (config.Template, error) { return f.tpl, f.err }
+
+func TestUp_Template_Applied(t *testing.T) {
+	f := &fakeCreator{}
+	tpl := config.Template{
+		Image: "docker.io/library/node:22", Size: "strong",
+		Env: map[string]string{"FOO": "bar"}, Setup: []string{"echo hi"},
+	}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, broker.NewBroker())
+	c.SetArgs([]string{"box"}) // no flags → template values apply
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.Image != "docker.io/library/node:22" {
+		t.Errorf("image = %q, want the template image", f.spec.Image)
+	}
+	if f.spec.Size != "strong" || f.spec.CPUs != 8 {
+		t.Errorf("size not from template: %+v", f.spec)
+	}
+	if f.spec.Env["FOO"] != "bar" {
+		t.Errorf("template env not applied: %v", f.spec.Env)
+	}
+	if len(f.spec.Setup) == 0 || f.spec.Setup[0] != "echo hi" {
+		t.Errorf("template setup not applied: %v", f.spec.Setup)
+	}
+}
+
+func TestUp_Template_CLIOverrides(t *testing.T) {
+	f := &fakeCreator{}
+	tpl := config.Template{Image: "docker.io/library/node:22", Size: "strong"}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, broker.NewBroker())
+	c.SetArgs([]string{"box", "--image", "alpine", "--size", "weak"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.Image != "alpine" {
+		t.Errorf("CLI --image should override template, got %q", f.spec.Image)
+	}
+	if f.spec.Size != "weak" {
+		t.Errorf("CLI --size should override template, got %q", f.spec.Size)
 	}
 }
 
