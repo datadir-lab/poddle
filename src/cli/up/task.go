@@ -10,14 +10,20 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/app"
 )
 
+// TaskLogPath is where a detached task's output is written inside the pod;
+// `poddle logs` reads it back.
+const TaskLogPath = "/tmp/poddle-task.json"
+
 // NewTaskCmd builds `poddle task`: create a fresh secretless pod, run the coding
-// agent headless on the prompt to completion, then tear the pod down (revoke its
-// handles + remove the container) unless --keep. It reuses up's buildSpec, so a
-// task pod gets the same identity/connectors/harness/secret-safety as `up`.
+// agent headless on the prompt, then tear the pod down (revoke its handles +
+// remove the container) unless --keep. With --detach the agent runs in the
+// background (output to TaskLogPath) and the pod is left up for `poddle
+// logs`/`attach`/`down`. It reuses up's buildSpec, so a task pod gets the same
+// identity/connectors/harness/secret-safety as `up`.
 func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 	var image, size, identityName, harnessName, templateName, podName string
 	var maxTurns int
-	var keep bool
+	var keep, detach bool
 
 	c := &cobra.Command{
 		Use:   "task <prompt>",
@@ -46,6 +52,20 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			if detach {
+				// Run the agent in the background, its output to a log the pod
+				// keeps; leave the pod up for `poddle logs`/`attach`/`down`.
+				wrapped := "( " + taskCmd + " ) > " + TaskLogPath + " 2>&1"
+				if err := a.Engine.ExecDetached(id, wrapped); err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), name)
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"task running in %q — `poddle logs %s` to watch, `poddle down %s` when done\n", name, name, name)
+				return nil
+			}
+
 			if !keep {
 				defer func() {
 					_ = b.RevokePod(name)     // best-effort: kill the pod's handles
@@ -63,5 +83,6 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().StringVar(&podName, "name", "", "pod name (default: a generated poddle-task-* name)")
 	c.Flags().IntVar(&maxTurns, "max-turns", 24, "maximum agent turns")
 	c.Flags().BoolVar(&keep, "keep", false, "keep the pod running after the task (attach/inspect later)")
+	c.Flags().BoolVarP(&detach, "detach", "d", false, "run the agent in the background; leave the pod up (poddle logs/down)")
 	return c
 }

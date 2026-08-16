@@ -1,6 +1,7 @@
 package up
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
@@ -49,6 +50,25 @@ func TestTask_RunsHeadlessAndTearsDown(t *testing.T) {
 	}
 	if !revoked {
 		t.Errorf("pod handles should be revoked; log = %v", log)
+	}
+}
+
+func TestTask_DetachRunsBackgroundAndKeepsPod(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewTaskCmd(taskApp(t, f, "AGENT: %s"), stubBroker{})
+	c.SetArgs([]string{"big job", "--identity", "work", "--name", "dpod", "--detach"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.execed != "" {
+		t.Errorf("detached task should not run synchronously, execed = %q", f.execed)
+	}
+	if !strings.Contains(f.detached, "AGENT: big job") || !strings.Contains(f.detached, TaskLogPath) {
+		t.Errorf("detached command should run the agent to the log, got %q", f.detached)
+	}
+	if f.removed != "" {
+		t.Errorf("detached task should leave the pod up, removed = %q", f.removed)
 	}
 }
 
