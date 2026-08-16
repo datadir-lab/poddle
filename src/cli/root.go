@@ -11,6 +11,8 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/cli/up"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
+	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
+	"git.dev.datadir.co/datadir/poddle/src/internal/harness/claudecode"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 	"git.dev.datadir.co/datadir/poddle/src/internal/identity/anthropic"
 	"git.dev.datadir.co/datadir/poddle/src/internal/podman"
@@ -36,8 +38,13 @@ func NewRootCmd() *cobra.Command {
 		"anthropic": anthropic.New(),
 	}
 
+	// Harnesses are the pod-side coding-agent runtimes (--harness).
+	harnesses := harness.Registry{
+		"claude-code": claudecode.New(),
+	}
+
 	root.AddCommand(ls.NewCmd(eng))
-	root.AddCommand(up.NewCmd(eng, store, reg))
+	root.AddCommand(up.NewCmd(eng, store, reg, harnesses))
 	root.AddCommand(down.NewCmd(eng))
 	root.AddCommand(cliidentity.NewCmd(store, reg))
 	return root

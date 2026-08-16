@@ -33,7 +33,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 
 ### Wire up `up` (remove the secret path)
 
-- [ ] **1.10** `up`: add `--harness` flag; resolve it from the harness registry (default `claude-code`). Test.
+- [x] **1.10** `up`: `--harness` flag (default `claude-code`), resolved/validated from a new `harness.Registry` param on `NewCmd`; unknown harness → error before any pod is created. `root.go` constructs `harness.Registry{"claude-code": claudecode.New()}`. Validate-only here; 1.11 uses the resolved harness. TDD: unknown-harness test + signature bump → red → green.
 - [ ] **1.11** `up`: when `--identity` set → `provider.IsAuthenticated` (re-auth if stale) → `broker.Store(provider.Credential)` → `IssueHandle` → `harness.Materialize(brokerAddr, handle)` → fold env + `Provisions()` into the spec. **Delete the old `CLAUDE_CODE_OAUTH_TOKEN` injection**, and once `applyIdentity` no longer calls it, remove `Provider.Materialize` from the interface + `FakeProvider` + anthropic (orphaned after 1.6). Test with fake broker/provider/harness (assert: handle in env, real secret NOT in env).
 - [ ] **1.12** `up`/`down` lifecycle: start the local broker gateway for the pod on `up`; `down` → `Revoke(handle)` + stop the gateway. Test the lifecycle (issue on up, revoked on down).
 - [ ] **1.13** `root.go`: construct the broker + harness registry + provider registry once; inject into `up` and `identity`. `task ci` + smoke `up --help` / `identity --help`.
