@@ -66,8 +66,14 @@ func mockAnthropic(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Serv
 //
 // Needs docker; pulls node:22 and installs claude-code, so it is e2e-tagged.
 func TestE2E_Secretless_RealClaudeCode(t *testing.T) {
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not installed; skipping")
+	// docker locally; podman in CI (nested, so the container reaches the broker
+	// via host.containers.internal — the real poddle path).
+	cli := os.Getenv("PODDLE_E2E_CONTAINER_CLI")
+	if cli == "" {
+		cli = "docker"
+	}
+	if _, err := exec.LookPath(cli); err != nil {
+		t.Skipf("%s not installed; skipping", cli)
 	}
 
 	var mu sync.Mutex
@@ -104,17 +110,17 @@ func TestE2E_Secretless_RealClaudeCode(t *testing.T) {
 	}
 	brokerURL := "http://" + net.JoinHostPort(host, port)
 
-	args := []string{"run", "--rm", "-i", "--add-host", "host.docker.internal:host-gateway"}
-	if dockerNet := os.Getenv("PODDLE_E2E_DOCKER_NETWORK"); dockerNet != "" {
-		args = append(args, "--network", dockerNet)
+	args := []string{"run", "--rm", "-i", "--add-host", host + ":host-gateway"}
+	if extraNet := os.Getenv("PODDLE_E2E_DOCKER_NETWORK"); extraNet != "" {
+		args = append(args, "--network", extraNet)
 	}
 	args = append(args,
 		"-e", "ANTHROPIC_BASE_URL="+brokerURL,
 		"-e", "ANTHROPIC_AUTH_TOKEN="+handle.Value, // the HANDLE, never the secret
 		"-e", "IS_SANDBOX=1",
 		"-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
-		"node:22", "bash", "-s")
-	cmd := exec.Command("docker", args...)
+		"docker.io/library/node:22", "bash", "-s") // fully-qualified for podman
+	cmd := exec.Command(cli, args...)
 	cmd.Stdin = strings.NewReader(claudeRunScript)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
