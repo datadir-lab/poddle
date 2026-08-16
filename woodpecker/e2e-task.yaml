@@ -1,0 +1,22 @@
+# Task e2e — `poddle task` runs a coding agent headless through the broker.
+#
+# On this step's nested podman: `poddle task "ping"` spins a fresh secretless pod
+# (node:22), installs claude-code, runs it headless, and the agent reaches a mock
+# Anthropic upstream through the broker — returning "works" (the mock saw the
+# sentinel secret, never the handle) — then the pod is torn down. No real
+# account. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-task:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-task

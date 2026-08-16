@@ -56,6 +56,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_L4 ./tests/e2e/...
 
+  e2e-task:
+    desc: Task e2e (needs podman) — poddle task runs a coding agent headless through the broker
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Task ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
