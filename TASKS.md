@@ -46,7 +46,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 ### Make it run on real containers (pre-1.14)
 
 - [x] **1.C** podman: run `spec.Setup` after create — `podman exec <id> sh -c "<cmd>"` per command (local + remote via `--url`); on failure leave the container running and return an error naming the pod for cleanup. TDD: happy path (exec calls in order) + setup-failure via a local stub runner (the shared `exec.Fake` can't fail one call but not another).
-- [ ] **1.D** broker reachability from the pod: bind `0.0.0.0:0` and point the pod at `http://host.containers.internal:<port>` (port from `Addr()`) instead of the loopback bind. Decide where `host.containers.internal` lives (const in `up` vs an `engine` method). Note: `0.0.0.0` is LAN-exposed (handle-gated); Phase 2/poddled binds tighter.
+- [x] **1.D** broker reachability from the pod: broker binds `0.0.0.0:0`; the pod env's base URL is `http://host.containers.internal:<port>` (port extracted from `Addr()` via `net.SplitHostPort`), not the loopback bind. `host.containers.internal` is a const in `up` for now (option A — graduates to an engine capability when a 2nd backend lands). `0.0.0.0` is LAN-exposed but handle-gated; Phase 2 binds tighter. TDD (spy Addr → `host.containers.internal:12345` → red → green).
 
 ### Verify on the homelab (manual)
 

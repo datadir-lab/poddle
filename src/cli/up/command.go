@@ -4,6 +4,7 @@ package up
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,10 +16,16 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
 
-// brokerBindAddr is where the up-scoped broker listens in Phase 1. It is
-// loopback for now; making it reachable from the pod's container
-// (host.containers.internal + a host-reachable bind) is task 1.14.
-const brokerBindAddr = "127.0.0.1:0"
+// brokerBindAddr is where the up-scoped broker listens in Phase 1: all
+// interfaces on an ephemeral port, so the pod's container can reach it via the
+// podman bridge. It is handle-gated (401 without a valid handle); Phase 2 binds
+// tighter (bridge-only / unix socket / tunnel).
+const brokerBindAddr = "0.0.0.0:0"
+
+// podBrokerHost is how a pod addresses the host from inside a podman/docker
+// container. It's a container-runtime detail; when a second engine (k8s) lands
+// it graduates to an engine capability.
+const podBrokerHost = "host.containers.internal"
 
 // credBroker is the broker capability `up` needs. The real *broker.Broker
 // satisfies it; tests pass a spy. (Named to avoid clashing with the broker
@@ -134,10 +141,19 @@ func applyIdentity(b credBroker, store *idn.Store, reg idn.Registry, h harness.H
 		return "", err
 	}
 
+	// The broker binds all host interfaces; the pod reaches it via the container
+	// host alias on the same port — not the bind host (which is the pod's own
+	// loopback inside the container).
+	_, port, err := net.SplitHostPort(b.Addr())
+	if err != nil {
+		return "", fmt.Errorf("broker address %q: %w", b.Addr(), err)
+	}
+	brokerURL := "http://" + net.JoinHostPort(podBrokerHost, port)
+
 	if spec.Env == nil {
 		spec.Env = map[string]string{}
 	}
-	for k, v := range h.Env("http://"+b.Addr(), handle.Value) {
+	for k, v := range h.Env(brokerURL, handle.Value) {
 		spec.Env[k] = v
 	}
 	spec.Setup = append(spec.Setup, h.Provisions()...)
