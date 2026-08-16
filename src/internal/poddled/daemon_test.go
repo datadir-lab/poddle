@@ -1,0 +1,119 @@
+package poddled
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/datadir-lab/poddle/src/internal/broker"
+)
+
+// fakeBroker records what the daemon asks of the broker.
+type fakeBroker struct {
+	stored  []broker.Credential
+	issued  int
+	revoked []string
+	egress  string
+	addr    string
+}
+
+func (f *fakeBroker) Store(c broker.Credential) (string, error) {
+	f.stored = append(f.stored, c)
+	return fmt.Sprintf("cred%d", len(f.stored)), nil
+}
+func (f *fakeBroker) IssueHandle(credID, scope string, _ time.Duration) (broker.Handle, error) {
+	f.issued++
+	return broker.Handle{Value: "poddle_" + credID, Scope: scope}, nil
+}
+func (f *fakeBroker) Revoke(v string) { f.revoked = append(f.revoked, v) }
+func (f *fakeBroker) Serve(string) (string, error) {
+	f.addr = "0.0.0.0:9999"
+	return f.addr, nil
+}
+func (f *fakeBroker) Addr() string               { return f.addr }
+func (f *fakeBroker) SetEgressMode(m string)     { f.egress = m }
+func (f *fakeBroker) Stop(context.Context) error { return nil }
+
+func testServer(t *testing.T) (*httptest.Server, *fakeBroker) {
+	t.Helper()
+	fb := &fakeBroker{}
+	d := New(fb)
+	if _, err := d.Start("0.0.0.0:0", "redact"); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(d.Handler())
+	t.Cleanup(srv.Close)
+	return srv, fb
+}
+
+func TestDaemon_Health(t *testing.T) {
+	srv, _ := testServer(t)
+	resp, err := http.Get(srv.URL + "/health")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("health: %v status=%v", err, resp.StatusCode)
+	}
+}
+
+func TestDaemon_Gateway(t *testing.T) {
+	srv, fb := testServer(t)
+	if fb.egress != "redact" {
+		t.Errorf("Start should set egress before serve, got %q", fb.egress)
+	}
+	resp, _ := http.Get(srv.URL + "/gateway")
+	var got map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	if got["addr"] != "0.0.0.0:9999" {
+		t.Errorf("gateway addr = %q", got["addr"])
+	}
+}
+
+func issue(t *testing.T, url, pod string) string {
+	t.Helper()
+	body, _ := json.Marshal(issueReq{Scope: pod, Credential: broker.Credential{Mode: broker.ModeSubscription, Secret: "s", BaseURL: "http://x"}})
+	resp, err := http.Post(url+"/pods/"+pod+"/handles", "application/json", bytes.NewReader(body))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("issue: %v status=%v", err, resp.StatusCode)
+	}
+	var got map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	return got["handle"]
+}
+
+func TestDaemon_IssueHandle(t *testing.T) {
+	srv, fb := testServer(t)
+	h := issue(t, srv.URL, "box")
+	if h == "" {
+		t.Fatal("no handle returned")
+	}
+	if len(fb.stored) != 1 || fb.issued != 1 {
+		t.Errorf("store/issue = %d/%d, want 1/1", len(fb.stored), fb.issued)
+	}
+}
+
+func TestDaemon_RevokePod(t *testing.T) {
+	srv, fb := testServer(t)
+	h1 := issue(t, srv.URL, "box")
+	h2 := issue(t, srv.URL, "box")
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/pods/box", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete: %v status=%v", err, resp.StatusCode)
+	}
+	if len(fb.revoked) != 2 || fb.revoked[0] != h1 || fb.revoked[1] != h2 {
+		t.Errorf("revoked = %v, want [%s %s]", fb.revoked, h1, h2)
+	}
+	// A second delete is a no-op (pod already gone).
+	resp2, _ := http.DefaultClient.Do(req)
+	if resp2.StatusCode != http.StatusNoContent {
+		t.Errorf("second delete status = %d", resp2.StatusCode)
+	}
+	if len(fb.revoked) != 2 {
+		t.Errorf("second delete should revoke nothing, got %v", fb.revoked)
+	}
+}
