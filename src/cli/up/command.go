@@ -43,7 +43,7 @@ type credBroker interface {
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
 // resolves a pod-side runtime. b is the up-scoped secretless broker.
 func NewCmd(a *app.App, b credBroker) *cobra.Command {
-	var image, size, identityName, harnessName string
+	var image, size, identityName, harnessName, execCmd string
 	var detach bool
 
 	c := &cobra.Command{
@@ -66,8 +66,9 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 			}
 
 			// No --identity on an interactive TTY: let the user pick one (or add
-			// one, or a plain sandbox). Scripts/CI (no Prompter) skip this.
-			if identityName == "" && !detach && a.Prompter != nil {
+			// one, or a plain sandbox). Scripts/CI (no Prompter), --detach, and
+			// --exec skip this.
+			if identityName == "" && !detach && execCmd == "" && a.Prompter != nil {
 				chosen, err := selectIdentity(a)
 				if err != nil {
 					return err
@@ -99,6 +100,9 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
 
+			if execCmd != "" {
+				return a.Engine.Exec(id, execCmd)
+			}
 			if detach {
 				return nil
 			}
@@ -109,6 +113,7 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 	c.Flags().StringVar(&size, "size", "weak", "resource size (weak|strong)")
 	c.Flags().StringVar(&identityName, "identity", "", "coding-agent login to use in the sandbox")
 	c.Flags().StringVar(&harnessName, "harness", "claude-code", "coding-agent runtime to run in the sandbox")
+	c.Flags().StringVar(&execCmd, "exec", "", "run a command in the sandbox instead of attaching, then tear down")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "create without attaching")
 	return c
 }

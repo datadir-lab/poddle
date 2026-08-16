@@ -99,6 +99,13 @@ func (p *Provider) Attach(id string) error {
 	return p.Runner.RunInteractive("podman", args...)
 }
 
+// Exec runs a one-shot command in the sandbox, streaming its output to the
+// caller's stdio (non-interactive).
+func (p *Provider) Exec(id, command string) error {
+	args := p.podman("exec", id, "sh", "-c", command)
+	return p.Runner.RunInteractive("podman", args...)
+}
+
 // Remove force-stops and deletes a sandbox by id or name.
 func (p *Provider) Remove(id string) error {
 	args := p.podman("rm", "-f", id)
