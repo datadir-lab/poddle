@@ -124,6 +124,10 @@ to ~0 and burst up to the cap for free, so oversubscription is fine. Resize a
 *running* pod live with `poddle resize <pod> strong` (no restart), or let a task
 burst itself: `before_task = "strong"` / `after_task = "weak"` in a template.
 
+> Live CPU resize works everywhere; live **memory** resize needs cgroup
+> delegation (a rootful host or systemd-delegated rootless) — under plain
+> rootless podman `--memory` updates are rejected, so use `--cpus` there.
+
 ## Self-host & remote
 
 `PODDLE_HOST=ssh://user@host` runs pods on a remote machine over the same code
