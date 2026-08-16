@@ -38,6 +38,7 @@ const podBrokerHost = "host.containers.internal"
 type credBroker interface {
 	Serve(addr string) (string, error)
 	Addr() string
+	SetEgressMode(mode string)
 	Store(broker.Credential) (string, error)
 	IssueHandle(credID, scope string, ttl time.Duration) (broker.Handle, error)
 	Revoke(handleValue string)
@@ -148,6 +149,7 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 				if detach {
 					return fmt.Errorf("--detach with an identity or connector needs poddled (Phase 2); attach to keep the broker alive")
 				}
+				b.SetEgressMode(tpl.Egress) // secret-safety: scrub secrets from brokered egress
 				addr, err := b.Serve(brokerBindAddr)
 				if err != nil {
 					return fmt.Errorf("serve broker: %w", err)
