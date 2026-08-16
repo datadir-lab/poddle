@@ -9,6 +9,7 @@ import (
 	cliidentity "github.com/datadir-lab/poddle/src/cli/identity"
 	"github.com/datadir-lab/poddle/src/cli/ls"
 	"github.com/datadir-lab/poddle/src/cli/up"
+	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/exec"
 	"github.com/datadir-lab/poddle/src/internal/harness"
@@ -43,10 +44,18 @@ func NewRootCmd() *cobra.Command {
 		"claude-code": claudecode.New(),
 	}
 
-	root.AddCommand(ls.NewCmd(eng))
-	root.AddCommand(up.NewCmd(eng, store, reg, harnesses))
-	root.AddCommand(down.NewCmd(eng))
-	root.AddCommand(cliidentity.NewCmd(store, reg))
+	// The composition root: one App, injected into every command.
+	a := &app.App{
+		Engine:     eng,
+		Identities: store,
+		Providers:  reg,
+		Harnesses:  harnesses,
+	}
+
+	root.AddCommand(ls.NewCmd(a))
+	root.AddCommand(up.NewCmd(a))
+	root.AddCommand(down.NewCmd(a))
+	root.AddCommand(cliidentity.NewCmd(a))
 	return root
 }
 

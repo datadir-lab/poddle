@@ -8,23 +8,18 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
 
-// lister is the narrow provider capability this slice needs (the podman
-// provider in production, a fake in tests).
-type lister interface {
-	List() ([]sandbox.Sandbox, error)
-}
-
-// NewCmd builds the ls command around a lister.
-func NewCmd(p lister) *cobra.Command {
+// NewCmd builds the ls command.
+func NewCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
 		Short: "List sandboxes",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			list, err := p.List()
+			list, err := a.Engine.List()
 			if err != nil {
 				return err
 			}
