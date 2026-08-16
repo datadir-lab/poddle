@@ -10,6 +10,7 @@ package connector
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,10 +23,11 @@ import (
 // Definition is a declarative connector type. Env/Setup values use the
 // placeholders {broker} (broker host:port), {handle}, and {base_url}.
 type Definition struct {
-	Mode    string            `toml:"mode"`     // bearer | basic | api-key | endpoint
-	BaseURL string            `toml:"base_url"` // default upstream; a connection may override
-	Env     map[string]string `toml:"env"`      // pod env
-	Setup   []string          `toml:"setup"`    // pod setup commands
+	Mode      string            `toml:"mode"`      // bearer | basic | api-key | endpoint
+	Transport string            `toml:"transport"` // "" = HTTP gateway; "l4-redis" = L4 broker
+	BaseURL   string            `toml:"base_url"`  // default upstream; a connection may override
+	Env       map[string]string `toml:"env"`       // pod env
+	Setup     []string          `toml:"setup"`     // pod setup commands
 }
 
 // gitRewrite routes any {base_url} git op through the broker with the handle as
@@ -77,6 +79,8 @@ var builtins = map[string]Definition{
 	// pypi: user = "__token__"; trusted-host lets pip use the broker's HTTP index.
 	"pypi":   {Mode: "basic", BaseURL: "https://pypi.org", Setup: []string{pipRewrite, `pip config set global.trusted-host {broker}`}},
 	"docker": {Mode: "basic", Setup: []string{dockerLogin}}, // Basic self-hosted registry; base_url per connection
+	// datastores — the L4 broker terminates auth + splices (not the HTTP gateway)
+	"redis": {Transport: "l4-redis"}, // base_url = redis://host:port per connection
 
 	// GitHub Actions has no connector of its own: it is the GitHub REST API
 	// (api.github.com/repos/.../actions), reached with the `github` connector's
@@ -123,13 +127,28 @@ func Credential(conn Connection, def Definition) (broker.Credential, error) {
 		return broker.Credential{}, fmt.Errorf("read %s token: %w", conn.Connector, err)
 	}
 	token := strings.TrimSpace(string(b))
-	secret := token
-	if def.Mode == "basic" {
-		secret = conn.User + ":" + token
-	}
 	baseURL := conn.BaseURL // a connection's URL overrides the definition default
 	if baseURL == "" {
 		baseURL = def.BaseURL
+	}
+
+	// L4 datastores: the credential carries a DSN with the real user:password so
+	// the L4 broker can authenticate to the upstream. The pod never sees it.
+	if def.Transport == "l4-redis" {
+		if !strings.Contains(baseURL, "://") {
+			baseURL = "redis://" + baseURL
+		}
+		u, err := url.Parse(baseURL)
+		if err != nil {
+			return broker.Credential{}, fmt.Errorf("connection %q url: %w", conn.Name, err)
+		}
+		u.User = url.UserPassword(conn.User, token)
+		return broker.Credential{Vendor: conn.Connector, BaseURL: u.String()}, nil
+	}
+
+	secret := token
+	if def.Mode == "basic" {
+		secret = conn.User + ":" + token
 	}
 	return broker.Credential{
 		Mode:    brokerMode(def.Mode),

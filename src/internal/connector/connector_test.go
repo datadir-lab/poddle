@@ -87,7 +87,7 @@ func TestBuiltins_AllPresent(t *testing.T) {
 	for _, name := range []string{
 		"forgejo", "gitea", "github", "gitlab", "bitbucket",
 		"woodpecker", "drone", "argocd", "jenkins",
-		"npm", "pypi", "docker",
+		"npm", "pypi", "docker", "redis",
 	} {
 		if _, err := LoadDefinition("", name); err != nil {
 			t.Errorf("built-in connector %q missing: %v", name, err)
@@ -204,6 +204,21 @@ func TestWiring_NpmRegistryAndToken(t *testing.T) {
 	}
 	if len(setup) != 2 || setup[0] != want[0] || setup[1] != want[1] {
 		t.Errorf("npm setup = %v\nwant %v", setup, want)
+	}
+}
+
+func TestCredential_RedisAssemblesDSN(t *testing.T) {
+	s := NewStore(t.TempDir())
+	def, _ := LoadDefinition("", "redis")
+
+	conn, _ := s.Create("cache", "redis", "redis://10.0.0.5:6379", "default", "SECRETPASS", "")
+	if cred, _ := Credential(conn, def); cred.BaseURL != "redis://default:SECRETPASS@10.0.0.5:6379" {
+		t.Errorf("redis DSN = %q", cred.BaseURL)
+	}
+	// bare host, no user → redis:// prefix + empty user (password-only auth)
+	conn2, _ := s.Create("c2", "redis", "10.0.0.5:6379", "", "PW", "")
+	if cred, _ := Credential(conn2, def); cred.BaseURL != "redis://:PW@10.0.0.5:6379" {
+		t.Errorf("redis DSN (no user) = %q", cred.BaseURL)
 	}
 }
 
