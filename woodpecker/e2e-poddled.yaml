@@ -1,0 +1,22 @@
+# Poddled e2e — the persistent broker loop.
+#
+# Real `poddle up --detach` on this step's nested podman leaves a secretless pod
+# running with its broker alive in poddled (the up process exits). A SEPARATE
+# `poddle run` then reaches the service through that still-alive broker — the
+# mock upstream sees the real token, never the handle — and `poddle down`
+# revokes + removes. Proves the broker outlives the client. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-poddled:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-poddled
