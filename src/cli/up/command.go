@@ -17,6 +17,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
+	"git.dev.datadir.co/datadir/poddle/src/internal/secure"
 )
 
 // brokerBindAddr is where the up-scoped broker listens in Phase 1: all
@@ -92,6 +93,11 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 			}
 			for _, m := range tpl.Mounts {
 				spec.Mounts = append(spec.Mounts, sandbox.Mount{Host: m.Host, Container: m.Container, ReadOnly: m.ReadOnly})
+			}
+			// Secret-safety: refuse mounts that would expose host secrets (the
+			// always-on deny-list plus the template's block_paths).
+			if err := secure.CheckMounts(spec.Mounts, tpl.BlockPaths); err != nil {
+				return err
 			}
 			setupCmds, err := tpl.SetupCommands()
 			if err != nil {
