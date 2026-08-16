@@ -22,6 +22,9 @@ func NewGateway(h *Handles) *Gateway { return &Gateway{handles: h} }
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cred, err := g.handles.Resolve(handleFromAuth(r.Header.Get("Authorization")))
 	if err != nil {
+		// Challenge so git (which doesn't send Basic preemptively) retries with
+		// the handle it has in the URL creds.
+		w.Header().Set("WWW-Authenticate", `Basic realm="poddle"`)
 		http.Error(w, "invalid or revoked handle", http.StatusUnauthorized)
 		return
 	}
