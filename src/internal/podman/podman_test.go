@@ -162,6 +162,28 @@ func TestCreate_SetupFailureReturnsError(t *testing.T) {
 	}
 }
 
+func TestExec_BuildsArgs(t *testing.T) {
+	f := &exec.Fake{}
+	p := New(f, "")
+	if err := p.Exec("cid", "npm test"); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if got := strings.Join(f.Calls[0], " "); got != "podman exec cid sh -c npm test" {
+		t.Errorf("exec args = %q", got)
+	}
+}
+
+func TestExec_RemoteAddsURL(t *testing.T) {
+	f := &exec.Fake{}
+	p := New(f, "ssh://h/sock")
+	if err := p.Exec("cid", "echo hi"); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if got := strings.Join(f.Calls[0], " "); got != "podman --url ssh://h/sock exec cid sh -c echo hi" {
+		t.Errorf("remote exec args = %q", got)
+	}
+}
+
 func TestAttach_BuildsInteractiveExec(t *testing.T) {
 	f := &exec.Fake{}
 	p := New(f, "")

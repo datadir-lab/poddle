@@ -67,3 +67,19 @@ func TestCredential_ErrorsWithoutToken(t *testing.T) {
 		t.Error("expected an error when no token is stored")
 	}
 }
+
+func TestCredential_BaseURLOverride(t *testing.T) {
+	t.Setenv("PODDLE_ANTHROPIC_BASE_URL", "http://mock.local:1234")
+	p := New()
+	id := testIdentity(t)
+	if err := os.WriteFile(filepath.Join(id.Dir(), tokenFile), []byte("tok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := p.Credential(id)
+	if err != nil {
+		t.Fatalf("credential: %v", err)
+	}
+	if c.BaseURL != "http://mock.local:1234" {
+		t.Errorf("BaseURL = %q, want the override", c.BaseURL)
+	}
+}
