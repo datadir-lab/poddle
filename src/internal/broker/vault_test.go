@@ -22,6 +22,23 @@ func TestVault_StoreGet(t *testing.T) {
 	}
 }
 
+func TestVault_EmptySecret(t *testing.T) {
+	v := NewVault()
+	c := Credential{Mode: ModeEndpoint, Vendor: "local", BaseURL: "http://localhost:1234"}
+
+	id, _ := v.Store("local", c)
+	got, err := v.Get("local", id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got != c {
+		t.Errorf("got %+v, want %+v", got, c)
+	}
+	if got.Secret != "" {
+		t.Errorf("empty secret should round-trip to \"\", got %q", got.Secret)
+	}
+}
+
 func TestVault_CrossTenantDenied(t *testing.T) {
 	v := NewVault()
 	id, _ := v.Store("tenant-a", Credential{Secret: "a"})
