@@ -4,6 +4,8 @@
 // real credential on the wire — so the secret never lives inside the pod.
 package broker
 
+import "time"
+
 // Mode is how a credential authenticates against its vendor.
 type Mode string
 
@@ -28,8 +30,9 @@ type Credential struct {
 // Handle is the pod-facing capability. The pod only ever sees Value; it is
 // opaque, high-entropy, revocable, and worthless off the broker.
 type Handle struct {
-	Value  string // opaque, high-entropy
-	Tenant string // owning tenant (single "local" tenant for now; multi-tenant later)
-	CredID string // the credential this handle resolves to
-	Scope  string // e.g. the pod name it was issued for
+	Value     string    // opaque, high-entropy
+	Tenant    string    // owning tenant (single "local" tenant for now; multi-tenant later)
+	CredID    string    // the credential this handle resolves to
+	Scope     string    // e.g. the pod name it was issued for
+	ExpiresAt time.Time // when the handle auto-expires; zero means never
 }
