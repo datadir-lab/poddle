@@ -96,6 +96,12 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A template repo is cloned into /workspace first, before setup runs.
+			// (Private-repo auth arrives with broker'd git tokens; public or
+			// token-in-URL works today. The image must have git.)
+			if tpl.Repo != "" {
+				setupCmds = append([]string{"git clone " + tpl.Repo + " /workspace"}, setupCmds...)
+			}
 			spec.Setup = append(spec.Setup, setupCmds...)
 
 			// No --identity on an interactive TTY: let the user pick one (or add

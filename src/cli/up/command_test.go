@@ -312,6 +312,26 @@ func TestUp_Template_Applied(t *testing.T) {
 	}
 }
 
+func TestUp_Template_RepoClonedFirst(t *testing.T) {
+	f := &fakeCreator{}
+	tpl := config.Template{Repo: "https://git.example/r.git", Setup: []string{"echo after"}}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Templates: fakeTemplates{tpl: tpl}}, broker.NewBroker())
+	c.SetArgs([]string{"box"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(f.spec.Setup) < 2 || f.spec.Setup[0] != "git clone https://git.example/r.git /workspace" {
+		t.Errorf("repo clone should be the first setup step: %v", f.spec.Setup)
+	}
+	if f.spec.Setup[1] != "echo after" {
+		t.Errorf("template setup should follow the clone: %v", f.spec.Setup)
+	}
+	if f.spec.Repo != "https://git.example/r.git" {
+		t.Errorf("repo label = %q", f.spec.Repo)
+	}
+}
+
 func TestUp_Template_CLIOverrides(t *testing.T) {
 	f := &fakeCreator{}
 	tpl := config.Template{Image: "docker.io/library/node:22", Size: "strong"}

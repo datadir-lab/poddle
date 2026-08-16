@@ -62,6 +62,12 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 
 ### Interactive UX
 
+### Templates (env blueprints)
+
+- [x] **1.T** `internal/config` + `up --template` + repo clone. Reusable pod blueprints (TOML, one file = one template named by filename): `image/size/harness/identity/repo/env/mounts/setup/scripts`. Compose via **`extends`** (string or list) — scalars override, lists append, maps merge; diamonds resolve, cycles error — across `~/.config/poddle/templates/`, project `.poddle/<name>.toml` (shadows user), and the root `.poddle.toml` **default**. CLI flags override the template (`flagOr` precedence). **`scripts`** reference `.sh` files (paths relative to the config's dir; read + run in the pod, after inline `setup`). **`repo`** → `git clone <repo> /workspace` first (private-repo auth arrives with broker'd git tokens). Lazy `config.DirResolver` (a broken project file fails only `up`, not `ls`). TDD: 10 config-resolution tests + up apply/CLI-override/repo-clone.
+
+### Interactive UX
+
 - [x] **1.E** `poddle up` without `--identity` on a TTY: arrow-key **select** an identity (`charmbracelet/huh`) — existing identities + "➕ Add a new identity" + "None — plain sandbox" (shown even with one). Add-new → provider select → name → auth, then it's used. Behind an `internal/prompt.Prompter` seam: real huh impl wired in `root` only when `x/term.IsTerminal` (else `App.Prompter` is nil), `FakePrompter` in tests. Non-TTY/`--detach`/explicit `--identity` skip the prompt (scripts/CI never hang). TDD: select-existing / add-new / none / detach-no-prompt / explicit-no-prompt.
 
 ---
