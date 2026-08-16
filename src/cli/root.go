@@ -7,11 +7,13 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/datadir-lab/poddle/src/cli/attach"
 	"github.com/datadir-lab/poddle/src/cli/connect"
 	"github.com/datadir-lab/poddle/src/cli/daemon"
 	"github.com/datadir-lab/poddle/src/cli/down"
 	cliidentity "github.com/datadir-lab/poddle/src/cli/identity"
 	"github.com/datadir-lab/poddle/src/cli/ls"
+	"github.com/datadir-lab/poddle/src/cli/run"
 	"github.com/datadir-lab/poddle/src/cli/up"
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/config"
@@ -30,8 +32,8 @@ import (
 // NewRootCmd builds the root poddle command and registers the feature slices.
 // It is the composition root: the engine, identity store, and provider/harness
 // registries are constructed once, bundled into an app.App, and injected into
-// each command. The secretless broker is up-scoped (Phase 1), so it is passed
-// only to `up`.
+// each command. The secretless broker now lives in poddled (auto-started); a
+// poddled client is passed to `up` (issue handles) and `down` (revoke them).
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "poddle",
@@ -80,7 +82,9 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(ls.NewCmd(a))
 	root.AddCommand(up.NewCmd(a, poddled.NewClient(""))) // persistent broker (auto-started)
-	root.AddCommand(down.NewCmd(a))
+	root.AddCommand(attach.NewCmd(a))
+	root.AddCommand(run.NewCmd(a))
+	root.AddCommand(down.NewCmd(a, poddled.NewClient("")))
 	root.AddCommand(cliidentity.NewCmd(a))
 	root.AddCommand(connect.NewCmd(a))
 	root.AddCommand(daemon.NewCmd())
