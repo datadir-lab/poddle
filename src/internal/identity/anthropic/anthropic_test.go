@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/identity"
 )
 
@@ -46,5 +47,31 @@ func TestMaterialize_SetsOAuthTokenEnv(t *testing.T) {
 	}
 	if m.Env["CLAUDE_CODE_OAUTH_TOKEN"] != "tok-123" {
 		t.Errorf("env = %v", m.Env)
+	}
+}
+
+func TestCredential_FromStoredToken(t *testing.T) {
+	p := New()
+	id := testIdentity(t)
+	if err := os.WriteFile(filepath.Join(id.Dir(), tokenFile), []byte("tok-123\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := p.Credential(id)
+	if err != nil {
+		t.Fatalf("credential: %v", err)
+	}
+	want := broker.Credential{
+		Mode: broker.ModeSubscription, Vendor: "anthropic",
+		Secret: "tok-123", BaseURL: "https://api.anthropic.com",
+	}
+	if c != want {
+		t.Errorf("got %+v, want %+v", c, want)
+	}
+}
+
+func TestCredential_ErrorsWithoutToken(t *testing.T) {
+	if _, err := New().Credential(testIdentity(t)); err == nil {
+		t.Error("expected an error when no token is stored")
 	}
 }
