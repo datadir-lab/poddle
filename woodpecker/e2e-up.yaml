@@ -6,9 +6,12 @@
 # token, no real account). Heavy (pulls node:22, installs claude-code); manual.
 #
 # Requires the repo to be security-trusted (privileged, for nested podman).
+#
+# Runs on every push (the secretless property is the whole point of the project)
+# plus manual. If VM167 gets strained, narrow to `branch: main` or back to manual.
 
 when:
-  - event: [manual]
+  - event: [push, manual]
 
 steps:
   e2e-up:
