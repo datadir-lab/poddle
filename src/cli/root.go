@@ -21,8 +21,10 @@ import (
 )
 
 // NewRootCmd builds the root poddle command and registers the feature slices.
-// It is the composition root: the engine, identity store, and provider registry
-// are constructed here once and injected into each slice.
+// It is the composition root: the engine, identity store, and provider/harness
+// registries are constructed once, bundled into an app.App, and injected into
+// each command. The secretless broker is up-scoped (Phase 1), so it is passed
+// only to `up`.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "poddle",
