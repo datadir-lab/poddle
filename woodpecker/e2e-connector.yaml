@@ -1,9 +1,13 @@
-# Connector e2e — a private git clone routed through the broker.
+# Connector e2e — private service access routed through the broker, three ways.
 #
-# Real `poddle up` with a forgejo connection on this step's nested podman: the
-# pod's git config is rewritten to the broker, `git clone` presents the handle
-# as its Basic username, and the broker swaps it for the real user:token — the
-# mock upstream sees the real creds, never the handle. Manual.
+# Real `poddle up` on this step's nested podman drives each auth+wiring pattern:
+#   forgejo    — git config rewrite; `git clone` sends the handle as its Basic
+#                username, the broker swaps it for the real user:token.
+#   npm        — .npmrc registry+token; `npm view` sends the handle as a Bearer,
+#                the broker swaps it for the real token.
+#   woodpecker — WOODPECKER_SERVER/TOKEN env; a Bearer call routes through the
+#                broker, which swaps the handle for the real token.
+# Each mock upstream sees the real creds, never the handle. Manual.
 #
 # Requires the repo to be security-trusted (privileged, for nested podman).
 
