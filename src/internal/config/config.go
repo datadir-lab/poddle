@@ -32,9 +32,10 @@ type Template struct {
 	Repo       string            `toml:"repo"`
 	Env        map[string]string `toml:"env"`
 	Mounts     []Mount           `toml:"mounts"`
-	Setup      []string          `toml:"setup"`      // inline commands
-	Scripts    []string          `toml:"scripts"`    // script files (absolute after load), read + run
-	Connectors []string          `toml:"connectors"` // connection names to broker into the pod
+	Setup      []string          `toml:"setup"`       // inline commands
+	Scripts    []string          `toml:"scripts"`     // script files (absolute after load), read + run
+	Connectors []string          `toml:"connectors"`  // connection names to broker into the pod
+	BlockPaths []string          `toml:"block_paths"` // host paths that must never enter the pod
 }
 
 // extendsList normalizes the string-or-list `extends` into a slice.
@@ -155,6 +156,7 @@ func merge(base, over Template) Template {
 		Setup:      concat(base.Setup, over.Setup),
 		Scripts:    concat(base.Scripts, over.Scripts),
 		Connectors: concat(base.Connectors, over.Connectors),
+		BlockPaths: concat(base.BlockPaths, over.BlockPaths),
 	}
 	m.Mounts = append(append([]Mount{}, base.Mounts...), over.Mounts...)
 	if len(m.Mounts) == 0 {

@@ -8,8 +8,8 @@ import (
 )
 
 func TestMerge_ScalarsOverrideListsAppendMapsMerge(t *testing.T) {
-	base := Template{Image: "base-img", Size: "weak", Setup: []string{"a"}, Env: map[string]string{"X": "1", "Y": "1"}}
-	over := Template{Image: "over-img", Setup: []string{"b"}, Env: map[string]string{"Y": "2", "Z": "3"}}
+	base := Template{Image: "base-img", Size: "weak", Setup: []string{"a"}, BlockPaths: []string{"/x"}, Env: map[string]string{"X": "1", "Y": "1"}}
+	over := Template{Image: "over-img", Setup: []string{"b"}, BlockPaths: []string{"/y"}, Env: map[string]string{"Y": "2", "Z": "3"}}
 	m := merge(base, over)
 
 	if m.Image != "over-img" {
@@ -20,6 +20,9 @@ func TestMerge_ScalarsOverrideListsAppendMapsMerge(t *testing.T) {
 	}
 	if !reflect.DeepEqual(m.Setup, []string{"a", "b"}) {
 		t.Errorf("setup = %v, want [a b] (append)", m.Setup)
+	}
+	if !reflect.DeepEqual(m.BlockPaths, []string{"/x", "/y"}) {
+		t.Errorf("block_paths = %v, want [/x /y] (append)", m.BlockPaths)
 	}
 	if want := map[string]string{"X": "1", "Y": "2", "Z": "3"}; !reflect.DeepEqual(m.Env, want) {
 		t.Errorf("env = %v, want %v (merge, over wins)", m.Env, want)
