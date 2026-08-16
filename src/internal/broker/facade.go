@@ -44,6 +44,10 @@ func (b *Broker) IssueHandle(credID, scope string, ttl time.Duration) (Handle, e
 // Revoke invalidates a handle immediately.
 func (b *Broker) Revoke(handleValue string) { b.handles.Revoke(handleValue) }
 
+// SetEgressMode configures egress redaction on the gateway: "redact" (default),
+// "block", or "off". Call before Serve.
+func (b *Broker) SetEgressMode(mode string) { b.server.gw.SetEgressMode(mode) }
+
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }
 
