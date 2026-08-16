@@ -12,5 +12,6 @@ type Engine interface {
 	List() ([]sandbox.Sandbox, error)
 	Create(spec sandbox.Spec) (id string, err error)
 	Attach(id string) error
+	Exec(id string, command string) error // run a one-shot command in the sandbox
 	Remove(id string) error
 }

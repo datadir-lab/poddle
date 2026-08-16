@@ -32,9 +32,18 @@ type fakeCreator struct {
 	engine.Engine
 	spec      sandbox.Spec
 	attached  string
+	execed    string
 	createErr error
 	attachErr error
 	log       *[]string // optional lifecycle recorder (nil = off)
+}
+
+func (f *fakeCreator) Exec(id, command string) error {
+	if f.log != nil {
+		*f.log = append(*f.log, "exec")
+	}
+	f.execed = command
+	return nil
 }
 
 func (f *fakeCreator) Create(s sandbox.Spec) (string, error) {
@@ -266,6 +275,50 @@ func TestUp_ExplicitIdentity_NoPrompt(t *testing.T) {
 	}
 	if h := f.spec.Env["HANDLE"]; !strings.HasPrefix(h, "poddle_") {
 		t.Errorf("explicit identity should be wired in; env = %v", f.spec.Env)
+	}
+}
+
+func TestUp_Exec_RunsCommandNotAttach(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
+	c.SetArgs([]string{"box", "--exec", "echo hi"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.execed != "echo hi" {
+		t.Errorf("exec = %q, want 'echo hi'", f.execed)
+	}
+	if f.attached != "" {
+		t.Errorf("--exec should not attach, got %q", f.attached)
+	}
+}
+
+func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+	var log []string
+	f := &fakeCreator{log: &log}
+	spy := &spyBroker{log: &log}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, spy)
+	c.SetArgs([]string{"box", "--identity", "work", "--exec", "claude -p hi"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// exec replaces attach in the lifecycle; broker still torn down after.
+	want := []string{"serve", "store", "issue", "create", "exec", "revoke:poddle_spy", "stop"}
+	if !reflect.DeepEqual(log, want) {
+		t.Errorf("lifecycle = %v, want %v", log, want)
+	}
+	if f.execed != "claude -p hi" {
+		t.Errorf("exec = %q", f.execed)
 	}
 }
 

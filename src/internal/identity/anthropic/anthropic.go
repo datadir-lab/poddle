@@ -67,10 +67,16 @@ func (p *Provider) Credential(id identity.Identity) (broker.Credential, error) {
 	if err != nil {
 		return broker.Credential{}, fmt.Errorf("read token: %w", err)
 	}
+	// PODDLE_ANTHROPIC_BASE_URL overrides the upstream — for an Anthropic-
+	// compatible proxy/gateway, or a mock in e2e tests.
+	baseURL := "https://api.anthropic.com"
+	if o := os.Getenv("PODDLE_ANTHROPIC_BASE_URL"); o != "" {
+		baseURL = o
+	}
 	return broker.Credential{
 		Mode:    broker.ModeSubscription,
 		Vendor:  "anthropic",
 		Secret:  strings.TrimSpace(string(b)),
-		BaseURL: "https://api.anthropic.com",
+		BaseURL: baseURL,
 	}, nil
 }
