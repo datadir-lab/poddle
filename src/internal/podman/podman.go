@@ -117,6 +117,24 @@ func (p *Provider) ExecDetached(id, command string) error {
 	return nil
 }
 
+// Resize live-updates a running sandbox's CPU ceiling and/or memory cap
+// (cgroup update, no restart). cpus is a ceiling — idle pods still float to ~0.
+func (p *Provider) Resize(id string, cpus float64, memory string) error {
+	u := []string{"update"}
+	if cpus > 0 {
+		u = append(u, "--cpus", fmt.Sprintf("%g", cpus))
+	}
+	if memory != "" {
+		u = append(u, "--memory", memory)
+	}
+	u = append(u, id)
+	res, err := p.Runner.Run("podman", p.podman(u...)...)
+	if err != nil {
+		return fmt.Errorf("podman update: %w: %s", err, res.Stderr)
+	}
+	return nil
+}
+
 // Remove force-stops and deletes a sandbox by id or name.
 func (p *Provider) Remove(id string) error {
 	args := p.podman("rm", "-f", id)

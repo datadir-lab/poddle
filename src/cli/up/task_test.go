@@ -6,6 +6,7 @@ import (
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
+	"git.dev.datadir.co/datadir/poddle/src/internal/config"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 )
@@ -69,6 +70,25 @@ func TestTask_DetachRunsBackgroundAndKeepsPod(t *testing.T) {
 	}
 	if f.removed != "" {
 		t.Errorf("detached task should leave the pod up, removed = %q", f.removed)
+	}
+}
+
+func TestTask_SizingHooks(t *testing.T) {
+	f := &fakeCreator{}
+	ap := taskApp(t, f, "run %s")
+	ap.Templates = fakeTemplates{tpl: config.Template{
+		Identity: "work", Harness: "claude-code",
+		BeforeTask: "strong", AfterTask: "weak",
+	}}
+	c := NewTaskCmd(ap, stubBroker{})
+	c.SetArgs([]string{"job", "--name", "hpod", "--keep"}) // --keep so after_task fires
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	want := []string{"hpod:8:16g", "hpod:2:4g"} // burst up (strong) then drop (weak)
+	if len(f.resized) != 2 || f.resized[0] != want[0] || f.resized[1] != want[1] {
+		t.Errorf("sizing hooks = %v, want %v", f.resized, want)
 	}
 }
 
