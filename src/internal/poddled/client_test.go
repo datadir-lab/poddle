@@ -19,7 +19,7 @@ func startDaemon(t *testing.T) *Client {
 	sock := filepath.Join(t.TempDir(), "poddled.sock")
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go func() { _ = Serve(ctx, sock, "0.0.0.0:0", "redact", "0.0.0.0:0") }()
+	go func() { _ = Serve(ctx, sock, "0.0.0.0:0", "redact", "0.0.0.0:0", "") }()
 
 	c := NewClient(sock)
 	deadline := time.Now().Add(3 * time.Second)
