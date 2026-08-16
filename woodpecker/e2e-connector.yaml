@@ -1,0 +1,21 @@
+# Connector e2e — a private git clone routed through the broker.
+#
+# Real `poddle up` with a forgejo connection on this step's nested podman: the
+# pod's git config is rewritten to the broker, `git clone` presents the handle
+# as its Basic username, and the broker swaps it for the real user:token — the
+# mock upstream sees the real creds, never the handle. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-connector:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-connector
