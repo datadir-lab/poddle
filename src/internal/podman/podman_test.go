@@ -1,6 +1,8 @@
 package podman
 
 import (
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -105,6 +107,58 @@ func TestCreate_RemoteAddsURL(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(f.Calls[0], " "), "--url ssh://h/sock run -d") {
 		t.Errorf("remote url missing: %v", f.Calls[0])
+	}
+}
+
+func TestCreate_RunsSetupCommands(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": "cid123\n"}}
+	p := New(f, "")
+
+	id, err := p.Create(sandbox.Spec{
+		Name: "box", Image: "img",
+		Setup: []string{"npm i -g @anthropic-ai/claude-code", "echo hi"},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if id != "cid123" {
+		t.Errorf("id = %q", id)
+	}
+	if len(f.Calls) != 3 { // run + 2 setup execs
+		t.Fatalf("want 3 calls (run + 2 setup), got %d: %v", len(f.Calls), f.Calls)
+	}
+	want1 := []string{"podman", "exec", "cid123", "sh", "-c", "npm i -g @anthropic-ai/claude-code"}
+	if !reflect.DeepEqual(f.Calls[1], want1) {
+		t.Errorf("setup 1 = %v, want %v", f.Calls[1], want1)
+	}
+	want2 := []string{"podman", "exec", "cid123", "sh", "-c", "echo hi"}
+	if !reflect.DeepEqual(f.Calls[2], want2) {
+		t.Errorf("setup 2 = %v, want %v", f.Calls[2], want2)
+	}
+}
+
+// failExecRunner succeeds for `podman run` but fails for `podman exec`.
+type failExecRunner struct{ calls [][]string }
+
+func (r *failExecRunner) Run(name string, args ...string) (exec.Result, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	for _, a := range args {
+		if a == "exec" {
+			return exec.Result{Stderr: "install boom"}, errors.New("exit 1")
+		}
+	}
+	return exec.Result{Stdout: "cid123\n"}, nil
+}
+func (r *failExecRunner) RunInteractive(name string, args ...string) error { return nil }
+
+func TestCreate_SetupFailureReturnsError(t *testing.T) {
+	p := New(&failExecRunner{}, "")
+	_, err := p.Create(sandbox.Spec{Name: "box", Image: "img", Setup: []string{"bad-cmd"}})
+	if err == nil {
+		t.Fatal("expected an error when a setup command fails")
+	}
+	if !strings.Contains(err.Error(), "box") {
+		t.Errorf("error should name the pod for cleanup, got %v", err)
 	}
 }
 

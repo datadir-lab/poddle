@@ -43,6 +43,11 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 - [x] **1.12** `up` lifecycle (Phase-1, up-scoped): when `--identity` set → `Serve` the broker (loopback for now) → wire → create → attach; **`Revoke(handle)` + `Stop` on session end** (deferred, revoke-before-stop). **`--detach` + `--identity` → error** (points to poddled/Phase 2). Introduced a `credBroker` seam interface on `up.NewCmd` (real `*broker.Broker` satisfies it; a **spy** asserts the exact lifecycle order `serve→store→issue→create→attach→revoke→stop`). Env base URL now `http://<addr>`. Cross-process revoke-on-`down` stays deferred to poddled. TDD (spy + detach-error → red → green). NOTE: the fmt gate caught this commit's unformatted test — working as intended.
 - [x] **1.13** finalize `root`/`App` wiring — most of it landed incrementally (App in 1.A, harnesses in 1.10, broker in 1.11). Strengthened `root_test` to assert the composition root registers all four subcommands; refreshed the `NewRootCmd` doc. `task ci` green; `up`/`identity --help` smoke ok.
 
+### Make it run on real containers (pre-1.14)
+
+- [x] **1.C** podman: run `spec.Setup` after create — `podman exec <id> sh -c "<cmd>"` per command (local + remote via `--url`); on failure leave the container running and return an error naming the pod for cleanup. TDD: happy path (exec calls in order) + setup-failure via a local stub runner (the shared `exec.Fake` can't fail one call but not another).
+- [ ] **1.D** broker reachability from the pod: bind `0.0.0.0:0` and point the pod at `http://host.containers.internal:<port>` (port from `Addr()`) instead of the loopback bind. Decide where `host.containers.internal` lives (const in `up` vs an `engine` method). Note: `0.0.0.0` is LAN-exposed (handle-gated); Phase 2/poddled binds tighter.
+
 ### Verify on the homelab (manual)
 
 - [ ] **1.14** On a podman host: `poddle identity add work` (real `claude setup-token`) → `poddle up --harness claude-code --identity work` → confirm `claude` runs in the pod through the broker, and **no anthropic token is in the pod env** (`env | grep -i anthropic` shows only the handle + broker URL).
