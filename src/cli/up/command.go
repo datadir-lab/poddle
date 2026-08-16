@@ -13,6 +13,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/config"
+	"github.com/datadir-lab/poddle/src/internal/connector"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
@@ -115,22 +116,37 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 				identityName = chosen
 			}
 
-			if identityName != "" {
+			// The broker serves when there's any brokered credential — an
+			// identity and/or connectors — and is torn down when the session ends.
+			if identityName != "" || len(tpl.Connectors) > 0 {
 				if detach {
-					return fmt.Errorf("--detach with --identity needs poddled (Phase 2); attach to keep the broker alive")
+					return fmt.Errorf("--detach with an identity or connector needs poddled (Phase 2); attach to keep the broker alive")
 				}
-				// Serve the broker so the harness env points at a live gateway,
-				// then tear it down when the attached session ends.
-				if _, err := b.Serve(brokerBindAddr); err != nil {
+				addr, err := b.Serve(brokerBindAddr)
+				if err != nil {
 					return fmt.Errorf("serve broker: %w", err)
 				}
 				defer func() { _ = b.Stop(context.Background()) }()
-
-				handle, err := applyIdentity(b, a.Identities, a.Providers, h, identityName, &spec)
+				_, port, err := net.SplitHostPort(addr)
 				if err != nil {
-					return err
+					return fmt.Errorf("broker address %q: %w", addr, err)
 				}
-				defer b.Revoke(handle)
+				podBrokerAddr := net.JoinHostPort(podBrokerHost, port)
+
+				if identityName != "" {
+					handle, err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec)
+					if err != nil {
+						return err
+					}
+					defer b.Revoke(handle)
+				}
+				for _, cn := range tpl.Connectors {
+					handle, err := applyConnector(b, a.Connections, a.ConnectorsDir, cn, name, podBrokerAddr, &spec)
+					if err != nil {
+						return err
+					}
+					defer b.Revoke(handle)
+				}
 			}
 
 			id, err := a.Engine.Create(spec)
@@ -163,7 +179,7 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 // Credential, seal it in the broker, and fold ONLY the harness's broker-pointing
 // env + install commands into the spec. Returns the issued handle so the caller
 // can revoke it on teardown. The real secret never touches the pod.
-func applyIdentity(b credBroker, store *idn.Store, reg idn.Registry, h harness.Harness, name string, spec *sandbox.Spec) (string, error) {
+func applyIdentity(b credBroker, store *idn.Store, reg idn.Registry, h harness.Harness, name, podBrokerURL string, spec *sandbox.Spec) (string, error) {
 	id, err := store.Get(name)
 	if err != nil {
 		return "", fmt.Errorf("identity %q: %w", name, err)
@@ -198,22 +214,51 @@ func applyIdentity(b credBroker, store *idn.Store, reg idn.Registry, h harness.H
 		return "", err
 	}
 
-	// The broker binds all host interfaces; the pod reaches it via the container
-	// host alias on the same port — not the bind host (which is the pod's own
-	// loopback inside the container).
-	_, port, err := net.SplitHostPort(b.Addr())
-	if err != nil {
-		return "", fmt.Errorf("broker address %q: %w", b.Addr(), err)
-	}
-	brokerURL := "http://" + net.JoinHostPort(podBrokerHost, port)
-
 	if spec.Env == nil {
 		spec.Env = map[string]string{}
 	}
-	for k, v := range h.Env(brokerURL, handle.Value) {
+	for k, v := range h.Env(podBrokerURL, handle.Value) {
 		spec.Env[k] = v
 	}
 	spec.Setup = append(spec.Setup, h.Provisions()...)
+	return handle.Value, nil
+}
+
+// applyConnector seals a connection's service token in the broker, issues a
+// handle, and folds the connector's pod wiring (env + setup) into the spec.
+// Connector setup (e.g. git url.insteadOf) is PREPENDED so it runs before the
+// repo clone. The real token never enters the pod.
+func applyConnector(b credBroker, store *connector.Store, connectorsDir, connName, podName, podBrokerAddr string, spec *sandbox.Spec) (string, error) {
+	conn, err := store.Get(connName)
+	if err != nil {
+		return "", fmt.Errorf("connection %q: %w", connName, err)
+	}
+	def, err := connector.LoadDefinition(connectorsDir, conn.Connector)
+	if err != nil {
+		return "", err
+	}
+	cred, err := connector.Credential(conn, def)
+	if err != nil {
+		return "", err
+	}
+	credID, err := b.Store(cred)
+	if err != nil {
+		return "", err
+	}
+	handle, err := b.IssueHandle(credID, podName+"/"+connName, 0)
+	if err != nil {
+		return "", err
+	}
+	env, setup := connector.Wiring(def, cred, podBrokerAddr, handle.Value)
+	if len(env) > 0 {
+		if spec.Env == nil {
+			spec.Env = map[string]string{}
+		}
+		for k, v := range env {
+			spec.Env[k] = v
+		}
+	}
+	spec.Setup = append(setup, spec.Setup...) // connector setup before the clone
 	return handle.Value, nil
 }
 
