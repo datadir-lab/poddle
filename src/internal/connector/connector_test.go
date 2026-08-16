@@ -86,12 +86,44 @@ func TestWiring_WoodpeckerEnv(t *testing.T) {
 func TestBuiltins_AllPresent(t *testing.T) {
 	for _, name := range []string{
 		"forgejo", "gitea", "github", "gitlab", "bitbucket",
-		"woodpecker", "drone",
-		"npm", "pypi",
+		"woodpecker", "drone", "argocd", "jenkins",
+		"npm", "pypi", "docker",
 	} {
 		if _, err := LoadDefinition("", name); err != nil {
 			t.Errorf("built-in connector %q missing: %v", name, err)
 		}
+	}
+}
+
+func TestWiring_JenkinsURLHandle(t *testing.T) {
+	def, _ := LoadDefinition("", "jenkins")
+	env, setup := Wiring(def, broker.Credential{}, "host.containers.internal:9000", "poddle_j")
+	if setup != nil {
+		t.Errorf("jenkins setup should be nil, got %v", setup)
+	}
+	if env["JENKINS_URL"] != "http://poddle_j:x@host.containers.internal:9000" {
+		t.Errorf("jenkins env = %v", env)
+	}
+}
+
+func TestWiring_ArgocdEnv(t *testing.T) {
+	def, _ := LoadDefinition("", "argocd")
+	env, _ := Wiring(def, broker.Credential{}, "host.containers.internal:9000", "poddle_a")
+	if env["ARGOCD_SERVER"] != "host.containers.internal:9000" ||
+		env["ARGOCD_AUTH_TOKEN"] != "poddle_a" || env["ARGOCD_OPTS"] != "--plaintext" {
+		t.Errorf("argocd env = %v", env)
+	}
+}
+
+func TestWiring_DockerConfigJSON(t *testing.T) {
+	def, _ := LoadDefinition("", "docker")
+	env, setup := Wiring(def, broker.Credential{}, "host.containers.internal:9000", "poddle_k")
+	if env != nil {
+		t.Errorf("docker env should be nil: %v", env)
+	}
+	want := `mkdir -p ~/.docker && printf '{"auths":{"%s":{"auth":"%s"}}}\n' "host.containers.internal:9000" "$(printf '%s:x' "poddle_k" | base64 | tr -d '\n')" > ~/.docker/config.json`
+	if len(setup) != 1 || setup[0] != want {
+		t.Errorf("docker setup = %v\nwant %q", setup, want)
 	}
 }
 
