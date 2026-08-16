@@ -60,8 +60,13 @@ func TestE2E_Connector_GitBasic(t *testing.T) {
 
 	// The pod's git config (set by the connector) rewrites the mock URL to the
 	// broker; the clone fails parsing the mock's 200 (|| true), but the request
-	// reaches the upstream with the swapped auth.
-	inPod := "git clone " + mock.URL + "/datadir/r.git /tmp/r 2>/tmp/e || true; echo GIT_DONE"
+	// reaches the upstream with the swapped auth. Diagnostics show the rewrite.
+	inPod := strings.Join([]string{
+		"git config --global --list | grep -i insteadof || echo NO_INSTEADOF",
+		"git clone " + mock.URL + "/datadir/r.git /tmp/r 2>/tmp/cloneerr; echo CLONE_RC=$?",
+		"head -3 /tmp/cloneerr 2>/dev/null || true",
+		"echo GIT_DONE",
+	}, "; ")
 
 	cmd := exec.Command(bin, "up", pod, "--exec", inPod)
 	cmd.Dir = proj
