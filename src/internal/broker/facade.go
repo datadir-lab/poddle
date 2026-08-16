@@ -44,6 +44,12 @@ func (b *Broker) IssueHandle(credID, scope string, ttl time.Duration) (Handle, e
 // Revoke invalidates a handle immediately.
 func (b *Broker) Revoke(handleValue string) { b.handles.Revoke(handleValue) }
 
+// Resolve returns the credential a handle maps to (used by the L4 broker, which
+// reads the handle from a datastore auth exchange rather than an HTTP header).
+func (b *Broker) Resolve(handleValue string) (Credential, error) {
+	return b.handles.Resolve(handleValue)
+}
+
 // SetEgressMode configures egress redaction on the gateway: "redact" (default),
 // "block", or "off". Call before Serve.
 func (b *Broker) SetEgressMode(mode string) { b.server.gw.SetEgressMode(mode) }

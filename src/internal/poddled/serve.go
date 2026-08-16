@@ -24,12 +24,13 @@ func SocketPath() string {
 	return filepath.Join(dir, "poddle", "poddled.sock")
 }
 
-// Serve runs the daemon until ctx is cancelled: it binds the injecting gateway
-// (pods reach it over TCP) and serves the control API on an owner-only Unix
-// socket at sockPath. A stale socket at that path is replaced.
-func Serve(ctx context.Context, sockPath, gatewayBind, egress string) error {
+// Serve runs the daemon until ctx is cancelled: it binds the injecting HTTP
+// gateway (pods reach it over TCP), the L4 Redis listener, and serves the
+// control API on an owner-only Unix socket at sockPath. A stale socket is
+// replaced.
+func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind string) error {
 	d := New(broker.NewBroker())
-	if _, err := d.Start(gatewayBind, egress); err != nil {
+	if _, err := d.Start(gatewayBind, egress, l4RedisBind); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(sockPath), 0o700); err != nil {
