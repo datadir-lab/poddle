@@ -1,12 +1,14 @@
-# Connector e2e — private service access routed through the broker, three ways.
+# Connector e2e — private service access routed through the broker, one subtest
+# per built-in connector.
 #
-# Real `poddle up` on this step's nested podman drives each auth+wiring pattern:
-#   forgejo    — git config rewrite; `git clone` sends the handle as its Basic
-#                username, the broker swaps it for the real user:token.
-#   npm        — .npmrc registry+token; `npm view` sends the handle as a Bearer,
-#                the broker swaps it for the real token.
-#   woodpecker — WOODPECKER_SERVER/TOKEN env; a Bearer call routes through the
-#                broker, which swaps the handle for the real token.
+# Real `poddle up` on this step's nested podman drives every connector's wiring:
+#   git hosts (forgejo/gitea/github/gitlab/bitbucket) — git url.insteadOf; the
+#     handle rides as the Basic username, broker swaps for the real user:token.
+#   CI (woodpecker/drone/argocd) — server/token env; a Bearer call routes
+#     through the broker, which swaps the handle for the real token.
+#   jenkins — handle in JENKINS_URL userinfo (Basic, via curl).
+#   npm — .npmrc Bearer;  pypi — pip index Basic (python image);
+#   docker — ~/.docker/config.json Basic, replayed at the broker.
 # Each mock upstream sees the real creds, never the handle. Manual.
 #
 # Requires the repo to be security-trusted (privileged, for nested podman).
