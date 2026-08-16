@@ -17,6 +17,9 @@ steps:
   e2e-up:
     image: quay.io/podman/stable
     privileged: true
+    environment:
+      # Which provider cases to run (comma list; empty = all defined).
+      PODDLE_E2E_PROVIDERS: anthropic
     commands:
       - dnf install -y golang git
       - export PATH=$PATH:$(go env GOPATH)/bin
