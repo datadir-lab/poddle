@@ -13,6 +13,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
+	"git.dev.datadir.co/datadir/poddle/src/internal/prompt"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
 
@@ -157,6 +158,114 @@ func TestUp_WithIdentity_Secretless(t *testing.T) {
 	// Harness provisions are folded into the spec.
 	if len(f.spec.Setup) == 0 {
 		t.Error("expected harness provisions in spec.Setup")
+	}
+}
+
+func TestUp_NoIdentity_SelectExisting(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+	f := &fakeCreator{}
+	// options: ["work (anthropic)", "+ Add new", "None"] → pick index 0 (existing).
+	pr := &prompt.FakePrompter{Selects: []int{0}}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c.SetArgs([]string{"mybox"}) // no --identity, no --detach
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if h := f.spec.Env["HANDLE"]; !strings.HasPrefix(h, "poddle_") {
+		t.Errorf("selected identity should be wired in; env = %v", f.spec.Env)
+	}
+}
+
+func TestUp_NoIdentity_None(t *testing.T) {
+	store := idn.NewStore(t.TempDir()) // empty
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{ProviderName: "anthropic"}}
+	f := &fakeCreator{}
+	// empty store → options ["+ Add new", "None"] → pick index 1 (None).
+	pr := &prompt.FakePrompter{Selects: []int{1}}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c.SetArgs([]string{"mybox"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if _, ok := f.spec.Env["HANDLE"]; ok {
+		t.Errorf("None should leave a plain pod; env = %v", f.spec.Env)
+	}
+	if f.spec.Name != "mybox" {
+		t.Error("pod should still be created for a plain sandbox")
+	}
+}
+
+func TestUp_NoIdentity_AddNew(t *testing.T) {
+	store := idn.NewStore(t.TempDir()) // empty
+	prov := &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: false,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}
+	reg := idn.Registry{"anthropic": prov}
+	f := &fakeCreator{}
+	// identity select ["+ Add new"(0), "None"(1)] → 0; provider select ["anthropic"(0)] → 0; name input → "work".
+	pr := &prompt.FakePrompter{Selects: []int{0, 0}, Inputs: []string{"work"}}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c.SetArgs([]string{"mybox"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !prov.AuthCalled {
+		t.Error("add-new should authenticate the new identity")
+	}
+	if _, err := store.Get("work"); err != nil {
+		t.Errorf("new identity should be created: %v", err)
+	}
+	if h := f.spec.Env["HANDLE"]; !strings.HasPrefix(h, "poddle_") {
+		t.Errorf("new identity should be wired in; env = %v", f.spec.Env)
+	}
+}
+
+func TestUp_Detach_NoPrompt(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{ProviderName: "anthropic"}}
+	f := &fakeCreator{}
+	pr := &prompt.FakePrompter{} // errors if prompted
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c.SetArgs([]string{"mybox", "--detach"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("--detach should not prompt: %v", err)
+	}
+	if _, ok := f.spec.Env["HANDLE"]; ok {
+		t.Error("--detach should leave a plain pod")
+	}
+}
+
+func TestUp_ExplicitIdentity_NoPrompt(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+	f := &fakeCreator{}
+	pr := &prompt.FakePrompter{} // errors if prompted
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses(), Prompter: pr}, broker.NewBroker())
+	c.SetArgs([]string{"mybox", "--identity", "work"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("explicit --identity should not prompt: %v", err)
+	}
+	if h := f.spec.Env["HANDLE"]; !strings.HasPrefix(h, "poddle_") {
+		t.Errorf("explicit identity should be wired in; env = %v", f.spec.Env)
 	}
 }
 

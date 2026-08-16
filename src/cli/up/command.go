@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -63,6 +64,17 @@ func NewCmd(a *app.App, b credBroker) *cobra.Command {
 				Name: name, Image: image, Template: "base",
 				Runtime: "container", Size: size, CPUs: cpus, Memory: mem,
 			}
+
+			// No --identity on an interactive TTY: let the user pick one (or add
+			// one, or a plain sandbox). Scripts/CI (no Prompter) skip this.
+			if identityName == "" && !detach && a.Prompter != nil {
+				chosen, err := selectIdentity(a)
+				if err != nil {
+					return err
+				}
+				identityName = chosen
+			}
+
 			if identityName != "" {
 				if detach {
 					return fmt.Errorf("--detach with --identity needs poddled (Phase 2); attach to keep the broker alive")
@@ -158,6 +170,76 @@ func applyIdentity(b credBroker, store *idn.Store, reg idn.Registry, h harness.H
 	}
 	spec.Setup = append(spec.Setup, h.Provisions()...)
 	return handle.Value, nil
+}
+
+const (
+	optAddIdentity = "➕ Add a new identity"
+	optNoIdentity  = "None — plain sandbox"
+)
+
+// selectIdentity interactively picks an identity when --identity was omitted.
+// Returns the chosen identity name, or "" for a plain (no-identity) sandbox.
+func selectIdentity(a *app.App) (string, error) {
+	ids, err := a.Identities.List()
+	if err != nil {
+		return "", err
+	}
+	options := make([]string, 0, len(ids)+2)
+	for _, id := range ids {
+		options = append(options, id.Name+" ("+id.Provider+")")
+	}
+	options = append(options, optAddIdentity, optNoIdentity)
+
+	i, err := a.Prompter.Select("Use which coding-agent login?", options)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case i < len(ids):
+		return ids[i].Name, nil
+	case options[i] == optAddIdentity:
+		return addIdentity(a)
+	default:
+		return "", nil // plain sandbox
+	}
+}
+
+// addIdentity prompts for a provider + name, runs its auth, and returns the name.
+func addIdentity(a *app.App) (string, error) {
+	providers := providerNames(a.Providers)
+	if len(providers) == 0 {
+		return "", fmt.Errorf("no auth providers registered")
+	}
+	pi, err := a.Prompter.Select("Auth provider?", providers)
+	if err != nil {
+		return "", err
+	}
+	providerName := providers[pi]
+	name, err := a.Prompter.Input("Name this identity")
+	if err != nil {
+		return "", err
+	}
+	p, ok := a.Providers.Get(providerName)
+	if !ok {
+		return "", fmt.Errorf("unknown provider %q", providerName)
+	}
+	id, err := a.Identities.Create(name, providerName)
+	if err != nil {
+		return "", err
+	}
+	if err := p.Authenticate(id); err != nil {
+		return "", fmt.Errorf("authenticate %q: %w", name, err)
+	}
+	return name, nil
+}
+
+func providerNames(reg idn.Registry) []string {
+	names := make([]string, 0, len(reg))
+	for k := range reg {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // resolveSize maps a size tier to concrete cpu/memory limits.
