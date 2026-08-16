@@ -27,7 +27,7 @@ tasks:
       - go test -tags e2e -v -run TestE2E_Secretless ./src/internal/broker/...
 
   e2e-up:
-    desc: `poddle up` e2e (needs podman) — secretless identity/exec + live resize
+    desc: poddle up e2e (needs podman) — secretless identity/exec + live resize
     cmds:
       - go test -tags e2e -v -run TestE2E_Up ./tests/e2e/...
 
