@@ -27,9 +27,9 @@ tasks:
       - go test -tags e2e -v -run TestE2E_Secretless ./src/internal/broker/...
 
   e2e-up:
-    desc: Full `poddle up --identity --exec` secretless e2e (needs podman; drives the real binary)
+    desc: `poddle up` e2e (needs podman) — secretless identity/exec + live resize
     cmds:
-      - go test -tags e2e -v -run TestE2E_Up_Secretless ./tests/e2e/...
+      - go test -tags e2e -v -run TestE2E_Up ./tests/e2e/...
 
   e2e-templates:
     desc: Templates e2e (needs podman) — extends nesting, scripts, repo clone, harness install
