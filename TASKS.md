@@ -60,6 +60,10 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
   - **What's left to confirm here** (1.14a already proved the Bearer swap + claude): only podman-specific bits — that `spec.Setup`'s `npm i` actually installs claude-code in the pod, and that `host.containers.internal` routes to the host's `0.0.0.0` bind under this podman config (rootless slirp/pasta vs rootful bridge — the curl in step 4 isolates it).
   - Teardown: exit the session → `up` revokes the handle + stops the broker; then `poddle down mybox`.
 
+### Interactive UX
+
+- [x] **1.E** `poddle up` without `--identity` on a TTY: arrow-key **select** an identity (`charmbracelet/huh`) — existing identities + "➕ Add a new identity" + "None — plain sandbox" (shown even with one). Add-new → provider select → name → auth, then it's used. Behind an `internal/prompt.Prompter` seam: real huh impl wired in `root` only when `x/term.IsTerminal` (else `App.Prompter` is nil), `FakePrompter` in tests. Non-TTY/`--detach`/explicit `--identity` skip the prompt (scripts/CI never hang). TDD: select-existing / add-new / none / detach-no-prompt / explicit-no-prompt.
+
 ---
 
 ## Phase 2 — poddled + reattach (atomize when we start it)
