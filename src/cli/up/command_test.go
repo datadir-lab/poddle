@@ -209,6 +209,32 @@ func TestUp_Identity_ServesAndTearsDown(t *testing.T) {
 	}
 }
 
+func TestUp_Identity_PodUsesHostAlias(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+
+	var log []string
+	f := &fakeCreator{log: &log}
+	spy := &spyBroker{log: &log} // Addr() → 127.0.0.1:12345
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, spy)
+	c.SetArgs([]string{"mybox", "--identity", "work"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// The pod must reach the broker via the container host alias, not loopback.
+	want := "http://host.containers.internal:12345"
+	if got := f.spec.Env["BROKER_ADDR"]; got != want {
+		t.Errorf("pod broker URL = %q, want %q", got, want)
+	}
+}
+
 func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
