@@ -7,16 +7,22 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 )
 
 // NewCmd builds the `identity` command tree around the store and provider registry.
-func NewCmd(store *idn.Store, reg idn.Registry) *cobra.Command {
+func NewCmd(a *app.App) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "identity",
 		Short: "Manage coding-agent logins (identities)",
 	}
-	c.AddCommand(addCmd(store, reg), lsCmd(store, reg), statusCmd(store, reg), rmCmd(store))
+	c.AddCommand(
+		addCmd(a.Identities, a.Providers),
+		lsCmd(a.Identities, a.Providers),
+		statusCmd(a.Identities, a.Providers),
+		rmCmd(a.Identities),
+	)
 	return c
 }
 

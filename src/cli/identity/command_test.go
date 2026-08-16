@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 )
 
@@ -13,7 +14,7 @@ func TestIdentity_AddCreatesAndAuthenticates(t *testing.T) {
 	fake := &idn.FakeProvider{ProviderName: "anthropic"}
 	reg := idn.Registry{"anthropic": fake}
 
-	c := NewCmd(store, reg)
+	c := NewCmd(&app.App{Identities: store, Providers: reg})
 	c.SetArgs([]string{"add", "work", "--provider", "anthropic"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -33,7 +34,7 @@ func TestIdentity_Ls(t *testing.T) {
 	}
 	reg := idn.Registry{"anthropic": &idn.FakeProvider{ProviderName: "anthropic", Authed: true}}
 
-	c := NewCmd(store, reg)
+	c := NewCmd(&app.App{Identities: store, Providers: reg})
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"ls"})
@@ -52,7 +53,7 @@ func TestIdentity_Rm(t *testing.T) {
 	if _, err := store.Create("work", "anthropic"); err != nil {
 		t.Fatal(err)
 	}
-	c := NewCmd(store, idn.Registry{})
+	c := NewCmd(&app.App{Identities: store, Providers: idn.Registry{}})
 	c.SetArgs([]string{"rm", "work"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

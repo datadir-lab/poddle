@@ -5,10 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/app"
+	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
 
 type fakeLister struct {
+	engine.Engine
 	list []sandbox.Sandbox
 	err  error
 }
@@ -19,7 +22,7 @@ func TestLs_RendersTable(t *testing.T) {
 	p := fakeLister{list: []sandbox.Sandbox{
 		{ID: "abc123", Name: "app", Template: "python", Size: "strong", State: "running", Repo: "r"},
 	}}
-	c := NewCmd(p)
+	c := NewCmd(&app.App{Engine: p})
 	var out bytes.Buffer
 	c.SetOut(&out)
 	if err := c.Execute(); err != nil {
@@ -34,7 +37,7 @@ func TestLs_RendersTable(t *testing.T) {
 }
 
 func TestLs_Empty(t *testing.T) {
-	c := NewCmd(fakeLister{})
+	c := NewCmd(&app.App{Engine: fakeLister{}})
 	var out bytes.Buffer
 	c.SetOut(&out)
 	if err := c.Execute(); err != nil {

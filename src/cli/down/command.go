@@ -3,21 +3,18 @@ package down
 
 import (
 	"github.com/spf13/cobra"
+
+	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 )
 
-// remover is the narrow provider capability this slice needs.
-type remover interface {
-	Remove(id string) error
-}
-
-// NewCmd builds the down command around a remover.
-func NewCmd(e remover) *cobra.Command {
+// NewCmd builds the down command.
+func NewCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "down <name|id>",
 		Short: "Stop and remove a sandbox",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return e.Remove(args[0])
+			return a.Engine.Remove(args[0])
 		},
 	}
 }

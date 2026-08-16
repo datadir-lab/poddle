@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/app"
+	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
@@ -18,6 +20,7 @@ func testHarnesses() harness.Registry {
 }
 
 type fakeCreator struct {
+	engine.Engine
 	spec      sandbox.Spec
 	attached  string
 	createErr error
@@ -36,7 +39,7 @@ func (f *fakeCreator) Attach(id string) error {
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f, nil, nil, testHarnesses())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()})
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"mybox", "--size", "strong"})
@@ -60,7 +63,7 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 
 func TestUp_DetachSkipsAttach(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f, nil, nil, testHarnesses())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()})
 	c.SetArgs([]string{"--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -73,7 +76,7 @@ func TestUp_DetachSkipsAttach(t *testing.T) {
 
 func TestUp_UnknownHarness_Errors(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f, nil, nil, testHarnesses())
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()})
 	c.SetArgs([]string{"mybox", "--harness", "bogus", "--detach"})
 
 	if err := c.Execute(); err == nil {
@@ -96,7 +99,7 @@ func TestUp_WithIdentity_MaterializesEnv(t *testing.T) {
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(f, store, reg, testHarnesses())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()})
 	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -116,7 +119,7 @@ func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(f, store, reg, testHarnesses())
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()})
 	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
 
 	if err := c.Execute(); err != nil {
