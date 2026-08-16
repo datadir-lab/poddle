@@ -80,7 +80,17 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("podman run: %w: %s", err, res.Stderr)
 	}
-	return strings.TrimSpace(res.Stdout), nil
+	id := strings.TrimSpace(res.Stdout)
+
+	// Provision the running container (e.g. install the harness). On failure the
+	// container is left running so it can be inspected before cleanup.
+	for _, cmd := range s.Setup {
+		ex := p.podman("exec", id, "sh", "-c", cmd)
+		if res, err := p.Runner.Run("podman", ex...); err != nil {
+			return "", fmt.Errorf("setup %q failed: %w: %s (inspect/remove: poddle down %s)", cmd, err, res.Stderr, s.Name)
+		}
+	}
+	return id, nil
 }
 
 // Attach opens an interactive shell inside the sandbox (bash if present, else sh).
