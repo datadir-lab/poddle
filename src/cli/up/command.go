@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
@@ -17,9 +18,9 @@ type creator interface {
 }
 
 // NewCmd builds the up command around a creator plus the identity store and
-// provider registry (used by --identity).
-func NewCmd(e creator, store *idn.Store, reg idn.Registry) *cobra.Command {
-	var image, size, identityName string
+// provider registry (used by --identity) and the harness registry (--harness).
+func NewCmd(e creator, store *idn.Store, reg idn.Registry, harnesses harness.Registry) *cobra.Command {
+	var image, size, identityName, harnessName string
 	var detach bool
 
 	c := &cobra.Command{
@@ -27,6 +28,9 @@ func NewCmd(e creator, store *idn.Store, reg idn.Registry) *cobra.Command {
 		Short: "Create a sandbox and connect to it",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, ok := harnesses.Get(harnessName); !ok {
+				return fmt.Errorf("unknown harness %q", harnessName)
+			}
 			name := "poddle"
 			if len(args) > 0 {
 				name = args[0]
@@ -57,6 +61,7 @@ func NewCmd(e creator, store *idn.Store, reg idn.Registry) *cobra.Command {
 	c.Flags().StringVar(&image, "image", "docker.io/library/debian:stable-slim", "base image")
 	c.Flags().StringVar(&size, "size", "weak", "resource size (weak|strong)")
 	c.Flags().StringVar(&identityName, "identity", "", "coding-agent login to use in the sandbox")
+	c.Flags().StringVar(&harnessName, "harness", "claude-code", "coding-agent runtime to run in the sandbox")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "create without attaching")
 	return c
 }

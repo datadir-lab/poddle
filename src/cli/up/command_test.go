@@ -5,9 +5,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
+
+// testHarnesses is a registry with a claude-code stand-in for up tests.
+func testHarnesses() harness.Registry {
+	return harness.Registry{
+		"claude-code": &harness.FakeHarness{HarnessName: "claude-code", Vendors: []string{"anthropic"}},
+	}
+}
 
 type fakeCreator struct {
 	spec      sandbox.Spec
@@ -28,7 +36,7 @@ func (f *fakeCreator) Attach(id string) error {
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f, nil, nil)
+	c := NewCmd(f, nil, nil, testHarnesses())
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"mybox", "--size", "strong"})
@@ -52,7 +60,7 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 
 func TestUp_DetachSkipsAttach(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(f, nil, nil)
+	c := NewCmd(f, nil, nil, testHarnesses())
 	c.SetArgs([]string{"--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -60,6 +68,19 @@ func TestUp_DetachSkipsAttach(t *testing.T) {
 	}
 	if f.attached != "" {
 		t.Errorf("attach should be skipped, got %q", f.attached)
+	}
+}
+
+func TestUp_UnknownHarness_Errors(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewCmd(f, nil, nil, testHarnesses())
+	c.SetArgs([]string{"mybox", "--harness", "bogus", "--detach"})
+
+	if err := c.Execute(); err == nil {
+		t.Error("expected an error for an unknown harness")
+	}
+	if f.spec.Name != "" {
+		t.Error("pod should not be created when the harness is invalid")
 	}
 }
 
@@ -75,7 +96,7 @@ func TestUp_WithIdentity_MaterializesEnv(t *testing.T) {
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(f, store, reg)
+	c := NewCmd(f, store, reg, testHarnesses())
 	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -95,7 +116,7 @@ func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(f, store, reg)
+	c := NewCmd(f, store, reg, testHarnesses())
 	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
 
 	if err := c.Execute(); err != nil {
