@@ -26,6 +26,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Secretless ./src/internal/broker/...
 
+  e2e-up:
+    desc: Full `poddle up --identity --exec` secretless e2e (needs podman; drives the real binary)
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Up_Secretless ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
