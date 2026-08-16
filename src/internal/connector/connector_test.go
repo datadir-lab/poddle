@@ -144,9 +144,12 @@ func TestWiring_PypiIndexURL(t *testing.T) {
 	if env != nil {
 		t.Errorf("pypi env should be nil: %v", env)
 	}
-	want := `pip config set global.index-url http://poddle_p:x@host.containers.internal:9000/simple/`
-	if len(setup) != 1 || setup[0] != want {
-		t.Errorf("pypi setup = %v\nwant %q", setup, want)
+	want := []string{
+		`pip config set global.index-url http://poddle_p:x@host.containers.internal:9000/simple/`,
+		`pip config set global.trusted-host host.containers.internal:9000`,
+	}
+	if len(setup) != 2 || setup[0] != want[0] || setup[1] != want[1] {
+		t.Errorf("pypi setup = %v\nwant %v", setup, want)
 	}
 }
 
