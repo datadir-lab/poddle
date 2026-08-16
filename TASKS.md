@@ -13,7 +13,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 - [x] **1.2** broker: in-memory `Vault` — `Store(tenant, cred) → credID`, `Get(tenant, credID)`, `Delete`. Test: store/get; get across a different tenant is denied.
 - [x] **1.3** broker: `IssueHandle(tenant, credID, scope) → Handle` (random, high-entropy) + `Resolve(handleValue) → (Credential, ok)` + `Revoke(handleValue)`. Test: resolve returns the cred; revoked handle no longer resolves; cross-tenant resolve denied.
 - [x] **1.4** broker: injecting HTTP handler — reads the handle from the incoming `Authorization`, resolves it, rewrites auth to the real secret per mode, reverse-proxies to the credential's upstream base URL. (`gateway.go`; tests in 1.H3.)
-- [ ] **1.5** broker: `Serve(addr)` / `Stop()` returning the bound addr. Test: start, one request round-trips through to a fake upstream, stop.
+- [x] **1.5** broker: `Server` — `Serve(addr) (bound, error)` (binds sync, serves async, returns concrete bound addr) + `Stop(ctx)` (graceful `http.Server.Shutdown`). Test: serve on `127.0.0.1:0`, request round-trips to a fake upstream, stop → address refuses. Interface/container-reachability deferred to 1.12/1.14.
 
 ### Hardening (before wiring `up`)
 
