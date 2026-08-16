@@ -48,6 +48,21 @@ func TestServer_ServeRoundTripStop(t *testing.T) {
 	}
 }
 
+func TestServer_Addr(t *testing.T) {
+	s := NewServer(nil)
+	if s.Addr() != "" {
+		t.Errorf("Addr before serve = %q, want empty", s.Addr())
+	}
+	addr, err := s.Serve("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+	if s.Addr() != addr {
+		t.Errorf("Addr = %q, Serve returned %q", s.Addr(), addr)
+	}
+}
+
 func TestServer_StopWithoutServe(t *testing.T) {
 	s := NewServer(nil)
 	if err := s.Stop(context.Background()); err != nil {

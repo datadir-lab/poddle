@@ -32,6 +32,14 @@ func (s *Server) Serve(addr string) (string, error) {
 	return ln.Addr().String(), nil
 }
 
+// Addr returns the bound address, or "" if the server has not been served.
+func (s *Server) Addr() string {
+	if s.ln == nil {
+		return ""
+	}
+	return s.ln.Addr().String()
+}
+
 // Stop gracefully shuts the server down, waiting on ctx for in-flight requests.
 // It is safe to call on a Server that was never served.
 func (s *Server) Stop(ctx context.Context) error {
