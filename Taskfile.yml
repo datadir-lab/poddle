@@ -46,6 +46,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Secure ./tests/e2e/...
 
+  e2e-poddled:
+    desc: Poddled e2e (needs podman) — up --detach -> run -> down through the persistent broker
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Poddled ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
