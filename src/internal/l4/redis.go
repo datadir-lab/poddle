@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -19,6 +20,24 @@ type Target struct {
 	Addr string // upstream host:port
 	User string // real auth user (may be empty)
 	Pass string // real auth password
+}
+
+// TargetFromDSN parses a datastore DSN (e.g. redis://user:pass@host:6379) into
+// a Target. The scheme is ignored — only host:port and userinfo are used.
+func TargetFromDSN(dsn string) (Target, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return Target{}, err
+	}
+	if u.Host == "" {
+		return Target{}, fmt.Errorf("datastore DSN %q has no host", dsn)
+	}
+	t := Target{Addr: u.Host}
+	if u.User != nil {
+		t.User = u.User.Username()
+		t.Pass, _ = u.User.Password()
+	}
+	return t, nil
 }
 
 // Resolver turns a pod-presented handle into its real Target.
