@@ -14,7 +14,6 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
 	"git.dev.datadir.co/datadir/poddle/src/cli/up"
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
-	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/config"
 	"git.dev.datadir.co/datadir/poddle/src/internal/connector"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
@@ -23,6 +22,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness/claudecode"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 	"git.dev.datadir.co/datadir/poddle/src/internal/identity/anthropic"
+	"git.dev.datadir.co/datadir/poddle/src/internal/poddled"
 	"git.dev.datadir.co/datadir/poddle/src/internal/podman"
 	"git.dev.datadir.co/datadir/poddle/src/internal/prompt"
 )
@@ -79,7 +79,7 @@ func NewRootCmd() *cobra.Command {
 	a.ConnectorsDir = filepath.Join(userCfg, "poddle", "connectors")
 
 	root.AddCommand(ls.NewCmd(a))
-	root.AddCommand(up.NewCmd(a, broker.NewBroker())) // broker is up-scoped (Phase 1)
+	root.AddCommand(up.NewCmd(a, poddled.NewClient(""))) // persistent broker (auto-started)
 	root.AddCommand(down.NewCmd(a))
 	root.AddCommand(cliidentity.NewCmd(a))
 	root.AddCommand(connect.NewCmd(a))
