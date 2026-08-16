@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -34,12 +35,24 @@ import (
 // registries are constructed once, bundled into an app.App, and injected into
 // each command. The secretless broker now lives in poddled (auto-started); a
 // poddled client is passed to `up` (issue handles) and `down` (revoke them).
+// version is stamped at build time via -ldflags "-X main.version=<v>".
+var version = "dev"
+
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "poddle",
 		Short:        "poddle — self-hostable, secret-safe agent dev environments",
+		Version:      version,
 		SilenceUsage: true,
 	}
+	root.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print the poddle version",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintln(cmd.OutOrStdout(), "poddle "+version)
+		},
+	})
 
 	// PODDLE_HOST empty = local podman; ssh://… = a remote host (same code path).
 	var eng engine.Engine = podman.New(exec.OS{}, os.Getenv("PODDLE_HOST"))

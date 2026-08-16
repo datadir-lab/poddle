@@ -115,6 +115,15 @@ type issueReq struct {
 	Credential broker.Credential `json:"credential"`
 }
 
+// Status is what GET /status reports: the pod-facing addresses and the active
+// pods with their live handle counts.
+type Status struct {
+	Gateway  string         `json:"gateway"`
+	Redis    string         `json:"redis"`
+	Postgres string         `json:"postgres"`
+	Pods     map[string]int `json:"pods"`
+}
+
 // Handler returns the control API:
 //
 //	GET    /health                 liveness
@@ -128,6 +137,17 @@ func (d *Daemon) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /gateway", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"addr": d.broker.Addr(), "redis": d.l4RedisAddr, "postgres": d.l4PostgresAddr})
+	})
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
+		d.mu.Lock()
+		pods := make(map[string]int, len(d.pods))
+		for name, handles := range d.pods {
+			pods[name] = len(handles)
+		}
+		d.mu.Unlock()
+		writeJSON(w, http.StatusOK, Status{
+			Gateway: d.broker.Addr(), Redis: d.l4RedisAddr, Postgres: d.l4PostgresAddr, Pods: pods,
+		})
 	})
 	mux.HandleFunc("POST /pods/{pod}/handles", func(w http.ResponseWriter, r *http.Request) {
 		var req issueReq

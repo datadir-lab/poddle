@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -34,5 +35,41 @@ func NewCmd() *cobra.Command {
 	c.Flags().StringVar(&socket, "socket", "", "control socket path (default: XDG_RUNTIME_DIR/poddle/poddled.sock)")
 	c.Flags().StringVar(&l4RedisBind, "l4-redis-bind", "0.0.0.0:0", "L4 Redis listener bind address pods reach")
 	c.Flags().StringVar(&l4PostgresBind, "l4-postgres-bind", "0.0.0.0:0", "L4 Postgres listener bind address pods reach")
+	c.AddCommand(statusCmd())
 	return c
+}
+
+// statusCmd builds `poddle daemon status`: report whether poddled is running and
+// what it's serving.
+func statusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show whether poddled is running and what it is serving",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out := cmd.OutOrStdout()
+			s, err := poddled.NewClient("").Status()
+			if err != nil {
+				fmt.Fprintln(out, "poddled: not running")
+				return nil
+			}
+			fmt.Fprintln(out, "poddled: running")
+			fmt.Fprintf(out, "  gateway:  %s\n", s.Gateway)
+			if s.Redis != "" {
+				fmt.Fprintf(out, "  redis:    %s\n", s.Redis)
+			}
+			if s.Postgres != "" {
+				fmt.Fprintf(out, "  postgres: %s\n", s.Postgres)
+			}
+			if len(s.Pods) == 0 {
+				fmt.Fprintln(out, "  pods:     none")
+				return nil
+			}
+			fmt.Fprintf(out, "  pods:     %d\n", len(s.Pods))
+			for name, n := range s.Pods {
+				fmt.Fprintf(out, "    - %s (%d handles)\n", name, n)
+			}
+			return nil
+		},
+	}
 }

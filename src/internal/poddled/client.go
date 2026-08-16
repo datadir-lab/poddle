@@ -157,6 +157,21 @@ func (c *Client) IssueHandle(pod, scope string, cred broker.Credential) (string,
 	return out.Handle, nil
 }
 
+// Status fetches the daemon's status (addresses + active pods). An error means
+// the daemon is not reachable (not running).
+func (c *Client) Status() (Status, error) {
+	resp, err := c.http.Get(c.uri("/status"))
+	if err != nil {
+		return Status{}, err
+	}
+	defer resp.Body.Close()
+	var s Status
+	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+		return Status{}, err
+	}
+	return s, nil
+}
+
 // RevokePod invalidates every handle the daemon issued for pod.
 func (c *Client) RevokePod(pod string) error {
 	req, _ := http.NewRequest(http.MethodDelete, c.uri("/pods/"+url.PathEscape(pod)), nil)
