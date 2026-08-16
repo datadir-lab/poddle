@@ -20,10 +20,11 @@ type Target struct {
 	Addr string // upstream host:port
 	User string // real auth user (may be empty)
 	Pass string // real auth password
+	DB   string // database name (Postgres); empty for Redis
 }
 
-// TargetFromDSN parses a datastore DSN (e.g. redis://user:pass@host:6379) into
-// a Target. The scheme is ignored — only host:port and userinfo are used.
+// TargetFromDSN parses a datastore DSN (e.g. postgres://user:pass@host:5432/db)
+// into a Target. The scheme is ignored — host:port, userinfo, and path are used.
 func TargetFromDSN(dsn string) (Target, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
@@ -32,7 +33,7 @@ func TargetFromDSN(dsn string) (Target, error) {
 	if u.Host == "" {
 		return Target{}, fmt.Errorf("datastore DSN %q has no host", dsn)
 	}
-	t := Target{Addr: u.Host}
+	t := Target{Addr: u.Host, DB: strings.TrimPrefix(u.Path, "/")}
 	if u.User != nil {
 		t.User = u.User.Username()
 		t.Pass, _ = u.User.Password()
