@@ -35,9 +35,10 @@ func TestE2E_L4_RedisThroughBroker(t *testing.T) {
 	const realPass = "REALPASS-e2e"
 	const upstreamPort = "16379"
 	_ = exec.Command("podman", "rm", "-f", "poddle-redis-upstream").Run()
-	up := exec.Command("podman", "run", "-d", "--name", "poddle-redis-upstream",
-		"-p", "127.0.0.1:"+upstreamPort+":6379",
-		"docker.io/library/redis:7", "redis-server", "--requirepass", realPass)
+	// Host networking so the broker (a host process) reaches redis at
+	// 127.0.0.1:<port> — rootless nested podman doesn't publish -p to that loopback.
+	up := exec.Command("podman", "run", "-d", "--name", "poddle-redis-upstream", "--network=host",
+		"docker.io/library/redis:7", "redis-server", "--requirepass", realPass, "--port", upstreamPort)
 	if out, err := up.CombinedOutput(); err != nil {
 		t.Fatalf("start upstream redis: %v\n%s", err, out)
 	}
