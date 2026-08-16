@@ -50,7 +50,14 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 
 ### Verify on the homelab (manual)
 
-- [ ] **1.14** On a podman host: `poddle identity add work` (real `claude setup-token`) → `poddle up --harness claude-code --identity work` → confirm `claude` runs in the pod through the broker, and **no anthropic token is in the pod env** (`env | grep -i anthropic` shows only the handle + broker URL).
+- [ ] **1.14** On a podman host, end-to-end:
+  1. `poddle identity add work` (real `claude setup-token`, browser login) → `poddle identity status work` = authenticated.
+  2. `poddle up mybox --identity work --harness claude-code --image node:22` — **use a node image**: the default `debian:stable-slim` has no npm, so the `npm i -g @anthropic-ai/claude-code` Setup step would fail.
+  3. In the attached pod: `env | grep -i anthropic` shows **only** `ANTHROPIC_BASE_URL=http://host.containers.internal:<port>` and `ANTHROPIC_AUTH_TOKEN=poddle_…` (the handle) — **no real token anywhere**.
+  4. Isolate reachability from auth: `curl "$ANTHROPIC_BASE_URL/"` from the pod → expect `401 invalid or revoked handle` (proves the pod can reach the broker + the gateway is alive).
+  5. Run `claude` → it should work through the broker.
+  - **Two real unknowns to watch:** (a) whether claude-code sends `ANTHROPIC_AUTH_TOKEN` as `Authorization: Bearer` (the gateway's extraction assumption — if `claude` 401s, this is the suspect; fix in `claudecode.Env`/gateway); (b) whether `host.containers.internal` routes to the host's `0.0.0.0` bind under this podman config (rootless slirp/pasta vs rootful bridge — the curl in step 4 isolates it).
+  - Teardown: exit the session → `up` revokes the handle + stops the broker; then `poddle down mybox`.
 
 ---
 
