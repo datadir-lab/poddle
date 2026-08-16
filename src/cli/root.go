@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -12,6 +13,7 @@ import (
 	"github.com/datadir-lab/poddle/src/cli/up"
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/exec"
 	"github.com/datadir-lab/poddle/src/internal/harness"
@@ -59,6 +61,14 @@ func NewRootCmd() *cobra.Command {
 	// Interactive prompts only on a real terminal; scripts/CI get no Prompter.
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		a.Prompter = prompt.NewHuh()
+	}
+
+	// Templates: user blueprints + the project's .poddle/ (loaded lazily per up).
+	cwd, _ := os.Getwd()
+	userCfg, _ := os.UserConfigDir()
+	a.Templates = config.DirResolver{
+		UserDir:    filepath.Join(userCfg, "poddle", "templates"),
+		ProjectDir: cwd,
 	}
 
 	root.AddCommand(ls.NewCmd(a))

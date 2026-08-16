@@ -10,6 +10,7 @@
 package app
 
 import (
+	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	"github.com/datadir-lab/poddle/src/internal/identity"
@@ -23,4 +24,5 @@ type App struct {
 	Providers  identity.Registry // auth vendors (anthropic, …)
 	Harnesses  harness.Registry  // pod-side runtimes (claude-code, …)
 	Prompter   prompt.Prompter   // interactive prompts; nil = non-interactive (no prompting)
+	Templates  config.Resolver   // template resolver; nil = no templates
 }
