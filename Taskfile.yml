@@ -26,6 +26,11 @@ tasks:
     cmds:
       - go vet ./...
 
+  fmt:
+    desc: Check gofmt formatting (fails on unformatted files)
+    cmds:
+      - cmd: 'test -z "$(gofmt -l ./src ./tests)" || (echo "gofmt: unformatted files:" && gofmt -l ./src ./tests && exit 1)'
+
   tidy:
     desc: Tidy go.mod / go.sum
     cmds:
@@ -43,7 +48,7 @@ tasks:
 
   ci:
     desc: What CI runs (fast, container-free)
-    deps: [vet, test, arch, build]
+    deps: [vet, fmt, test, arch, build]
 
   test-all:
     desc: Every tier (needs a container engine for integration/e2e)
