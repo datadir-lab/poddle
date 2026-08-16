@@ -14,9 +14,9 @@ import (
 	"testing"
 )
 
-// mockGit records the Authorization header of every request (git will fail
-// parsing the 200, but the request + auth are what we assert).
-func mockGit(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+// mockService records the Authorization header of every request (the client
+// will fail parsing the 200, but the request + auth are what we assert).
+func mockService(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -28,73 +28,98 @@ func mockGit(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
 	return srv
 }
 
-// TestE2E_Connector_GitBasic drives the real `poddle up` with a forgejo
-// connection against podman: the pod's git config is rewritten to the broker,
-// and a `git clone` presents the handle as its Basic username. The broker swaps
-// it for the real user:token — the mock upstream sees the real Basic creds and
-// NEVER the handle, with no token in the pod.
-func TestE2E_Connector_GitBasic(t *testing.T) {
+type connCase struct {
+	name      string
+	connector string
+	user      string                      // basic user (empty for bearer)
+	inPod     func(mockURL string) string // in-pod command that hits the service through the broker
+	wantAuth  func(sentinel string) string
+}
+
+var connCases = []connCase{
+	{
+		name: "forgejo_git", connector: "forgejo", user: "me",
+		inPod: func(m string) string {
+			return "git clone " + m + "/datadir/r.git /tmp/r 2>/dev/null || true; echo DONE"
+		},
+		wantAuth: func(s string) string { return "Basic " + base64.StdEncoding.EncodeToString([]byte("me:"+s)) },
+	},
+	{
+		name: "npm", connector: "npm",
+		inPod:    func(_ string) string { return "npm view express version 2>/dev/null || true; echo DONE" },
+		wantAuth: func(s string) string { return "Bearer " + s },
+	},
+	{
+		name: "woodpecker", connector: "woodpecker",
+		inPod: func(_ string) string {
+			return `curl -s -o /dev/null -H "Authorization: Bearer $WOODPECKER_TOKEN" "$WOODPECKER_SERVER/api/user" || true; echo DONE`
+		},
+		wantAuth: func(s string) string { return "Bearer " + s },
+	},
+}
+
+// TestE2E_Connectors drives real `poddle up` with each connector against podman:
+// the service request routes through the broker, which swaps the handle for the
+// real token — the upstream sees the real auth, never the handle.
+func TestE2E_Connectors(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
+	for _, tc := range connCases {
+		t.Run(tc.name, func(t *testing.T) { runConnCase(t, bin, tc) })
+	}
+}
 
+func runConnCase(t *testing.T, bin string, tc connCase) {
 	var mu sync.Mutex
 	var auths []string
-	mock := mockGit(t, &auths, &mu)
-	const sentinel = "SENTINEL-GIT"
+	mock := mockService(t, &auths, &mu)
+	const sentinel = "SENTINEL-CONN"
 
-	// A forgejo connection (upstream = the mock) in a throwaway config dir.
+	// A connection of this connector, upstream = the mock, in a throwaway dir.
 	xdg := t.TempDir()
-	connDir := filepath.Join(xdg, "poddle", "connections", "my-forgejo")
-	writeFile(t, filepath.Join(connDir, "meta.toml"),
-		"connector = \"forgejo\"\nbase_url = \""+mock.URL+"\"\nuser = \"me\"\nowner = \"local\"\n")
-	writeFile(t, filepath.Join(connDir, "forgejo-token"), sentinel)
+	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
+	meta := "connector = \"" + tc.connector + "\"\nbase_url = \"" + mock.URL + "\"\nowner = \"local\"\n"
+	if tc.user != "" {
+		meta += "user = \"" + tc.user + "\"\n"
+	}
+	writeFile(t, filepath.Join(connDir, "meta.toml"), meta)
+	writeFile(t, filepath.Join(connDir, tc.connector+"-token"), sentinel)
 
-	// A project template that brokers the connection into the pod.
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
-		"image = \"docker.io/library/node:22\"\nconnectors = [\"my-forgejo\"]\n")
+		"image = \"docker.io/library/node:22\"\nconnectors = [\"svc\"]\n")
 
-	const pod = "poddle-conn-e2e"
+	pod := "poddle-conn-" + tc.name
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
 
-	// The pod's git config (set by the connector) rewrites the mock URL to the
-	// broker; the clone fails parsing the mock's 200 (|| true), but the request
-	// reaches the upstream with the swapped auth. Diagnostics show the rewrite.
-	inPod := strings.Join([]string{
-		"git config --global --list | grep -i insteadof || echo NO_INSTEADOF",
-		"git clone " + mock.URL + "/datadir/r.git /tmp/r 2>/tmp/cloneerr; echo CLONE_RC=$?",
-		"head -3 /tmp/cloneerr 2>/dev/null || true",
-		"echo GIT_DONE",
-	}, "; ")
-
-	cmd := exec.Command(bin, "up", pod, "--exec", inPod)
+	cmd := exec.Command(bin, "up", pod, "--exec", tc.inPod(mock.URL))
 	cmd.Dir = proj
 	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("poddle up (connector) failed: %v\n%s", err, out)
+		t.Fatalf("poddle up (%s) failed: %v\n%s", tc.connector, err, out)
 	}
-	if !strings.Contains(string(out), "GIT_DONE") {
-		t.Fatalf("in-pod git step did not run:\n%s", out)
+	if !strings.Contains(string(out), "DONE") {
+		t.Fatalf("in-pod step did not run:\n%s", out)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
 	if len(auths) == 0 {
-		t.Fatalf("git upstream received no requests — the clone did not route through the broker:\n%s", out)
+		t.Fatalf("%s upstream received no requests — did not route through the broker:\n%s", tc.connector, out)
 	}
-	wantBasic := "Basic " + base64.StdEncoding.EncodeToString([]byte("me:"+sentinel))
+	want := tc.wantAuth(sentinel)
 	saw := false
 	for _, a := range auths {
 		if strings.Contains(a, "poddle_") {
-			t.Errorf("the handle leaked to the git upstream: %q", a)
+			t.Errorf("the handle leaked to the upstream: %q", a)
 		}
-		if a == wantBasic {
+		if a == want {
 			saw = true
 		}
 	}
 	if !saw {
-		t.Errorf("git upstream never saw the real Basic creds; got %v", auths)
+		t.Errorf("%s upstream never saw %q; got %v", tc.connector, want, auths)
 	}
 }
