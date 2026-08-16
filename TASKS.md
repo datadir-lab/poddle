@@ -15,6 +15,13 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 - [ ] **1.4** broker: injecting HTTP handler — reads the handle from the incoming `Authorization`, resolves it, rewrites `Authorization` to the real secret, reverse-proxies to the credential's upstream base URL. Test with an `httptest` upstream: assert the upstream saw the real auth + the original body/path.
 - [ ] **1.5** broker: `Serve(addr)` / `Stop()` returning the bound addr. Test: start, one request round-trips through to a fake upstream, stop.
 
+### Hardening (before wiring `up`)
+
+- [x] **1.H1** broker: handle TTL — `Handle.ExpiresAt`, `IssueHandle(…, ttl)` (`ttl<=0`→`DefaultHandleTTL`=12h), injectable clock, `Resolve` returns new `ErrExpired` and lazy-deletes expired records. Tests: resolves before expiry; `ErrExpired` after; lazy delete; default TTL.
+- [ ] **1.H2** broker: vault memory hardening — store secrets in `memguard` enclaves (locked + encrypted-at-rest-in-memory, wiped on `Delete`); `Store`/`Get`/`Delete` signatures unchanged; `memguard.Purge()` on shutdown. Note: per-request injection into a `net/http` header is unavoidably a short-lived plaintext string — hardening protects the long-lived vault copy, the high-value target.
+- [ ] **1.H3** broker: gateway tests (completes 1.4) — httptest upstream asserts per-mode header injection (`x-api-key` vs `Bearer`), handle stripped, path+query+body preserved, invalid/revoked/expired → 401.
+- [ ] **1.H4** broker: full round-trip test — real Vault+Handles+Gateway in front of an httptest fake vendor: all 3 modes, SSE streaming pass-through, revoked→401, expired→401, cross-tenant isolation. In-package (httptest), not testcontainers.
+
 ### Provider (auth) — refactor to hand a Credential, not a secret env
 
 - [ ] **1.6** `identity.Provider`: replace `Materialize()` with `Credential(id) → broker.Credential`. Update `FakeProvider`. Test the fake.
@@ -44,6 +51,7 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 - Move the broker into poddled (persistent, host-side).
 - Assigned-identity: pod-lifetime creds; close client, agent keeps running, reattach.
 - Remote pods + reverse-tunnel egress from pod → broker.
+- e2e tests for full flows (testcontainers): `up → agent calls through broker → down`, handle revoked on down, no secret in pod env — not just the broker in isolation.
 
 ## Phase 3 — Collaboration (coarse)
 

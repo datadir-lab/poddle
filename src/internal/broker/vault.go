@@ -11,6 +11,10 @@ import (
 // including cross-tenant access, which is treated as "not found".
 var ErrNotFound = errors.New("broker: not found")
 
+// ErrExpired is returned when a handle is past its ExpiresAt. The gateway maps
+// it to the same 401 as ErrNotFound; it stays distinct for logging.
+var ErrExpired = errors.New("broker: handle expired")
+
 // Vault holds credentials in memory, scoped by tenant. A credential is never
 // written to disk or handed to a pod.
 type Vault struct {
