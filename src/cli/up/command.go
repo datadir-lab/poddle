@@ -36,6 +36,7 @@ type podBroker interface {
 	RedisAddr() (string, error)
 	PostgresAddr() (string, error)
 	IssueHandle(pod, scope string, cred broker.Credential) (string, error)
+	RevokePod(pod string) error
 }
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
@@ -49,149 +50,18 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 		Short: "Create a sandbox and connect to it",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Resolve the template (project default, or --template), then let
-			// explicit CLI flags override it.
-			var tpl config.Template
-			if a.Templates != nil {
-				var err error
-				if tpl, err = a.Templates.Resolve(templateName); err != nil {
-					return err
-				}
-			}
-			harnessName = flagOr(cmd, "harness", harnessName, tpl.Harness)
-			image = flagOr(cmd, "image", image, tpl.Image)
-			size = flagOr(cmd, "size", size, tpl.Size)
-			if identityName == "" && tpl.Identity != "" {
-				identityName = tpl.Identity
-			}
-
-			h, ok := a.Harnesses.Get(harnessName)
-			if !ok {
-				return fmt.Errorf("unknown harness %q", harnessName)
-			}
 			name := "poddle"
 			if len(args) > 0 {
 				name = args[0]
 			}
-			cpus, mem := resolveSize(size)
-			spec := sandbox.Spec{
-				Name: name, Image: image, Template: "base",
-				Runtime: "container", Size: size, CPUs: cpus, Memory: mem, Repo: tpl.Repo,
-			}
-
-			// Fold the template's env, mounts, and setup (inline + scripts) in.
-			if len(tpl.Env) > 0 {
-				spec.Env = map[string]string{}
-				for k, v := range tpl.Env {
-					spec.Env[k] = v
-				}
-			}
-			for _, m := range tpl.Mounts {
-				spec.Mounts = append(spec.Mounts, sandbox.Mount{Host: m.Host, Container: m.Container, ReadOnly: m.ReadOnly})
-			}
-			// Secret-safety: refuse mounts that would expose host secrets (the
-			// always-on deny-list plus the template's block_paths).
-			if err := secure.CheckMounts(spec.Mounts, tpl.BlockPaths); err != nil {
-				return err
-			}
-			// Warn (or, with secret_scan="block", refuse) when a mounted dir
-			// carries credential files. The repo path is a clone, so uncommitted
-			// secrets are already absent; this catches explicit bind mounts.
-			if findings := secure.ScanMounts(spec.Mounts); len(findings) > 0 {
-				mode := tpl.SecretScan
-				if mode == "" {
-					mode = "warn"
-				}
-				if mode != "off" {
-					var b strings.Builder
-					for _, f := range findings {
-						fmt.Fprintf(&b, "  - %s (%s)\n", f.Path, f.Rule)
-					}
-					if mode == "block" {
-						return fmt.Errorf("secret_scan: credential files inside mounts (set secret_scan=\"warn\" to allow):\n%s", b.String())
-					}
-					fmt.Fprintf(cmd.ErrOrStderr(), "poddle: warning — credential files inside bind mounts:\n%s", b.String())
-				}
-			}
-			setupCmds, err := tpl.SetupCommands()
+			spec, _, err := buildSpec(cmd, a, b, buildOpts{
+				name: name, image: image, size: size, identityName: identityName,
+				harnessName: harnessName, templateName: templateName,
+				allowSelect: !detach && execCmd == "" && a.Prompter != nil,
+			})
 			if err != nil {
 				return err
 			}
-			// A template repo is cloned into /workspace first, before setup runs.
-			// (Private-repo auth arrives with broker'd git tokens; public or
-			// token-in-URL works today. The image must have git.)
-			if tpl.Repo != "" {
-				setupCmds = append([]string{"git clone " + tpl.Repo + " /workspace"}, setupCmds...)
-			}
-			spec.Setup = append(spec.Setup, setupCmds...)
-
-			// No --identity on an interactive TTY: let the user pick one (or add
-			// one, or a plain sandbox). Scripts/CI (no Prompter), --detach, and
-			// --exec skip this.
-			if identityName == "" && !detach && execCmd == "" && a.Prompter != nil {
-				chosen, err := selectIdentity(a)
-				if err != nil {
-					return err
-				}
-				identityName = chosen
-			}
-
-			// Any brokered credential — an identity and/or connectors — is issued
-			// against the persistent poddled broker. The handles live until
-			// `down` revokes them, so the pod (attached or detached) keeps
-			// working. poddled auto-starts on first use.
-			if identityName != "" || len(tpl.Connectors) > 0 {
-				if err := b.EnsureRunning(); err != nil {
-					return fmt.Errorf("start poddled: %w", err)
-				}
-				addr, err := b.Gateway()
-				if err != nil {
-					return fmt.Errorf("broker gateway: %w", err)
-				}
-				_, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return fmt.Errorf("broker address %q: %w", addr, err)
-				}
-				podBrokerAddr := net.JoinHostPort(podBrokerHost, port)
-
-				if identityName != "" {
-					if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
-						return err
-					}
-				}
-				var redisPodAddr, pgPodAddr string // resolved lazily, only if needed
-				for _, cn := range tpl.Connectors {
-					conn, err := a.Connections.Get(cn)
-					if err != nil {
-						return fmt.Errorf("connection %q: %w", cn, err)
-					}
-					def, err := connector.LoadDefinition(a.ConnectorsDir, conn.Connector)
-					if err != nil {
-						return err
-					}
-					switch def.Transport {
-					case "l4-redis":
-						if redisPodAddr, err = podL4Addr(redisPodAddr, b.RedisAddr); err != nil {
-							return err
-						}
-						if err := applyRedisDatastore(b, conn, def, name, redisPodAddr, &spec); err != nil {
-							return err
-						}
-					case "l4-postgres":
-						if pgPodAddr, err = podL4Addr(pgPodAddr, b.PostgresAddr); err != nil {
-							return err
-						}
-						if err := applyPostgresDatastore(b, conn, def, name, pgPodAddr, &spec); err != nil {
-							return err
-						}
-					default:
-						if err := applyConnector(b, conn, def, name, podBrokerAddr, &spec); err != nil {
-							return err
-						}
-					}
-				}
-			}
-
 			id, err := a.Engine.Create(spec)
 			if err != nil {
 				return err
@@ -215,6 +85,149 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().StringVar(&execCmd, "exec", "", "run a command in the sandbox instead of attaching, then tear down")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "create without attaching")
 	return c
+}
+
+// buildOpts carries the resolved flag values buildSpec needs.
+type buildOpts struct {
+	name, image, size, identityName, harnessName, templateName string
+	allowSelect                                                bool // interactively select an identity when none is given and a Prompter exists
+	requireIdentity                                            bool // error if no identity is resolved (an autonomous task needs auth)
+}
+
+// buildSpec resolves the template + flag overrides, runs secret-safety, and
+// issues broker handles (identity + connectors) against poddled — returning a
+// ready-to-create spec and the resolved harness. It does not create the pod, so
+// both `up` and `task` share it.
+func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbox.Spec, harness.Harness, error) {
+	fail := func(err error) (sandbox.Spec, harness.Harness, error) { return sandbox.Spec{}, nil, err }
+
+	var tpl config.Template
+	if a.Templates != nil {
+		var err error
+		if tpl, err = a.Templates.Resolve(o.templateName); err != nil {
+			return fail(err)
+		}
+	}
+	harnessName := flagOr(cmd, "harness", o.harnessName, tpl.Harness)
+	image := flagOr(cmd, "image", o.image, tpl.Image)
+	size := flagOr(cmd, "size", o.size, tpl.Size)
+	identityName := o.identityName
+	if identityName == "" && tpl.Identity != "" {
+		identityName = tpl.Identity
+	}
+
+	h, ok := a.Harnesses.Get(harnessName)
+	if !ok {
+		return fail(fmt.Errorf("unknown harness %q", harnessName))
+	}
+	cpus, mem := resolveSize(size)
+	spec := sandbox.Spec{
+		Name: o.name, Image: image, Template: "base",
+		Runtime: "container", Size: size, CPUs: cpus, Memory: mem, Repo: tpl.Repo,
+	}
+
+	if len(tpl.Env) > 0 {
+		spec.Env = map[string]string{}
+		for k, v := range tpl.Env {
+			spec.Env[k] = v
+		}
+	}
+	for _, m := range tpl.Mounts {
+		spec.Mounts = append(spec.Mounts, sandbox.Mount{Host: m.Host, Container: m.Container, ReadOnly: m.ReadOnly})
+	}
+	if err := secure.CheckMounts(spec.Mounts, tpl.BlockPaths); err != nil {
+		return fail(err)
+	}
+	if findings := secure.ScanMounts(spec.Mounts); len(findings) > 0 {
+		mode := tpl.SecretScan
+		if mode == "" {
+			mode = "warn"
+		}
+		if mode != "off" {
+			var sb strings.Builder
+			for _, f := range findings {
+				fmt.Fprintf(&sb, "  - %s (%s)\n", f.Path, f.Rule)
+			}
+			if mode == "block" {
+				return fail(fmt.Errorf("secret_scan: credential files inside mounts (set secret_scan=\"warn\" to allow):\n%s", sb.String()))
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "poddle: warning — credential files inside bind mounts:\n%s", sb.String())
+		}
+	}
+	setupCmds, err := tpl.SetupCommands()
+	if err != nil {
+		return fail(err)
+	}
+	if tpl.Repo != "" {
+		setupCmds = append([]string{"git clone " + tpl.Repo + " /workspace"}, setupCmds...)
+	}
+	spec.Setup = append(spec.Setup, setupCmds...)
+
+	if identityName == "" && o.allowSelect && a.Prompter != nil {
+		chosen, err := selectIdentity(a)
+		if err != nil {
+			return fail(err)
+		}
+		identityName = chosen
+	}
+	if o.requireIdentity && identityName == "" {
+		return fail(fmt.Errorf("no identity: pass --identity or set one in the template"))
+	}
+
+	// Any brokered credential — an identity and/or connectors — is issued
+	// against the persistent poddled broker; the handles live until `down`.
+	if identityName != "" || len(tpl.Connectors) > 0 {
+		if err := b.EnsureRunning(); err != nil {
+			return fail(fmt.Errorf("start poddled: %w", err))
+		}
+		addr, err := b.Gateway()
+		if err != nil {
+			return fail(fmt.Errorf("broker gateway: %w", err))
+		}
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return fail(fmt.Errorf("broker address %q: %w", addr, err))
+		}
+		podBrokerAddr := net.JoinHostPort(podBrokerHost, port)
+
+		if identityName != "" {
+			if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
+				return fail(err)
+			}
+		}
+		var redisPodAddr, pgPodAddr string // resolved lazily, only if needed
+		for _, cn := range tpl.Connectors {
+			conn, err := a.Connections.Get(cn)
+			if err != nil {
+				return fail(fmt.Errorf("connection %q: %w", cn, err))
+			}
+			def, err := connector.LoadDefinition(a.ConnectorsDir, conn.Connector)
+			if err != nil {
+				return fail(err)
+			}
+			switch def.Transport {
+			case "l4-redis":
+				if redisPodAddr, err = podL4Addr(redisPodAddr, b.RedisAddr); err != nil {
+					return fail(err)
+				}
+				if err := applyRedisDatastore(b, conn, def, o.name, redisPodAddr, &spec); err != nil {
+					return fail(err)
+				}
+			case "l4-postgres":
+				if pgPodAddr, err = podL4Addr(pgPodAddr, b.PostgresAddr); err != nil {
+					return fail(err)
+				}
+				if err := applyPostgresDatastore(b, conn, def, o.name, pgPodAddr, &spec); err != nil {
+					return fail(err)
+				}
+			default:
+				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, &spec); err != nil {
+					return fail(err)
+				}
+			}
+		}
+	}
+	return spec, h, nil
 }
 
 // applyIdentity wires an identity into the pod secretlessly: re-authenticate on
