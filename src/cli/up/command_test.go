@@ -11,6 +11,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/config"
+	"git.dev.datadir.co/datadir/poddle/src/internal/connector"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
@@ -309,6 +310,37 @@ func TestUp_Template_Applied(t *testing.T) {
 	}
 	if len(f.spec.Setup) == 0 || f.spec.Setup[0] != "echo hi" {
 		t.Errorf("template setup not applied: %v", f.spec.Setup)
+	}
+}
+
+func TestUp_Connector_WiredIntoPodBeforeClone(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("my-forgejo", "forgejo", "http://192.168.1.166:3000", "me", "TOK", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var log []string
+	f := &fakeCreator{}
+	spy := &spyBroker{log: &log} // Serve/Addr → 127.0.0.1:12345, IssueHandle → poddle_spy
+	c := NewCmd(&app.App{
+		Engine:      f,
+		Harnesses:   testHarnesses(),
+		Templates:   fakeTemplates{tpl: config.Template{Connectors: []string{"my-forgejo"}, Repo: "http://192.168.1.166:3000/datadir/r.git"}},
+		Connections: cstore,
+	}, spy)
+	c.SetArgs([]string{"box", "--exec", "true"}) // --exec avoids the interactive attach
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// The connector's git rewrite must be the FIRST setup step (before the clone).
+	wantGit := `git config --global url."http://poddle_spy:x@host.containers.internal:12345/".insteadOf "http://192.168.1.166:3000/"`
+	if len(f.spec.Setup) == 0 || f.spec.Setup[0] != wantGit {
+		t.Errorf("connector rewrite should be first in setup, got:\n%v", f.spec.Setup)
+	}
+	// The clone follows it.
+	if len(f.spec.Setup) < 2 || !strings.Contains(f.spec.Setup[1], "git clone") {
+		t.Errorf("clone should follow the rewrite: %v", f.spec.Setup)
 	}
 }
 

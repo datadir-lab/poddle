@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"git.dev.datadir.co/datadir/poddle/src/cli/connect"
 	"git.dev.datadir.co/datadir/poddle/src/cli/down"
 	cliidentity "git.dev.datadir.co/datadir/poddle/src/cli/identity"
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
@@ -14,6 +15,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/config"
+	"git.dev.datadir.co/datadir/poddle/src/internal/connector"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
@@ -71,10 +73,15 @@ func NewRootCmd() *cobra.Command {
 		ProjectDir: cwd,
 	}
 
+	// Service connections (git/CI/…) + user connector definitions.
+	a.Connections = connector.NewStore(connector.DefaultBase())
+	a.ConnectorsDir = filepath.Join(userCfg, "poddle", "connectors")
+
 	root.AddCommand(ls.NewCmd(a))
 	root.AddCommand(up.NewCmd(a, broker.NewBroker())) // broker is up-scoped (Phase 1)
 	root.AddCommand(down.NewCmd(a))
 	root.AddCommand(cliidentity.NewCmd(a))
+	root.AddCommand(connect.NewCmd(a))
 	return root
 }
 
