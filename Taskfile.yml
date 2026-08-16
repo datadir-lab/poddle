@@ -31,6 +31,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Up_Secretless ./tests/e2e/...
 
+  e2e-templates:
+    desc: Templates e2e (needs podman) — extends nesting, scripts, repo clone, harness install
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Templates ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
