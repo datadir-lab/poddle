@@ -1,0 +1,24 @@
+// Package app holds poddle's composition-root type: the dependencies
+// constructed once in the CLI root and handed to each command. It holds
+// interfaces (so tests inject fakes) and contains no logic — pure wiring.
+//
+// The broker is deliberately NOT here: in Phase 1 each poddle command is a
+// separate process, so a broker "shared across commands" is illusory. The
+// broker is up-scoped now (constructed inside `up` for the attached session)
+// and moves into poddled in Phase 2, at which point a poddled *client* — not
+// the broker itself — is what belongs on App.
+package app
+
+import (
+	"github.com/datadir-lab/poddle/src/internal/engine"
+	"github.com/datadir-lab/poddle/src/internal/harness"
+	"github.com/datadir-lab/poddle/src/internal/identity"
+)
+
+// App bundles the dependencies shared across commands.
+type App struct {
+	Engine     engine.Engine      // container/remote backend
+	Identities *identity.Store    // client-side identity store
+	Providers  identity.Registry  // auth vendors (anthropic, …)
+	Harnesses  harness.Registry   // pod-side runtimes (claude-code, …)
+}

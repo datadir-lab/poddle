@@ -6,20 +6,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datadir-lab/poddle/src/internal/harness"
+	"github.com/datadir-lab/poddle/src/internal/app"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
 
-// creator is the narrow provider capability this slice needs.
-type creator interface {
-	Create(sandbox.Spec) (string, error)
-	Attach(id string) error
-}
-
-// NewCmd builds the up command around a creator plus the identity store and
-// provider registry (used by --identity) and the harness registry (--harness).
-func NewCmd(e creator, store *idn.Store, reg idn.Registry, harnesses harness.Registry) *cobra.Command {
+// NewCmd builds the up command. --identity resolves an auth provider; --harness
+// resolves a pod-side runtime.
+func NewCmd(a *app.App) *cobra.Command {
 	var image, size, identityName, harnessName string
 	var detach bool
 
@@ -28,7 +22,7 @@ func NewCmd(e creator, store *idn.Store, reg idn.Registry, harnesses harness.Reg
 		Short: "Create a sandbox and connect to it",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, ok := harnesses.Get(harnessName); !ok {
+			if _, ok := a.Harnesses.Get(harnessName); !ok {
 				return fmt.Errorf("unknown harness %q", harnessName)
 			}
 			name := "poddle"
@@ -41,12 +35,12 @@ func NewCmd(e creator, store *idn.Store, reg idn.Registry, harnesses harness.Reg
 				Runtime: "container", Size: size, CPUs: cpus, Memory: mem,
 			}
 			if identityName != "" {
-				if err := applyIdentity(store, reg, identityName, &spec); err != nil {
+				if err := applyIdentity(a.Identities, a.Providers, identityName, &spec); err != nil {
 					return err
 				}
 			}
 
-			id, err := e.Create(spec)
+			id, err := a.Engine.Create(spec)
 			if err != nil {
 				return err
 			}
@@ -55,7 +49,7 @@ func NewCmd(e creator, store *idn.Store, reg idn.Registry, harnesses harness.Reg
 			if detach {
 				return nil
 			}
-			return e.Attach(id)
+			return a.Engine.Attach(id)
 		},
 	}
 	c.Flags().StringVar(&image, "image", "docker.io/library/debian:stable-slim", "base image")

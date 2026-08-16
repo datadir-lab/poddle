@@ -1,8 +1,14 @@
 package down
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/datadir-lab/poddle/src/internal/app"
+	"github.com/datadir-lab/poddle/src/internal/engine"
+)
 
 type fakeRemover struct {
+	engine.Engine
 	removed string
 	err     error
 }
@@ -14,7 +20,7 @@ func (f *fakeRemover) Remove(id string) error {
 
 func TestDown_RemovesByArg(t *testing.T) {
 	f := &fakeRemover{}
-	c := NewCmd(f)
+	c := NewCmd(&app.App{Engine: f})
 	c.SetArgs([]string{"mybox"})
 
 	if err := c.Execute(); err != nil {
