@@ -84,10 +84,47 @@ func TestWiring_WoodpeckerEnv(t *testing.T) {
 }
 
 func TestBuiltins_AllPresent(t *testing.T) {
-	for _, name := range []string{"forgejo", "github", "gitlab", "npm", "woodpecker"} {
+	for _, name := range []string{
+		"forgejo", "gitea", "github", "gitlab", "bitbucket",
+		"woodpecker", "drone",
+		"npm", "pypi",
+	} {
 		if _, err := LoadDefinition("", name); err != nil {
 			t.Errorf("built-in connector %q missing: %v", name, err)
 		}
+	}
+}
+
+func TestWiring_DroneEnv(t *testing.T) {
+	def, _ := LoadDefinition("", "drone")
+	env, setup := Wiring(def, broker.Credential{}, "host.containers.internal:9000", "poddle_d")
+	if setup != nil {
+		t.Errorf("drone setup should be nil, got %v", setup)
+	}
+	if env["DRONE_SERVER"] != "http://host.containers.internal:9000" || env["DRONE_TOKEN"] != "poddle_d" {
+		t.Errorf("drone env = %v", env)
+	}
+}
+
+func TestWiring_PypiIndexURL(t *testing.T) {
+	def, _ := LoadDefinition("", "pypi")
+	env, setup := Wiring(def, broker.Credential{BaseURL: "https://pypi.org"}, "host.containers.internal:9000", "poddle_p")
+	if env != nil {
+		t.Errorf("pypi env should be nil: %v", env)
+	}
+	want := `pip config set global.index-url http://poddle_p:x@host.containers.internal:9000/simple/`
+	if len(setup) != 1 || setup[0] != want {
+		t.Errorf("pypi setup = %v\nwant %q", setup, want)
+	}
+}
+
+func TestCredential_PypiTokenUser(t *testing.T) {
+	s := NewStore(t.TempDir())
+	conn, _ := s.Create("pp", "pypi", "", "__token__", "pypi-AgEI", "") // no --url → default
+	def, _ := LoadDefinition("", "pypi")
+	cred, _ := Credential(conn, def)
+	if cred.Mode != broker.ModeBasic || cred.Secret != "__token__:pypi-AgEI" || cred.BaseURL != "https://pypi.org" {
+		t.Errorf("pypi cred = %+v", cred)
 	}
 }
 
