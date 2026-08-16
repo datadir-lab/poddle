@@ -82,23 +82,45 @@ func (c *Client) EnsureRunning() error {
 	return fmt.Errorf("poddled did not become healthy on %s", c.socket)
 }
 
-// Gateway returns the pod-facing gateway address.
-func (c *Client) Gateway() (string, error) {
+// gatewayInfo fetches the daemon's pod-facing addresses.
+func (c *Client) gatewayInfo() (addr, redis string, err error) {
 	resp, err := c.http.Get(c.uri("/gateway"))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	var out struct {
-		Addr string `json:"addr"`
+		Addr  string `json:"addr"`
+		Redis string `json:"redis"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", "", err
+	}
+	return out.Addr, out.Redis, nil
+}
+
+// Gateway returns the pod-facing HTTP gateway address.
+func (c *Client) Gateway() (string, error) {
+	addr, _, err := c.gatewayInfo()
+	if err != nil {
 		return "", err
 	}
-	if out.Addr == "" {
+	if addr == "" {
 		return "", fmt.Errorf("gateway not ready")
 	}
-	return out.Addr, nil
+	return addr, nil
+}
+
+// RedisAddr returns the pod-facing L4 Redis address.
+func (c *Client) RedisAddr() (string, error) {
+	_, redis, err := c.gatewayInfo()
+	if err != nil {
+		return "", err
+	}
+	if redis == "" {
+		return "", fmt.Errorf("L4 redis listener not ready")
+	}
+	return redis, nil
 }
 
 // IssueHandle stores cred in the daemon and returns a handle tracked under pod

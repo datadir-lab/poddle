@@ -1,12 +1,16 @@
 package poddled
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +35,9 @@ func (f *fakeBroker) IssueHandle(credID, scope string, _ time.Duration) (broker.
 	return broker.Handle{Value: "poddle_" + credID, Scope: scope}, nil
 }
 func (f *fakeBroker) Revoke(v string) { f.revoked = append(f.revoked, v) }
+func (f *fakeBroker) Resolve(string) (broker.Credential, error) {
+	return broker.Credential{BaseURL: "redis://:realpass@127.0.0.1:6379"}, nil
+}
 func (f *fakeBroker) Serve(string) (string, error) {
 	f.addr = "0.0.0.0:9999"
 	return f.addr, nil
@@ -43,7 +50,7 @@ func testServer(t *testing.T) (*httptest.Server, *fakeBroker) {
 	t.Helper()
 	fb := &fakeBroker{}
 	d := New(fb)
-	if _, err := d.Start("0.0.0.0:0", "redact"); err != nil {
+	if _, err := d.Start("0.0.0.0:0", "redact", ""); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(d.Handler())
@@ -92,6 +99,88 @@ func TestDaemon_IssueHandle(t *testing.T) {
 	}
 	if len(fb.stored) != 1 || fb.issued != 1 {
 		t.Errorf("store/issue = %d/%d, want 1/1", len(fb.stored), fb.issued)
+	}
+}
+
+// resp builds a RESP array-of-bulk-strings command.
+func resp(parts ...string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "*%d\r\n", len(parts))
+	for _, p := range parts {
+		fmt.Fprintf(&b, "$%d\r\n%s\r\n", len(p), p)
+	}
+	return b.String()
+}
+
+// fakeUpstreamRedis records whether the real password (not the handle) arrived.
+func fakeUpstreamRedis(t *testing.T, sawReal *bool, mu *sync.Mutex) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 4096)
+		n, _ := conn.Read(buf) // the broker's AUTH
+		s := string(buf[:n])
+		mu.Lock()
+		*sawReal = strings.Contains(s, "realpass") && !strings.Contains(s, "poddle_")
+		mu.Unlock()
+		_, _ = conn.Write([]byte("+OK\r\n"))
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+			_, _ = conn.Write([]byte("+PONG\r\n"))
+		}
+	}()
+	return ln.Addr().String()
+}
+
+func TestDaemon_L4Redis_SwapsHandle(t *testing.T) {
+	var mu sync.Mutex
+	var sawReal bool
+	upAddr := fakeUpstreamRedis(t, &sawReal, &mu)
+
+	d := New(broker.NewBroker())
+	if _, err := d.Start("0.0.0.0:0", "redact", "127.0.0.1:0"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Stop(context.Background()) })
+
+	// Register a redis datastore credential and issue a handle for it.
+	credID, err := d.broker.Store(broker.Credential{Vendor: "redis", BaseURL: "redis://:realpass@" + upAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := d.broker.IssueHandle(credID, "box", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A "pod" connects to the daemon's L4 Redis port with the handle as password.
+	pod, err := net.Dial("tcp", d.l4RedisAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pod.Close()
+	if _, err := pod.Write([]byte(resp("AUTH", h.Value))); err != nil {
+		t.Fatal(err)
+	}
+	line, _ := bufio.NewReader(pod).ReadString('\n')
+	if strings.TrimSpace(line) != "+OK" {
+		t.Fatalf("auth reply = %q, want +OK", line)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !sawReal {
+		t.Error("upstream did not see the real password, or the handle leaked")
 	}
 }
 
