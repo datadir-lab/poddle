@@ -41,6 +41,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Connectors ./tests/e2e/...
 
+  e2e-secure:
+    desc: Secret-safety e2e (needs podman) — blocked-mount refusal + broker egress redaction
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Secure ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
