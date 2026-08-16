@@ -83,6 +83,58 @@ func TestWiring_WoodpeckerEnv(t *testing.T) {
 	}
 }
 
+func TestBuiltins_AllPresent(t *testing.T) {
+	for _, name := range []string{"forgejo", "github", "gitlab", "npm", "woodpecker"} {
+		if _, err := LoadDefinition("", name); err != nil {
+			t.Errorf("built-in connector %q missing: %v", name, err)
+		}
+	}
+}
+
+func TestCredential_DefaultBaseURL(t *testing.T) {
+	s := NewStore(t.TempDir())
+	conn, _ := s.Create("gh", "github", "", "me", "PAT", "") // no --url → default
+	def, _ := LoadDefinition("", "github")
+	cred, _ := Credential(conn, def)
+	if cred.Mode != broker.ModeBasic || cred.Secret != "me:PAT" || cred.BaseURL != "https://github.com" {
+		t.Errorf("github cred = %+v", cred)
+	}
+}
+
+func TestCredential_ConnectionURLOverridesDefault(t *testing.T) {
+	s := NewStore(t.TempDir())
+	conn, _ := s.Create("ghe", "github", "https://github.mycorp.com", "me", "PAT", "")
+	def, _ := LoadDefinition("", "github")
+	cred, _ := Credential(conn, def)
+	if cred.BaseURL != "https://github.mycorp.com" {
+		t.Errorf("connection URL should override the default, got %q", cred.BaseURL)
+	}
+}
+
+func TestWiring_GithubGitRewrite(t *testing.T) {
+	def, _ := LoadDefinition("", "github")
+	_, setup := Wiring(def, broker.Credential{BaseURL: "https://github.com"}, "host.containers.internal:9000", "poddle_y")
+	want := `git config --global url."http://poddle_y:x@host.containers.internal:9000/".insteadOf "https://github.com/"`
+	if len(setup) != 1 || setup[0] != want {
+		t.Errorf("github wiring = %v", setup)
+	}
+}
+
+func TestWiring_NpmRegistryAndToken(t *testing.T) {
+	def, _ := LoadDefinition("", "npm")
+	env, setup := Wiring(def, broker.Credential{BaseURL: "https://registry.npmjs.org"}, "host.containers.internal:9000", "poddle_x")
+	if env != nil {
+		t.Errorf("npm env should be nil: %v", env)
+	}
+	want := []string{
+		"npm config set registry http://host.containers.internal:9000/",
+		"npm config set //host.containers.internal:9000/:_authToken poddle_x",
+	}
+	if len(setup) != 2 || setup[0] != want[0] || setup[1] != want[1] {
+		t.Errorf("npm setup = %v\nwant %v", setup, want)
+	}
+}
+
 func TestStore_CRUD(t *testing.T) {
 	s := NewStore(t.TempDir())
 	conn, err := s.Create("my-forgejo", "forgejo", "http://forge", "me", "TOK", "")
