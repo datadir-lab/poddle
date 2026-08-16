@@ -7,13 +7,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
+	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
+	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 )
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
-// resolves a pod-side runtime.
-func NewCmd(a *app.App) *cobra.Command {
+// resolves a pod-side runtime. b is the up-scoped secretless broker.
+func NewCmd(a *app.App, b *broker.Broker) *cobra.Command {
 	var image, size, identityName, harnessName string
 	var detach bool
 
@@ -22,7 +24,8 @@ func NewCmd(a *app.App) *cobra.Command {
 		Short: "Create a sandbox and connect to it",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, ok := a.Harnesses.Get(harnessName); !ok {
+			h, ok := a.Harnesses.Get(harnessName)
+			if !ok {
 				return fmt.Errorf("unknown harness %q", harnessName)
 			}
 			name := "poddle"
@@ -35,7 +38,7 @@ func NewCmd(a *app.App) *cobra.Command {
 				Runtime: "container", Size: size, CPUs: cpus, Memory: mem,
 			}
 			if identityName != "" {
-				if err := applyIdentity(a.Identities, a.Providers, identityName, &spec); err != nil {
+				if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, &spec); err != nil {
 					return err
 				}
 			}
@@ -60,10 +63,11 @@ func NewCmd(a *app.App) *cobra.Command {
 	return c
 }
 
-// applyIdentity resolves an identity, re-authenticates it on the client if it's
-// stale (never a dead cred into the pod), and folds its materialization into
-// the spec.
-func applyIdentity(store *idn.Store, reg idn.Registry, name string, spec *sandbox.Spec) error {
+// applyIdentity wires an identity into the pod secretlessly: re-authenticate on
+// the client if stale (never a dead cred into the pod), take the real
+// Credential, seal it in the broker, and fold ONLY the harness's broker-pointing
+// env + install commands into the spec. The real secret never touches the pod.
+func applyIdentity(b *broker.Broker, store *idn.Store, reg idn.Registry, h harness.Harness, name string, spec *sandbox.Spec) error {
 	id, err := store.Get(name)
 	if err != nil {
 		return fmt.Errorf("identity %q: %w", name, err)
@@ -81,21 +85,30 @@ func applyIdentity(store *idn.Store, reg idn.Registry, name string, spec *sandbo
 			return fmt.Errorf("authenticate %q: %w", name, err)
 		}
 	}
-	mat, err := p.Materialize(id)
+	cred, err := p.Credential(id)
 	if err != nil {
 		return err
 	}
-	for _, m := range mat.Mounts {
-		spec.Mounts = append(spec.Mounts, sandbox.Mount(m))
+	if !h.Supports(cred.Vendor) {
+		return fmt.Errorf("harness %q does not support vendor %q", h.Name(), cred.Vendor)
 	}
-	if len(mat.Env) > 0 {
-		if spec.Env == nil {
-			spec.Env = map[string]string{}
-		}
-		for k, v := range mat.Env {
-			spec.Env[k] = v
-		}
+
+	credID, err := b.Store(cred)
+	if err != nil {
+		return err
 	}
+	handle, err := b.IssueHandle(credID, spec.Name, 0) // 0 → DefaultHandleTTL, scope = pod name
+	if err != nil {
+		return err
+	}
+
+	if spec.Env == nil {
+		spec.Env = map[string]string{}
+	}
+	for k, v := range h.Env(b.Addr(), handle.Value) {
+		spec.Env[k] = v
+	}
+	spec.Setup = append(spec.Setup, h.Provisions()...)
 	return nil
 }
 

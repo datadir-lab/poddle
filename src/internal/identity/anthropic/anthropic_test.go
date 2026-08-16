@@ -31,22 +31,14 @@ func TestIsAuthenticated_FalseWithoutToken(t *testing.T) {
 	}
 }
 
-func TestMaterialize_SetsOAuthTokenEnv(t *testing.T) {
+func TestIsAuthenticated_TrueWithToken(t *testing.T) {
 	p := New()
 	id := testIdentity(t)
 	if err := os.WriteFile(filepath.Join(id.Dir(), tokenFile), []byte("tok-123\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	if ok, _ := p.IsAuthenticated(id); !ok {
-		t.Fatal("expected authenticated once token stored")
-	}
-	m, err := p.Materialize(id)
-	if err != nil {
-		t.Fatalf("materialize: %v", err)
-	}
-	if m.Env["CLAUDE_CODE_OAUTH_TOKEN"] != "tok-123" {
-		t.Errorf("env = %v", m.Env)
+	if ok, err := p.IsAuthenticated(id); err != nil || !ok {
+		t.Errorf("IsAuthenticated = %v, %v; want true, nil", ok, err)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
+	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
@@ -15,7 +16,11 @@ import (
 // testHarnesses is a registry with a claude-code stand-in for up tests.
 func testHarnesses() harness.Registry {
 	return harness.Registry{
-		"claude-code": &harness.FakeHarness{HarnessName: "claude-code", Vendors: []string{"anthropic"}},
+		"claude-code": &harness.FakeHarness{
+			HarnessName: "claude-code",
+			Vendors:     []string{"anthropic"},
+			Provs:       []string{"install-claude-code"},
+		},
 	}
 }
 
@@ -39,7 +44,7 @@ func (f *fakeCreator) Attach(id string) error {
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()})
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"mybox", "--size", "strong"})
@@ -63,7 +68,7 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 
 func TestUp_DetachSkipsAttach(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()})
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
 	c.SetArgs([]string{"--detach"})
 
 	if err := c.Execute(); err != nil {
@@ -76,7 +81,7 @@ func TestUp_DetachSkipsAttach(t *testing.T) {
 
 func TestUp_UnknownHarness_Errors(t *testing.T) {
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()})
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, broker.NewBroker())
 	c.SetArgs([]string{"mybox", "--harness", "bogus", "--detach"})
 
 	if err := c.Execute(); err == nil {
@@ -87,26 +92,40 @@ func TestUp_UnknownHarness_Errors(t *testing.T) {
 	}
 }
 
-func TestUp_WithIdentity_MaterializesEnv(t *testing.T) {
+func TestUp_WithIdentity_Secretless(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
 		t.Fatal(err)
 	}
 	fake := &idn.FakeProvider{
 		ProviderName: "anthropic", Authed: true,
-		Mat: idn.Materialization{Env: map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "tok"}},
+		Cred: broker.Credential{
+			Mode: broker.ModeSubscription, Vendor: "anthropic",
+			Secret: "SUPERSECRET", BaseURL: "https://api.anthropic.com",
+		},
 	}
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()})
-	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, broker.NewBroker())
+	c.SetArgs([]string{"mybox", "--identity", "work"}) // fake Attach returns instantly; no --detach
 
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if f.spec.Env["CLAUDE_CODE_OAUTH_TOKEN"] != "tok" {
-		t.Errorf("identity env not applied: %v", f.spec.Env)
+	// A handle reaches the pod...
+	if h := f.spec.Env["HANDLE"]; !strings.HasPrefix(h, "poddle_") {
+		t.Errorf("expected a handle in pod env, got %q", h)
+	}
+	// ...and the real secret does NOT.
+	for k, v := range f.spec.Env {
+		if strings.Contains(v, "SUPERSECRET") {
+			t.Fatalf("real secret leaked into pod env: %s=%s", k, v)
+		}
+	}
+	// Harness provisions are folded into the spec.
+	if len(f.spec.Setup) == 0 {
+		t.Error("expected harness provisions in spec.Setup")
 	}
 }
 
@@ -115,12 +134,15 @@ func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	if _, err := store.Create("work", "anthropic"); err != nil {
 		t.Fatal(err)
 	}
-	fake := &idn.FakeProvider{ProviderName: "anthropic", Authed: false} // not authed yet
+	fake := &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: false, // not authed yet
+		Cred: broker.Credential{Mode: broker.ModeSubscription, Vendor: "anthropic", Secret: "x"},
+	}
 	reg := idn.Registry{"anthropic": fake}
 
 	f := &fakeCreator{}
-	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()})
-	c.SetArgs([]string{"mybox", "--identity", "work", "--detach"})
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, broker.NewBroker())
+	c.SetArgs([]string{"mybox", "--identity", "work"})
 
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

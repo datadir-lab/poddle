@@ -74,14 +74,3 @@ func (p *Provider) Credential(id identity.Identity) (broker.Credential, error) {
 		BaseURL: "https://api.anthropic.com",
 	}, nil
 }
-
-// Materialize injects the stored token as CLAUDE_CODE_OAUTH_TOKEN.
-func (p *Provider) Materialize(id identity.Identity) (identity.Materialization, error) {
-	b, err := os.ReadFile(p.tokenPath(id))
-	if err != nil {
-		return identity.Materialization{}, fmt.Errorf("read token: %w", err)
-	}
-	return identity.Materialization{
-		Env: map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": strings.TrimSpace(string(b))},
-	}, nil
-}

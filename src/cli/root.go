@@ -10,6 +10,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
 	"git.dev.datadir.co/datadir/poddle/src/cli/up"
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
+	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
@@ -53,7 +54,7 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	root.AddCommand(ls.NewCmd(a))
-	root.AddCommand(up.NewCmd(a))
+	root.AddCommand(up.NewCmd(a, broker.NewBroker())) // broker is up-scoped (Phase 1)
 	root.AddCommand(down.NewCmd(a))
 	root.AddCommand(cliidentity.NewCmd(a))
 	return root
