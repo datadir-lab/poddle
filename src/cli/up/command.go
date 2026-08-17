@@ -54,7 +54,7 @@ type podBroker interface {
 // resolves a pod-side runtime. b talks to the persistent poddled broker.
 func NewCmd(a *app.App, b podBroker) *cobra.Command {
 	var image, size, identityName, harnessName, execCmd, templateName string
-	var detach bool
+	var detach, autoscale bool
 
 	c := &cobra.Command{
 		Use:   "up [name]",
@@ -70,6 +70,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 				harnessName: harnessName, templateName: templateName,
 				allowSelect: !detach && execCmd == "" && a.Prompter != nil,
 				withVolumes: true, // stateful session (workspace + agent state)
+				autoscale:   autoscale,
 			})
 			if err != nil {
 				return err
@@ -100,6 +101,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().StringVar(&templateName, "template", "", "template to base the sandbox on (from .poddle/ or ~/.config/poddle/templates)")
 	c.Flags().StringVar(&execCmd, "exec", "", "run a command in the sandbox instead of attaching, then tear down")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "create without attaching")
+	c.Flags().BoolVar(&autoscale, "autoscale", false, "let poddled warn when this pod nears its memory limit (interactive: warn only)")
 	return c
 }
 
@@ -110,6 +112,7 @@ type buildOpts struct {
 	requireIdentity                                            bool // error if no identity is resolved (an autonomous task needs auth)
 	withVolumes                                                bool // mount session state on named volumes (up/move; not ephemeral task pods)
 	skipClone                                                  bool // don't clone the repo (move: the workspace volume already has it)
+	autoscale                                                  bool // opt in to the daemon's reactive memory-grow autoscaler
 }
 
 // stateVolName is the deterministic volume name for a pod's harness state dir,
@@ -160,6 +163,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 	spec := sandbox.Spec{
 		Name: o.name, Image: image, Template: "base",
 		Runtime: "container", Size: size, CPUs: cpus, Memory: mem, Repo: tpl.Repo,
+		Autoscale: o.autoscale || tpl.Autoscale, // opt in via flag or template
 	}
 
 	// Session state on named volumes: /workspace + the harness's state dirs. They

@@ -23,7 +23,7 @@ const TaskLogPath = "/tmp/poddle-task.json"
 func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 	var image, size, identityName, harnessName, templateName, podName string
 	var maxTurns int
-	var keep, detach bool
+	var keep, detach, autoscale bool
 
 	c := &cobra.Command{
 		Use:   "task <prompt>",
@@ -43,6 +43,7 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				// auto-moved later, so persist its session on named volumes; a
 				// one-shot task is torn down and stays ephemeral.
 				withVolumes: detach || keep,
+				autoscale:   autoscale,
 			})
 			if err != nil {
 				return err
@@ -103,5 +104,6 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().IntVar(&maxTurns, "max-turns", 24, "maximum agent turns")
 	c.Flags().BoolVar(&keep, "keep", false, "keep the pod running after the task (attach/inspect later)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "run the agent in the background; leave the pod up (poddle logs/down)")
+	c.Flags().BoolVar(&autoscale, "autoscale", false, "let poddled auto-grow this pod to a bigger shell when it nears its memory limit")
 	return c
 }

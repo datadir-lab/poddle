@@ -38,17 +38,18 @@ type Stat struct {
 
 // Spec describes a sandbox to create.
 type Spec struct {
-	Name     string
-	Image    string
-	Template string            // label
-	Runtime  string            // label (default "container")
-	Size     string            // label
-	CPUs     float64           // 0 = leave unset
-	Memory   string            // e.g. "16g"; "" = leave unset
-	Repo     string            // label
-	Mode     string            // label: how the agent runs (interactive | headless | exec) — drives resume on move
-	Mounts   []Mount           // credential/workspace mounts (e.g. an identity)
-	Volumes  []Volume          // named volumes for session state (workspace, agent state)
-	Env      map[string]string // env vars injected into the sandbox
-	Setup    []string          // shell commands run in the pod after create (e.g. harness install)
+	Name      string
+	Image     string
+	Template  string            // label
+	Runtime   string            // label (default "container")
+	Size      string            // label
+	CPUs      float64           // 0 = leave unset
+	Memory    string            // e.g. "16g"; "" = leave unset
+	Repo      string            // label
+	Mode      string            // label: how the agent runs (interactive | headless | exec) — drives resume on move
+	Autoscale bool              // label poddle.autoscale: opt in to the daemon's reactive memory-grow autoscaler
+	Mounts    []Mount           // credential/workspace mounts (e.g. an identity)
+	Volumes   []Volume          // named volumes for session state (workspace, agent state)
+	Env       map[string]string // env vars injected into the sandbox
+	Setup     []string          // shell commands run in the pod after create (e.g. harness install)
 }
