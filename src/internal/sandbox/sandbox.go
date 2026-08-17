@@ -28,6 +28,14 @@ type Volume struct {
 	Container string // mount path in the pod, e.g. /workspace
 }
 
+// Stat is a running sandbox's live resource usage.
+type Stat struct {
+	Name    string // pod name
+	CPU     string // CPU percent, e.g. "12.5%"
+	Mem     string // memory usage / limit, e.g. "512MB / 4GB"
+	MemPerc string // memory percent of the cap, e.g. "12.5%"
+}
+
 // Spec describes a sandbox to create.
 type Spec struct {
 	Name     string
