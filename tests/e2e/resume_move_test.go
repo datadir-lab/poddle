@@ -29,11 +29,10 @@ func TestE2E_ResumeMove_Headless(t *testing.T) {
 	const sentinel = "SENTINEL-RESUME"
 	cfg := taskIdentity(t, sentinel)
 
-	// A project template so BOTH task and move resolve the same node image +
-	// identity (move re-installs the harness + re-brokers on the fresh shell).
+	// A BARE dir — deliberately no .poddle.toml. `task` sets image + identity
+	// via flags (which get labelled on the pod); `move`, run here with no
+	// template, must reconstruct image/identity/harness from the pod's labels.
 	proj := t.TempDir()
-	writeFile(t, filepath.Join(proj, ".poddle.toml"),
-		"image = \"docker.io/library/node:22\"\nidentity = \"work\"\n")
 
 	pod := "poddle-resume-e2e"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
@@ -62,8 +61,11 @@ func TestE2E_ResumeMove_Headless(t *testing.T) {
 	countAuths := func() int { mu.Lock(); defer mu.Unlock(); return len(auths) }
 
 	// 1) Detached headless task — the agent runs and its conversation persists
-	//    on the pod's /root/.claude state volume.
-	if out, err := run("task", "ping", "--name", pod, "--max-turns", "1", "--detach"); err != nil {
+	//    on the pod's /root/.claude state volume. image + identity are set via
+	//    flags, which get recorded as poddle.image / poddle.identity labels.
+	if out, err := run("task", "ping", "--identity", "work",
+		"--image", "docker.io/library/node:22",
+		"--name", pod, "--max-turns", "1", "--detach"); err != nil {
 		t.Fatalf("task --detach failed: %v\n%s", err, out)
 	}
 	var firstLogs string
@@ -83,7 +85,9 @@ func TestE2E_ResumeMove_Headless(t *testing.T) {
 	}
 	baseline := countAuths()
 
-	// 2) Move to a bigger shell — headless mode auto-resumes the agent.
+	// 2) Move to a bigger shell from a bare dir (no template): move reconstructs
+	//    image/identity/harness from the pod's labels, and headless mode
+	//    auto-resumes the agent.
 	if out, err := run("move", pod, "--size", "strong"); err != nil {
 		t.Fatalf("move failed: %v\n%s", err, out)
 	}

@@ -67,6 +67,24 @@ func TestList_EmptyOutput(t *testing.T) {
 	}
 }
 
+func TestPodInfo_ParsesLabels(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{
+		"podman": "node:22|strong|claude-code|work|https://git/r.git|headless|true\n",
+	}}
+	p := New(f, "")
+	got, err := p.PodInfo("box")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sandbox.PodInfo{
+		Image: "node:22", Size: "strong", Harness: "claude-code",
+		Identity: "work", Repo: "https://git/r.git", Mode: "headless", Autoscale: true,
+	}
+	if got != want {
+		t.Errorf("PodInfo = %+v, want %+v", got, want)
+	}
+}
+
 func TestCreate_AutoscaleLabel(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "cid\n"}}
 	p := New(f, "")
@@ -91,6 +109,7 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 	id, err := p.Create(sandbox.Spec{
 		Name: "box", Image: "debian:slim", Template: "base",
 		Runtime: "container", Size: "strong", CPUs: 8, Memory: "16g", Repo: "r",
+		Identity: "work", Harness: "claude-code",
 		Mounts:  []sandbox.Mount{{Host: "/h/.claude", Container: "/root/.claude", ReadOnly: true}},
 		Volumes: []sandbox.Volume{{Name: "poddle-box-workspace", Container: "/workspace"}},
 		Env:     map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "tok"},
@@ -112,6 +131,8 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 		"--label poddle.managed=true", "--label poddle.name=box",
 		"--label poddle.template=base", "--label poddle.runtime=container",
 		"--label poddle.size=strong", "--label poddle.repo=r",
+		"--label poddle.image=debian:slim", "--label poddle.identity=work",
+		"--label poddle.harness=claude-code",
 		"--cpus 8", "--memory 16g",
 		"--volume /h/.claude:/root/.claude:ro", "--volume poddle-box-workspace:/workspace",
 		"--env CLAUDE_CODE_OAUTH_TOKEN=tok",

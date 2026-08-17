@@ -25,19 +25,29 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			mode, _ := a.Engine.PodMode(name) // how the agent ran, so we resume it the same way
+			info, _ := a.Engine.PodInfo(name) // reconstruct the pod from its own labels
 			_ = b.RevokePod(name)             // best-effort: retire the old shell's handles
 
+			// Seed defaults from the existing pod so a context-free move (no cwd,
+			// no template — e.g. the daemon's autoscaler) preserves everything but
+			// the size. Precedence: explicit flag > --template > pod label > default.
 			spec, h, _, err := buildSpec(cmd, a, b, buildOpts{
-				name: name, image: image, size: size, templateName: templateName,
-				harnessName: harnessName,
-				withVolumes: true, // reuse the existing session volumes
-				skipClone:   true, // the workspace volume already has the code
+				name: name, templateName: templateName,
+				image:        orLabel(cmd, "image", image, info.Image),
+				size:         orLabel(cmd, "size", size, info.Size),
+				harnessName:  orLabel(cmd, "harness", harnessName, info.Harness),
+				identityName: info.Identity, // move has no --identity flag; the label is the source
+				autoscale:    info.Autoscale,
+				withVolumes:  true, // reuse the existing session volumes
+				skipClone:    true, // the workspace volume already has the code
 			})
 			if err != nil {
 				return err
 			}
-			spec.Mode = mode                              // preserve the mode across the move
+			spec.Mode = info.Mode // preserve the mode across the move
+			if spec.Repo == "" {
+				spec.Repo = info.Repo // preserve the repo label when no template set it
+			}
 			if err := a.Engine.Remove(name); err != nil { // remove old shell; named volumes persist
 				return err
 			}
@@ -50,7 +60,7 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 			// Auto-resume the agent's conversation in the same mode (the state
 			// volume carried over the history). Resume is harness-specific.
 			switch {
-			case mode == "headless":
+			case info.Mode == "headless":
 				if r := h.ResumeCommand("headless"); r != "" {
 					if err := a.Engine.ExecDetached(id, "( "+r+" ) > "+TaskLogPath+" 2>&1"); err != nil {
 						return err
@@ -58,7 +68,7 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), "resumed %q headless — `poddle logs %s` to watch\n", name, name)
 					return nil
 				}
-			case mode == "interactive" && !detach:
+			case info.Mode == "interactive" && !detach:
 				if r := h.ResumeCommand("interactive"); r != "" {
 					return a.Engine.ExecTTY(id, r) // reattach, resuming the conversation
 				}
@@ -75,4 +85,18 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().StringVar(&harnessName, "harness", "claude-code", "coding-agent runtime (must match the original for state)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "recreate without attaching")
 	return c
+}
+
+// orLabel resolves a move field: an explicitly-set flag wins; otherwise the
+// source pod's label (from PodInfo); otherwise the flag's default. This is what
+// lets `poddle move X --size strong` preserve image/identity/harness while
+// changing only the size — with no cwd or template.
+func orLabel(cmd *cobra.Command, flag, flagVal, label string) string {
+	if cmd.Flags().Changed(flag) {
+		return flagVal
+	}
+	if label != "" {
+		return label
+	}
+	return flagVal
 }
