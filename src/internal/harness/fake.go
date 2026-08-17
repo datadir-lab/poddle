@@ -11,6 +11,7 @@ type FakeHarness struct {
 	Vendors     []string
 	States      []string // returned by StateDirs
 	Task        string   // returned by TaskCommand; %s is replaced with the prompt
+	Resume      string   // returned by ResumeCommand; %mode is replaced with the mode
 }
 
 func (f *FakeHarness) Name() string { return f.HarnessName }
@@ -38,3 +39,10 @@ func (f *FakeHarness) TaskCommand(prompt string, _ int) string {
 }
 
 func (f *FakeHarness) StateDirs() []string { return f.States }
+
+func (f *FakeHarness) ResumeCommand(mode string) string {
+	if f.Resume == "" {
+		return "resume-" + mode
+	}
+	return strings.ReplaceAll(f.Resume, "%mode", mode)
+}
