@@ -1,0 +1,78 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import cli from '../../../data/cli.json';
+
+type FlagDoc = { name: string; shorthand?: string; type: string; default?: string; usage: string };
+type CommandDoc = {
+  path: string; name: string; use: string; short: string;
+  long?: string; example?: string; flags?: FlagDoc[]; subcommands?: string[];
+};
+
+const cmdSlug = (p: string) => p.replace(/^poddle\s+/, '').replace(/\s+/g, '-');
+
+// One statically-generated page per command, straight from cli.json — the same
+// tree the binary ships (src/cli/docgen → task web-docs).
+export function getStaticPaths() {
+  const slug = (p: string) => p.replace(/^poddle\s+/, '').replace(/\s+/g, '-');
+  return (cli as CommandDoc[])
+    .filter((c) => c.path !== 'poddle')
+    .map((c) => ({ params: { command: slug(c.path) }, props: { cmd: c } }));
+}
+
+const { cmd } = Astro.props as { cmd: CommandDoc };
+const rest = cmd.use.split(' ').slice(1).join(' ');
+const usage = rest ? `${cmd.path} ${rest}` : cmd.path;
+const parentPath = cmd.path.split(' ').slice(0, -1).join(' ');
+const parent = parentPath !== 'poddle' && parentPath !== '' ? parentPath : null;
+---
+<DocsLayout title={cmd.path} description={cmd.short}>
+  <p class="doc-nav__label" style="margin:0 0 0.6rem">
+    <a href="/docs/commands" style="color:inherit;text-decoration:none">Commands</a>
+    {parent && <> · <a href={`/docs/commands/${cmdSlug(parentPath)}`} style="color:inherit;text-decoration:none">{parent}</a></>}
+  </p>
+
+  <h1 class="cmd-head__name">{cmd.path}</h1>
+  <p class="cmd-head__short">{cmd.short}</p>
+
+  <p class="cmd-sec">Usage</p>
+  <pre class="code code--usage"><code><span class="prompt">$ </span>{usage}</code></pre>
+
+  {cmd.long && <p class="cmd-head__long">{cmd.long}</p>}
+
+  {cmd.flags && cmd.flags.length > 0 && (
+    <>
+      <p class="cmd-sec">Flags</p>
+      <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Flag</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          {cmd.flags.map((f) => (
+            <tr>
+              <td><code>--{f.name}{f.shorthand ? `, -${f.shorthand}` : ''}</code></td>
+              <td class="flags__type" data-label="Type">{f.type}</td>
+              <td data-label="Default">{f.default ? <code>{f.default}</code> : <span class="dim">—</span>}</td>
+              <td data-label="Info">{f.usage}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+    </>
+  )}
+
+  {cmd.subcommands && cmd.subcommands.length > 0 && (
+    <>
+      <p class="cmd-sec">Subcommands</p>
+      <div class="subchips">
+        {cmd.subcommands.map((s) => (
+          <a class="subchip" href={`/docs/commands/${cmdSlug(s)}`}>{s.replace(/^poddle\s+/, '')}</a>
+        ))}
+      </div>
+    </>
+  )}
+
+  <div class="doc-more">
+    <a href="/docs/commands">← All commands</a>
+    {parent && <a href={`/docs/commands/${cmdSlug(parentPath)}`}>{parent} →</a>}
+  </div>
+</DocsLayout>

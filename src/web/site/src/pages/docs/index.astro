@@ -1,0 +1,62 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Callout from '../../components/Callout.astro';
+---
+<DocsLayout title="Get started" description="Install poddle, add an identity, and hand a coding agent real work in a fresh secretless pod.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs</p>
+    <h1 class="doc-title">Real work for your agent. None of your secrets.</h1>
+    <p class="doc-lead">
+      Log in once, then spin up isolated pods or run agents headless — the broker keeps your
+      credentials out of every pod.
+    </p>
+  </div>
+
+  <div class="term">
+    <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh — poddle</span></div>
+    <pre class="term__body"><code><span class="cmt"># log in once — the key stays on your machine</span>
+<span class="cmd">poddle identity add work --provider anthropic</span>
+<span class="ok">✓ authenticated “work” (anthropic)</span>
+
+<span class="cmt"># hand an agent a task in a fresh, secretless pod</span>
+<span class="cmd">poddle task "add tests for parseConfig" --identity work</span>
+<span class="out">→ pod poddle-task-9f2a up (weak) · broker attached</span>
+<span class="out">→ claude-code · 6 turns · editing parser_test.go</span>
+<span class="ok">✓ done · pod torn down · no key ever entered the pod</span></code></pre>
+  </div>
+
+  <section class="doc-block" style="margin-top:2.4rem">
+    <h2>Prerequisites</h2>
+    <ul class="doc-list">
+      <li><strong>Podman</strong> — poddle drives Podman to create and attach pods.</li>
+      <li><strong>Go 1.25+</strong> — to build from source (prebuilt releases are on the way).</li>
+    </ul>
+
+    <h2 style="margin-top:2rem">Install</h2>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">build from source</span></div>
+      <pre class="term__body"><code><span class="cmd">git clone https://github.com/datadir-lab/poddle</span>
+<span class="cmd">cd poddle</span>
+<span class="cmd">go build -o poddle ./src/cli</span></code></pre>
+    </div>
+
+    <h2 style="margin-top:2rem">Quickstart</h2>
+    <p class="doc-p">Log into a provider, create a pod wired to that identity, then remove it:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmd">poddle identity add work --provider anthropic</span>
+<span class="cmd">poddle up my-sandbox --identity work --harness claude-code</span>
+<span class="out">→ my-sandbox up (weak) · broker attached · dropping you in…</span>
+<span class="cmd">poddle down my-sandbox</span></code></pre>
+    </div>
+    <Callout type="note" title="Local or remote, same commands">
+      <p>Set <code>PODDLE_HOST</code> to <code>ssh://…</code> to run the same commands against a remote host; leave it empty for local Podman. The broker runs where you invoke poddle, so your keys never travel to the remote host either.</p>
+    </Callout>
+  </section>
+
+  <div class="doc-more">
+    <a href="/docs/examples">See it work →</a>
+    <a href="/docs/concepts">Concepts →</a>
+    <a href="/docs/commands">Command reference →</a>
+  </div>
+</DocsLayout>

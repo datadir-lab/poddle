@@ -14,6 +14,7 @@
       "poddle move",
       "poddle resize",
       "poddle run",
+      "poddle stats",
       "poddle task",
       "poddle up",
       "poddle version"
@@ -209,11 +210,23 @@
     "short": "Run a command in a running sandbox"
   },
   {
+    "path": "poddle stats",
+    "name": "stats",
+    "use": "stats",
+    "short": "Show live CPU/memory for running pods"
+  },
+  {
     "path": "poddle task",
     "name": "task",
     "use": "task \u003cprompt\u003e",
     "short": "Run a coding agent headless on a prompt in a fresh secretless pod",
     "flags": [
+      {
+        "name": "autoscale",
+        "type": "bool",
+        "default": "false",
+        "usage": "let poddled auto-grow this pod to a bigger shell when it nears its memory limit"
+      },
       {
         "name": "detach",
         "shorthand": "d",
@@ -274,6 +287,12 @@
     "use": "up [name]",
     "short": "Create a sandbox and connect to it",
     "flags": [
+      {
+        "name": "autoscale",
+        "type": "bool",
+        "default": "false",
+        "usage": "let poddled warn when this pod nears its memory limit (interactive: warn only)"
+      },
       {
         "name": "detach",
         "shorthand": "d",

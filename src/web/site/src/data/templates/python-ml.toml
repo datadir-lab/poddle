@@ -1,0 +1,14 @@
+extends = "base"
+image = "docker.io/library/python:3.12"
+size = "strong"
+
+setup = [
+  "pip install -U uv",
+  "uv pip install --system -r requirements.txt",
+]
+
+# a read-only dataset mount — nothing writes back out
+mounts = [{ host = "/srv/datasets", container = "/data", ro = true }]
+
+# lock egress down while the agent has your data in the pod
+egress = "block"
