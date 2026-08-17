@@ -5,7 +5,9 @@
 # "Pipeline Path" being set to `woodpecker/`.
 
 when:
-  - event: [push, pull_request, manual]
+  # push/pull_request only — path filters need a diff, so including `manual`
+  # here makes every manual pipeline fail to compile.
+  - event: [push, pull_request]
     path:
       include: ['src/web/**']
 
