@@ -1,0 +1,57 @@
+package up
+
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	"github.com/datadir-lab/poddle/src/internal/app"
+)
+
+// NewMoveCmd builds `poddle move <name>`: re-home a pod's session onto a fresh
+// shell — a different size, image, or (later) host — while keeping its workspace
+// and agent state (the named volumes). This is the answer to "needs more RAM":
+// you don't resize memory in place, you move to a right-sized shell.
+//
+// It removes the old shell (keeping its volumes), recreates one with the same
+// name + volumes (no re-clone), and re-brokers fresh handles.
+func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
+	var size, image, templateName string
+	var detach bool
+	c := &cobra.Command{
+		Use:   "move <name>",
+		Short: "Re-home a pod's session onto a fresh, re-sized shell (keeps workspace + state)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			_ = b.RevokePod(name) // best-effort: retire the old shell's handles
+
+			spec, _, _, err := buildSpec(cmd, a, b, buildOpts{
+				name: name, image: image, size: size, templateName: templateName,
+				withVolumes: true, // reuse the existing session volumes
+				skipClone:   true, // the workspace volume already has the code
+			})
+			if err != nil {
+				return err
+			}
+			if err := a.Engine.Remove(name); err != nil { // remove old shell; named volumes persist
+				return err
+			}
+			id, err := a.Engine.Create(spec)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), id)
+			if detach {
+				return nil
+			}
+			return a.Engine.Attach(id)
+		},
+	}
+	c.Flags().StringVar(&size, "size", "", "new resource size (weak|strong)")
+	c.Flags().StringVar(&image, "image", "", "new base image")
+	c.Flags().StringVar(&templateName, "template", "", "template to resolve identity/connectors from")
+	c.Flags().BoolVarP(&detach, "detach", "d", false, "recreate without attaching")
+	return c
+}
