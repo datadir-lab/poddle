@@ -61,6 +61,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_ResumeMove ./tests/e2e/...
 
+  e2e-autoscale:
+    desc: Autoscale e2e (needs podman) — daemon warns interactive + auto-grows headless under memory pressure
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Autoscale ./tests/e2e/...
+
   e2e-remote:
     desc: Remote e2e (needs podman) — up/ls/down over ssh (loopback fixture provides PODDLE_HOST)
     deps: [_docker-mirror]
