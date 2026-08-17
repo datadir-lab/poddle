@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 
@@ -20,10 +21,20 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/secure"
 )
 
-// podBrokerHost is how a pod addresses the host from inside a podman/docker
-// container. It's a container-runtime detail; when a second engine (k8s) lands
-// it graduates to an engine capability.
-const podBrokerHost = "host.containers.internal"
+// defaultPodBrokerHost is how a pod addresses the host running the broker from
+// inside a local podman/docker container.
+const defaultPodBrokerHost = "host.containers.internal"
+
+// podBrokerHost returns the address a pod uses to reach the broker. For local
+// pods that's host.containers.internal; for a remote pod (on another host) the
+// broker isn't local to it, so PODDLE_BROKER_ADDR sets the routable address the
+// remote pod should dial (e.g. this machine's LAN IP).
+func podBrokerHost() string {
+	if a := os.Getenv("PODDLE_BROKER_ADDR"); a != "" {
+		return a
+	}
+	return defaultPodBrokerHost
+}
 
 // podBroker is the persistent-broker capability `up` needs: ensure poddled is
 // running, learn its pod-facing gateway address, and issue a pod-scoped handle
@@ -219,7 +230,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		if err != nil {
 			return fail(fmt.Errorf("broker address %q: %w", addr, err))
 		}
-		podBrokerAddr := net.JoinHostPort(podBrokerHost, port)
+		podBrokerAddr := net.JoinHostPort(podBrokerHost(), port)
 
 		if identityName != "" {
 			if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
@@ -411,7 +422,7 @@ func podL4Addr(cached string, fetch func() (string, error)) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("l4 address %q: %w", addr, err)
 	}
-	return net.JoinHostPort(podBrokerHost, port), nil
+	return net.JoinHostPort(podBrokerHost(), port), nil
 }
 
 const (
