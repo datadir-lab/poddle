@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/datadir-lab/poddle/src/internal/exec"
@@ -186,6 +187,62 @@ func (p *Provider) Stats() ([]sandbox.Stat, error) {
 		stats = append(stats, sandbox.Stat{Name: f[0], CPU: f[1], Mem: f[2], MemPerc: f[3]})
 	}
 	return stats, nil
+}
+
+// AutoscaleStats returns live memory pressure for autoscale-opted-in pods (those
+// labelled poddle.autoscale=true), joining each pod's mode/size labels with its
+// current memory percent from `podman stats`. Empty (not an error) when none
+// opted in — and it then skips the stats call — so the daemon's loop stays quiet
+// on hosts that don't use autoscaling.
+func (p *Provider) AutoscaleStats() ([]sandbox.MemStat, error) {
+	ps, err := p.Runner.Run("podman", p.podman("ps",
+		"--filter", "label=poddle.managed=true",
+		"--filter", "label=poddle.autoscale=true",
+		"--format", `{{.Names}}|{{index .Labels "poddle.mode"}}|{{index .Labels "poddle.size"}}`)...)
+	if err != nil {
+		return nil, fmt.Errorf("podman ps: %w: %s", err, ps.Stderr)
+	}
+	type meta struct{ mode, size string }
+	byName := map[string]meta{}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(ps.Stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "|")
+		if len(f) != 3 {
+			continue
+		}
+		byName[f[0]] = meta{mode: f[1], size: f[2]}
+		names = append(names, f[0])
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	args := append([]string{"stats", "--no-stream", "--format", "{{.Name}}|{{.MemPerc}}"}, names...)
+	res, err := p.Runner.Run("podman", p.podman(args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("podman stats: %w: %s", err, res.Stderr)
+	}
+	var out []sandbox.MemStat
+	for _, line := range strings.Split(strings.TrimSpace(res.Stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "|")
+		if len(f) != 2 {
+			continue
+		}
+		m := byName[f[0]]
+		out = append(out, sandbox.MemStat{Name: f[0], Mode: m.mode, Size: m.size, MemPercent: parsePercent(f[1])})
+	}
+	return out, nil
+}
+
+// parsePercent turns podman's "85.34%" into 85.34 (0 on a parse failure).
+func parsePercent(s string) float64 {
+	v, _ := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(s), "%"), 64)
+	return v
 }
 
 // Resize live-updates a running sandbox's CPU ceiling and/or memory cap
