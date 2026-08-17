@@ -57,14 +57,20 @@ func shellSingleQuote(s string) string {
 // /root/.claude.
 func (h *Harness) StateDirs() []string { return []string{"/root/.claude"} }
 
+// resumeNudge is the prompt fed to a headless resume. `claude -p` needs a turn
+// to drive; on a move the agent should pick its interrupted work back up, so we
+// hand it a continuation nudge rather than an empty stdin (which would no-op).
+const resumeNudge = "continue where you left off"
+
 // ResumeCommand continues the most recent conversation (carried over in
 // /root/.claude) after a move. Interactive re-opens the TTY session; headless
-// continues it non-interactively to completion.
+// resumes non-interactively, nudged to carry on to completion.
 func (h *Harness) ResumeCommand(mode string) string {
 	if mode == "interactive" {
 		return "claude --continue"
 	}
 	return "export IS_SANDBOX=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1; " +
 		`echo '{"hasCompletedOnboarding":true}' > $HOME/.claude.json; ` +
-		"claude -p --continue --output-format json --dangerously-skip-permissions </dev/null"
+		fmt.Sprintf("claude -p %s --continue --output-format json --dangerously-skip-permissions </dev/null",
+			shellSingleQuote(resumeNudge))
 }

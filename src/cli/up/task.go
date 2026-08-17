@@ -39,6 +39,10 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				requireIdentity: true, // an autonomous agent needs an LLM login
+				// A task that outlives its run (--detach/--keep) can be moved or
+				// auto-moved later, so persist its session on named volumes; a
+				// one-shot task is torn down and stays ephemeral.
+				withVolumes: detach || keep,
 			})
 			if err != nil {
 				return err

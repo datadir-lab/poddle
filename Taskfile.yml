@@ -41,6 +41,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Move ./tests/e2e/...
 
+  e2e-resume-move:
+    desc: Resume-on-move e2e (needs podman) — a moved headless task auto-resumes the agent
+    cmds:
+      - go test -tags e2e -v -run TestE2E_ResumeMove ./tests/e2e/...
+
   e2e-remote:
     desc: Remote e2e (needs podman) — up/ls/down over ssh (loopback fixture provides PODDLE_HOST)
     cmds:
