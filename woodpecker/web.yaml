@@ -5,11 +5,11 @@
 # "Pipeline Path" being set to `woodpecker/`.
 
 when:
-  # push/pull_request only — path filters need a diff, so including `manual`
-  # here makes every manual pipeline fail to compile.
+  # push/pull_request only. A `path:` filter here breaks ALL manual pipelines
+  # (Woodpecker compiles every workflow and path filtering needs a diff, which
+  # manual triggers lack), so we run on every push/PR instead — the build is
+  # cheap and the manual e2e pipelines must compile.
   - event: [push, pull_request]
-    path:
-      include: ['src/web/**']
 
 steps:
   web:
