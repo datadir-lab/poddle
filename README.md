@@ -98,7 +98,8 @@ poddle task "<prompt>"      run a coding agent headless to completion (--detach 
 poddle logs <pod>           show a detached task's output (--follow to stream)
 poddle attach <pod>         reconnect to a running pod
 poddle run <pod> <cmd>...   run a command in a running pod
-poddle resize <pod> <size>  change a running pod's CPU/memory live (no restart)
+poddle resize <pod> <size>  change a running pod's CPU live (no restart)
+poddle move <pod> [--size]  re-home the session onto a fresh, re-sized shell
 poddle ls                   list pods
 poddle down <pod>           revoke the pod's handles and remove it
 poddle identity add|ls|rm   manage agent logins
@@ -121,12 +122,23 @@ poddle version
 
 `size` (weak/strong) is a **CPU ceiling, not a reservation** — idle pods float
 to ~0 and burst up to the cap for free, so oversubscription is fine. Resize a
-*running* pod live with `poddle resize <pod> strong` (no restart), or let a task
-burst itself: `before_task = "strong"` / `after_task = "weak"` in a template.
+*running* pod's **CPU** live with `poddle resize <pod> strong` (no restart), or
+let a task burst its CPU itself: `before_task = "strong"` / `after_task = "weak"`
+in a template (CPU only).
 
-> Live CPU resize works everywhere; live **memory** resize needs cgroup
-> delegation (a rootful host or systemd-delegated rootless) — under plain
-> rootless podman `--memory` updates are rejected, so use `--cpus` there.
+**Memory is different** — it's incompressible, so you can't safely shrink it live
+(you'd OOM the pod). The answer to "needs more RAM" is `poddle move` (below), not
+resize: re-home the session onto a bigger shell. Live *memory* resize is
+grow-only and needs cgroup delegation (a rootful / systemd-delegated host).
+
+## Moving a session
+
+Pods are disposable compute shells; your workspace and agent state live on named
+volumes. `poddle move <pod> --size strong` (or `--image`) re-homes the session
+onto a fresh, right-sized shell — same workspace, same conversation, fresh
+handles, in seconds (the volumes aren't copied). It's how you get more RAM, swap
+the base image, or recover from a dead pod. `poddle down` removes the shell *and*
+its volumes.
 
 ## Self-host & remote
 

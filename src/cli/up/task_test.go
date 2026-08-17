@@ -86,9 +86,9 @@ func TestTask_SizingHooks(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	want := []string{"hpod:8:16g", "hpod:2:4g"} // burst up (strong) then drop (weak)
+	want := []string{"hpod:8:", "hpod:2:"} // burst CPU up (strong) then drop (weak); memory untouched
 	if len(f.resized) != 2 || f.resized[0] != want[0] || f.resized[1] != want[1] {
-		t.Errorf("sizing hooks = %v, want %v", f.resized, want)
+		t.Errorf("sizing hooks = %v, want %v (CPU-only)", f.resized, want)
 	}
 }
 
