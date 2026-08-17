@@ -36,6 +36,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Up_Resize ./tests/e2e/...
 
+  e2e-move:
+    desc: Move e2e (needs podman) — session state survives a move to a re-sized shell
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Move ./tests/e2e/...
+
   e2e-templates:
     desc: Templates e2e (needs podman) — extends nesting, scripts, repo clone, harness install
     cmds:

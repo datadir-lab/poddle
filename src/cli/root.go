@@ -100,6 +100,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(run.NewCmd(a))
 	root.AddCommand(up.NewLogsCmd(a))
 	root.AddCommand(up.NewResizeCmd(a))
+	root.AddCommand(up.NewMoveCmd(a, poddled.NewClient("")))
 	root.AddCommand(down.NewCmd(a, poddled.NewClient("")))
 	root.AddCommand(cliidentity.NewCmd(a))
 	root.AddCommand(connect.NewCmd(a))
