@@ -132,35 +132,38 @@ func TestE2E_Autoscale_GrowsHeadless(t *testing.T) {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	id0 := inspectField(pod, "{{.Id}}")
-	if id0 == "" {
+	if inspectField(pod, "{{.Id}}") == "" {
 		t.Fatal("task pod was not created")
 	}
 
-	// Feed sustained pressure — the daemon should grow it to a fresh shell.
+	// Feed sustained pressure — the daemon should grow it onto a fresh strong
+	// shell. The move recreates the container (size is a create-time label), so
+	// once the pod is back at size=strong the autonomous grow has happened.
 	writeFile(t, statsFile,
 		`[{"name":"`+pod+`","mode":"headless","size":"weak","memPercent":95}]`)
 
-	moved := false
+	grown := false
 	for i := 0; i < 60; i++ { // the autonomous move recreates + reinstalls the harness (~60s)
-		if id1 := inspectField(pod, "{{.Id}}"); id1 != "" && id1 != id0 {
-			moved = true
+		if inspectField(pod, `{{index .Config.Labels "poddle.size"}}`) == "strong" {
+			grown = true
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
 	_ = os.Remove(statsFile) // stop further moves (the file still says weak)
-	if !moved {
+	if !grown {
 		out, _ := exec.Command(bin, "daemon", "status").CombinedOutput()
-		t.Fatalf("autoscaler never grew the pressured headless pod; daemon status:\n%s", out)
-	}
-	if size := inspectField(pod, `{{index .Config.Labels "poddle.size"}}`); size != "strong" {
-		t.Errorf("grown pod should be size strong, got %q", size)
+		t.Fatalf("autoscaler never grew the pressured headless pod to strong; daemon status:\n%s", out)
 	}
 }
 
-// inspectField returns a single podman-inspect Go-template field for a pod.
+// inspectField returns a single podman-inspect Go-template field for a pod, or
+// "" when the pod does not exist (e.g. briefly, mid-move). It reads only stdout
+// so a "no such object" error never masquerades as a value.
 func inspectField(pod, format string) string {
-	out, _ := exec.Command("podman", "inspect", "-f", format, pod).CombinedOutput()
+	out, err := exec.Command("podman", "inspect", "-f", format, pod).Output()
+	if err != nil {
+		return ""
+	}
 	return strings.TrimSpace(string(out))
 }
