@@ -149,6 +149,18 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 	}
 }
 
+func TestUp_AutoscaleFlag(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
+	c.SetArgs([]string{"ibox", "--autoscale", "--detach"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !f.spec.Autoscale {
+		t.Error("up --autoscale should set spec.Autoscale (interactive pods get warn-only)")
+	}
+}
+
 func TestUp_DetachSkipsAttach(t *testing.T) {
 	f := &fakeCreator{}
 	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})

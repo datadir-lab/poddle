@@ -67,6 +67,23 @@ func TestList_EmptyOutput(t *testing.T) {
 	}
 }
 
+func TestCreate_AutoscaleLabel(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": "cid\n"}}
+	p := New(f, "")
+	if _, err := p.Create(sandbox.Spec{Name: "box", Image: "img", Autoscale: true}); err != nil {
+		t.Fatal(err)
+	}
+	var call string
+	for _, c := range f.Calls {
+		if j := strings.Join(c, " "); strings.Contains(j, "run -d") {
+			call = j
+		}
+	}
+	if !strings.Contains(call, "--label poddle.autoscale=true") {
+		t.Errorf("autoscale label missing in run args: %q", call)
+	}
+}
+
 func TestCreate_BuildsRunArgs(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "cid123\n"}}
 	p := New(f, "")
