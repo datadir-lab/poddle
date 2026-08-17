@@ -65,17 +65,6 @@ func TestE2E_Poddled_DaemonStatus(t *testing.T) {
 		t.Fatalf("daemon status should list the active pod:\n%s", got)
 	}
 
-	// `poddle stats` shows the running pod's live resource usage.
-	statsCmd := exec.Command(bin, "stats")
-	statsCmd.Env = env
-	statsOut, err := statsCmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("stats failed: %v\n%s", err, statsOut)
-	}
-	if !strings.Contains(string(statsOut), pod) || !strings.Contains(string(statsOut), "%") {
-		t.Errorf("stats should show %q with a percent usage:\n%s", pod, statsOut)
-	}
-
 	down := exec.Command(bin, "down", pod)
 	down.Env = env
 	if out, err := down.CombinedOutput(); err != nil {
@@ -84,5 +73,40 @@ func TestE2E_Poddled_DaemonStatus(t *testing.T) {
 
 	if after := status(); strings.Contains(after, pod) {
 		t.Errorf("pod should be gone from status after down:\n%s", after)
+	}
+}
+
+// TestE2E_Poddled_Stats: `poddle stats` reports a running pod's live resource
+// usage. `podman stats` reads from the container cgroup; rootless nested podman
+// (our CI) delegates no cgroup, so we skip there (same limit as resize) and let
+// this assertion run for real on a rootful/delegated host.
+func TestE2E_Poddled_Stats(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	proj := t.TempDir()
+	writeFile(t, filepath.Join(proj, ".poddle.toml"),
+		"image = \"docker.io/library/debian:stable-slim\"\n")
+
+	pod := "poddle-stats-e2e"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
+
+	up := exec.Command(bin, "up", pod, "--detach")
+	up.Dir = proj
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	s := exec.Command(bin, "stats")
+	out, err := s.CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(out), "cgroup") {
+			t.Skipf("podman stats needs a delegated cgroup (rootful host); unavailable here:\n%s", out)
+		}
+		t.Fatalf("stats failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), pod) || !strings.Contains(string(out), "%") {
+		t.Errorf("stats should show %q with a percent usage:\n%s", pod, out)
 	}
 }
