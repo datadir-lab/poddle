@@ -10,6 +10,7 @@ import "github.com/datadir-lab/poddle/src/internal/sandbox"
 // commands are added.
 type Engine interface {
 	List() ([]sandbox.Sandbox, error)
+	Stats() ([]sandbox.Stat, error) // live CPU/memory for running managed pods
 	Create(spec sandbox.Spec) (id string, err error)
 	Attach(id string) error
 	Exec(id string, command string) error                // run a one-shot command in the sandbox (streams)

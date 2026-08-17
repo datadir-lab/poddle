@@ -225,6 +225,33 @@ func TestRemove_RemoteAddsURL(t *testing.T) {
 	}
 }
 
+// statsRunner returns pod names for `ps` and a stats table for `stats`.
+type statsRunner struct{}
+
+func (statsRunner) Run(name string, args ...string) (exec.Result, error) {
+	if len(args) > 0 && args[0] == "ps" {
+		return exec.Result{Stdout: "box1\nbox2\n"}, nil
+	}
+	return exec.Result{Stdout: "box1|10.0%|100MB / 4GB|2.5%\nbox2|5.0%|50MB / 4GB|1.2%\n"}, nil
+}
+func (statsRunner) RunInteractive(string, ...string) error { return nil }
+
+func TestStats_ListsRunningPods(t *testing.T) {
+	stats, err := New(statsRunner{}, "").Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 2 {
+		t.Fatalf("got %d stats, want 2: %+v", len(stats), stats)
+	}
+	if stats[0].Name != "box1" || stats[0].CPU != "10.0%" || stats[0].Mem != "100MB / 4GB" {
+		t.Errorf("stats[0] = %+v", stats[0])
+	}
+	if stats[1].MemPerc != "1.2%" {
+		t.Errorf("stats[1] mem%% = %q", stats[1].MemPerc)
+	}
+}
+
 func TestMapState(t *testing.T) {
 	for in, want := range map[string]string{
 		"running": "running", "paused": "paused",
