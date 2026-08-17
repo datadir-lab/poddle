@@ -51,3 +51,8 @@ func (h *Harness) TaskCommand(prompt string, maxTurns int) string {
 func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
+
+// StateDirs persists Claude Code's state (conversation history, projects) so a
+// moved pod resumes where it left off. The pod runs as root, so this is
+// /root/.claude.
+func (h *Harness) StateDirs() []string { return []string{"/root/.claude"} }

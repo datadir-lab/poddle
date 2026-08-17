@@ -31,15 +31,16 @@ func testHarnesses() harness.Registry {
 
 type fakeCreator struct {
 	engine.Engine
-	spec      sandbox.Spec
-	attached  string
-	execed    string
-	detached  string
-	removed   string
-	resized   []string
-	createErr error
-	attachErr error
-	log       *[]string // optional lifecycle recorder (nil = off)
+	spec        sandbox.Spec
+	attached    string
+	execed      string
+	detached    string
+	removed     string
+	volsRemoved string
+	resized     []string
+	createErr   error
+	attachErr   error
+	log         *[]string // optional lifecycle recorder (nil = off)
 }
 
 func (f *fakeCreator) Exec(id, command string) error {
@@ -78,6 +79,11 @@ func (f *fakeCreator) ExecDetached(id, command string) error {
 
 func (f *fakeCreator) Resize(id string, cpus float64, memory string) error {
 	f.resized = append(f.resized, fmt.Sprintf("%s:%g:%s", id, cpus, memory))
+	return nil
+}
+
+func (f *fakeCreator) RemoveVolumesForPod(pod string) error {
+	f.volsRemoved = pod
 	return nil
 }
 
