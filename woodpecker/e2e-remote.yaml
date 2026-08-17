@@ -30,8 +30,9 @@ steps:
       - chmod 600 /root/.ssh/authorized_keys
       - printf 'PermitRootLogin yes\nPubkeyAuthentication yes\n' >> /etc/ssh/sshd_config
       - /usr/sbin/sshd
+      - mkdir -p /run/podman
       - podman system service --time=0 unix:///run/podman/podman.sock &
-      - sleep 3
+      - for i in $(seq 30); do test -S /run/podman/podman.sock && break; sleep 1; done
       - eval $(ssh-agent -s)
       - ssh-add /root/.ssh/id_ed25519
       - ssh-keyscan -H 127.0.0.1 >> /root/.ssh/known_hosts
