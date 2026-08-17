@@ -59,6 +59,9 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		"--label", "poddle.repo="+s.Repo,
 		"--label", "poddle.mode="+s.Mode,
 		"--label", fmt.Sprintf("poddle.autoscale=%t", s.Autoscale),
+		"--label", "poddle.image="+s.Image,
+		"--label", "poddle.identity="+s.Identity,
+		"--label", "poddle.harness="+s.Harness,
 	)
 	if s.CPUs > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
@@ -128,13 +131,26 @@ func (p *Provider) ExecDetached(id, command string) error {
 	return nil
 }
 
-// PodMode reads a pod's poddle.mode label (how its agent runs), for resume on move.
-func (p *Provider) PodMode(id string) (string, error) {
-	res, err := p.Runner.Run("podman", p.podman("inspect", "-f", `{{index .Config.Labels "poddle.mode"}}`, id)...)
+// PodInfo reads back a pod's reconstructable config from its labels, so `move`
+// (and the autoscaler) can recreate the shell preserving everything but the
+// size — with no working directory or template.
+func (p *Provider) PodInfo(id string) (sandbox.PodInfo, error) {
+	const f = `{{index .Config.Labels "poddle.image"}}|{{index .Config.Labels "poddle.size"}}|` +
+		`{{index .Config.Labels "poddle.harness"}}|{{index .Config.Labels "poddle.identity"}}|` +
+		`{{index .Config.Labels "poddle.repo"}}|{{index .Config.Labels "poddle.mode"}}|` +
+		`{{index .Config.Labels "poddle.autoscale"}}`
+	res, err := p.Runner.Run("podman", p.podman("inspect", "-f", f, id)...)
 	if err != nil {
-		return "", fmt.Errorf("podman inspect: %w: %s", err, res.Stderr)
+		return sandbox.PodInfo{}, fmt.Errorf("podman inspect: %w: %s", err, res.Stderr)
 	}
-	return strings.TrimSpace(res.Stdout), nil
+	parts := strings.Split(strings.TrimSpace(res.Stdout), "|")
+	if len(parts) != 7 {
+		return sandbox.PodInfo{}, fmt.Errorf("podman inspect: unexpected label output %q", res.Stdout)
+	}
+	return sandbox.PodInfo{
+		Image: parts[0], Size: parts[1], Harness: parts[2], Identity: parts[3],
+		Repo: parts[4], Mode: parts[5], Autoscale: parts[6] == "true",
+	}, nil
 }
 
 // ExecTTY runs an interactive (TTY) command in the sandbox — for resuming an
