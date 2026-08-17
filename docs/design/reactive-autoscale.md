@@ -95,11 +95,17 @@ auditable. Complements the already-shipped `poddle stats`.
   after `Sustain` sustained ticks; respects cooldown; grow-only; `weak→strong`;
   skips non-opted-in, non-headless-for-grow, and already-`strong`; warns
   interactive once per episode. Deterministic, no podman.
-- **e2e (limited):** a full pressure-trigger e2e **cannot** run in our CI —
-  rootless nested podman has no cgroup, so `podman stats` returns nothing (the
-  same limit that skips the stats/resize e2e). The `move`/resume half is already
-  e2e-green; the trigger half is unit-proven. The label-inheritance foundation
-  gets an e2e (move preserves image/identity with no `.poddle.toml`).
+- **e2e (real, via a stats seam):** rootless nested podman has no cgroup, so
+  real `podman stats` returns nothing in CI (the limit that skips stats/resize
+  e2e). So the production stats source is **injectable**: when
+  `PODDLE_AUTOSCALE_STATS=<file>` is set, the daemon reads synthetic pod mem%
+  from that JSON file instead of `podman stats` (and `PODDLE_AUTOSCALE_INTERVAL`
+  speeds the loop). An e2e then: `task --autoscale` a real headless pod, feed a
+  stats file marking it 95%, and assert the daemon autonomously fires a real
+  `poddle move` — a NEW container, grown to `strong`, with the agent resumed.
+  This exercises the whole wiring (loop → mover → real move → recreate + resume)
+  in CI; only podman's own stats-reading is out of scope. The label-inheritance
+  foundation is already e2e-covered (Task 2: move with no `.poddle.toml`).
 
 ## Task breakdown
 
