@@ -1,0 +1,91 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Callout from '../../components/Callout.astro';
+---
+<DocsLayout title="Headless & CI" description="Run coding agents autonomously with poddle task — bounded turns, burst-and-shrink sizing, reactive autoscaling, and secret-safe pipelines.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs · Headless &amp; CI</p>
+    <h1 class="doc-title">Agents that run themselves.</h1>
+    <p class="doc-lead">
+      <code>poddle task</code> hands a coding agent a prompt in a fresh, secretless pod, runs it to
+      completion, and tears the pod down — no shell, no key, no babysitting. Perfect for nightly jobs
+      and CI.
+    </p>
+  </div>
+
+  <section class="doc-block" style="margin-top:1.8rem">
+    <h2>Run a task</h2>
+    <p class="doc-p">Give it a prompt and an identity. The pod spins up, the agent works, and everything is gone when it finishes:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmd">poddle task "add tests for parseConfig" --identity work</span>
+<span class="out">→ pod poddle-task-9f2a up (weak) · broker attached</span>
+<span class="out">→ claude-code · 6 turns · editing parser_test.go</span>
+<span class="ok">✓ done · pod torn down · no key ever entered the pod</span></code></pre>
+    </div>
+    <ul class="doc-list">
+      <li><code>--max-turns</code> bounds the run (default <code>24</code>) so a stuck agent can’t loop forever.</li>
+      <li><code>--template</code> reuses a blueprint — image, repo, connectors, and safety rules in one flag.</li>
+      <li><code>--keep</code> leaves the pod up to inspect afterward; <code>--detach</code> runs it in the background and returns immediately.</li>
+    </ul>
+
+    <h2 style="margin-top:2.4rem">Watch a detached run</h2>
+    <p class="doc-p">A backgrounded task keeps working after the command returns. Follow it with <code>logs</code>, and tear it down when you’re done:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmd">poddle task "port the module to v2" --identity work --detach --keep</span>
+<span class="cmd">poddle logs poddle-task-9f2a --follow</span>
+<span class="cmd">poddle stats                       </span><span class="cmt"># live CPU / memory for running pods</span>
+<span class="cmd">poddle down poddle-task-9f2a</span></code></pre>
+    </div>
+
+    <h2 style="margin-top:2.4rem">Burst for the job, shrink after</h2>
+    <p class="doc-p">Autonomous jobs often need horsepower for a run and nothing while idle. A template can resize around each task with <code>before_task</code> and <code>after_task</code> — burst to a <code>strong</code> pod for the run, drop back to <code>weak</code> when it’s kept:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">.poddle/nightly.toml</span></div>
+      <pre class="term__body"><code><span class="cmt"># extends api — inherits repo, connectors, and safety rules</span>
+<span class="cmd">extends = "api"</span>
+<span class="cmd">before_task = "strong"</span>
+<span class="cmd">after_task = "weak"</span></code></pre>
+    </div>
+
+    <h2 style="margin-top:2.4rem">Reactive autoscaling</h2>
+    <p class="doc-p">
+      For runs whose peak memory you can’t predict, <code>--autoscale</code> lets the <code>poddled</code>
+      daemon react to real memory pressure. Its behavior depends on the mode:
+    </p>
+    <ul class="doc-list">
+      <li><strong>Headless</strong> (<code>poddle task --autoscale</code>) — the daemon <em>auto-grows</em> the pod to a bigger shell when it nears its memory limit.</li>
+      <li><strong>Interactive</strong> (<code>poddle up --autoscale</code>) — the daemon only <em>warns</em>; you stay in control of the resize.</li>
+    </ul>
+    <Callout type="note" title="How it samples">
+      <p>The autoscaler checks memory every <code>15s</code> by default; set <code>PODDLE_AUTOSCALE_INTERVAL</code> (a Go duration like <code>5s</code>) to change the cadence. It grows one size step at a time — it never shrinks a live pod out from under a running agent.</p>
+    </Callout>
+
+    <h2 style="margin-top:2.4rem">In a pipeline</h2>
+    <p class="doc-p">
+      Because credentials stay in the broker, CI never holds a vendor key. A step authenticates a
+      brokered identity, runs the task against a checked-in template, and the pod carries only a
+      revocable handle:
+    </p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">.woodpecker.yml</span></div>
+      <pre class="term__body"><code><span class="cmt"># nightly agent run — no secrets in the CI environment</span>
+<span class="out">steps:</span>
+<span class="out">  agent:</span>
+<span class="out">    image: poddle/ci</span>
+<span class="out">    commands:</span>
+<span class="cmd">      - poddle task "triage flaky tests and open fixes" \</span>
+<span class="cmd">          --template nightly --identity ci --autoscale</span></code></pre>
+    </div>
+    <Callout type="tip" title="Pair it with brokered connectors">
+      <p>Add <code>connectors = ["github"]</code> to the template and the agent can push a branch or open a PR — the forge token is injected on the wire, never written into the pod. See <a href="/docs/connectors">Connectors</a>.</p>
+    </Callout>
+  </section>
+
+  <div class="doc-more">
+    <a href="/docs/commands/task">task reference →</a>
+    <a href="/docs/templates">Templates →</a>
+    <a href="/docs/connectors">Connectors →</a>
+  </div>
+</DocsLayout>

@@ -50,8 +50,11 @@ const SEQUENCE = [
   { href: '/docs', label: 'Getting started' },
   { href: '/docs/examples', label: 'Examples' },
   { href: '/docs/concepts', label: 'Concepts' },
+  { href: '/docs/security', label: 'Security' },
   { href: '/docs/connectors', label: 'Connectors' },
   { href: '/docs/templates', label: 'Templates' },
+  { href: '/docs/headless', label: 'Headless & CI' },
+  { href: '/docs/configuration', label: 'Configuration' },
   { href: '/docs/commands', label: 'Command reference' },
 ];
 const seqIdx = SEQUENCE.findIndex((s) => isActive(s.href));
@@ -70,8 +73,11 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
           <a href="/docs" class:list={[isActive('/docs') && 'is-active']}>Getting started</a>
           <a href="/docs/examples" class:list={[isActive('/docs/examples') && 'is-active']}>Examples</a>
           <a href="/docs/concepts" class:list={[isActive('/docs/concepts') && 'is-active']}>Concepts</a>
+          <a href="/docs/security" class:list={[isActive('/docs/security') && 'is-active']}>Security</a>
           <a href="/docs/connectors" class:list={[isActive('/docs/connectors') && 'is-active']}>Connectors</a>
           <a href="/docs/templates" class:list={[isActive('/docs/templates') && 'is-active']}>Templates</a>
+          <a href="/docs/headless" class:list={[isActive('/docs/headless') && 'is-active']}>Headless &amp; CI</a>
+          <a href="/docs/configuration" class:list={[isActive('/docs/configuration') && 'is-active']}>Configuration</a>
           <a href="/docs/commands" class:list={[isActive('/docs/commands') && 'is-active']}>Command reference</a>
         </div>
 

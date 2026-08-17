@@ -1,0 +1,112 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Callout from '../../components/Callout.astro';
+
+// egress + secret_scan enums mirror the Template struct in config.go.
+const egress: [string, string, string][] = [
+  ['redact', 'default', 'Scan outbound request bodies and replace stray secrets with «redacted:poddle». Traffic still flows.'],
+  ['block', '', 'Refuse outbound requests that carry a detected secret instead of scrubbing them.'],
+  ['off', '', 'No body scanning. Injection still applies; only the redaction pass is disabled.'],
+];
+const scan: [string, string, string][] = [
+  ['warn', 'default', 'Print a warning if a mount carries a credential file, but start the pod.'],
+  ['block', '', 'Refuse to start the pod if a mount carries a credential file.'],
+  ['off', '', 'Do not scan mounts.'],
+];
+---
+<DocsLayout title="Security & threat model" description="How poddle keeps vendor secrets out of every pod — isolation, credential injection on the wire, and outbound redaction — and exactly what an attacker gets.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs · Security</p>
+    <h1 class="doc-title">Built so the secret never lands in the pod.</h1>
+    <p class="doc-lead">
+      A coding agent gets everything it needs to be productive and nothing it can leak. The raw
+      credential lives in the broker; the pod carries a revocable handle. If a pod is compromised,
+      there is no vendor key to steal.
+    </p>
+  </div>
+
+  <section class="doc-block" style="margin-top:1.8rem">
+    <h2>Three lines of defense</h2>
+    <ul class="doc-list">
+      <li><strong>Isolation</strong> — every pod is a disposable Podman container with its own filesystem, process space, and network egress. Nothing persists between runs unless you mount it.</li>
+      <li><strong>Injection</strong> — the pod never holds a vendor secret. It carries an opaque <code>poddle_…</code> handle; the broker resolves it to the real credential and sets the authorization header on the broker→provider hop.</li>
+      <li><strong>Redaction</strong> — on that same egress path the broker scans outbound bodies and scrubs stray secrets, so an agent can’t exfiltrate a key it read from your repo by pasting it into a prompt.</li>
+    </ul>
+
+    <h2 style="margin-top:2.4rem">What a request actually does</h2>
+    <p class="doc-p">The harness calls its provider exactly as it normally would — poddle just changes where the request goes and what authenticates it:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">inside the pod</span></div>
+      <pre class="term__body"><code><span class="cmt"># the harness sees a broker URL and a handle, never a key</span>
+<span class="out">ANTHROPIC_BASE_URL = https://broker.local</span>
+<span class="out">ANTHROPIC_AUTH_TOKEN = poddle_9f2a…            </span><span class="cmt"># opaque, revocable</span></code></pre>
+    </div>
+    <ol class="doc-list" style="margin-top:1rem">
+      <li>The broker resolves the handle to the real credential in its sealed vault and sets the true authorization header.</li>
+      <li>It scans the request body and redacts any stray secrets to <code>«redacted:poddle»</code>.</li>
+      <li>It reverse-proxies to the real upstream. The provider sees valid auth and a clean body; the pod never saw the key.</li>
+    </ol>
+
+    <h2 style="margin-top:2.4rem">The egress knobs</h2>
+    <p class="doc-p">Two template fields govern the redaction path. Set them once in a shared <code>base</code> and every pod inherits them.</p>
+    <p class="doc-p"><code>egress</code> — what the broker does with secrets in outbound bodies:</p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Value</th><th></th><th>Behavior</th></tr></thead>
+        <tbody>
+          {egress.map(([v, tag, d]) => (
+            <tr>
+              <td><code>{v}</code></td>
+              <td data-label="">{tag ? <span class="dim">{tag}</span> : <span class="dim">—</span>}</td>
+              <td data-label="Info">{d}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="doc-p" style="margin-top:1.4rem"><code>secret_scan</code> — what happens if a mounted host path carries a credential file:</p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Value</th><th></th><th>Behavior</th></tr></thead>
+        <tbody>
+          {scan.map(([v, tag, d]) => (
+            <tr>
+              <td><code>{v}</code></td>
+              <td data-label="">{tag ? <span class="dim">{tag}</span> : <span class="dim">—</span>}</td>
+              <td data-label="Info">{d}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="doc-p" style="margin-top:1.4rem">And <code>block_paths</code> names host paths that must never enter a pod at all — a pod refuses to start if a mount would pull one in, so <code>~/.aws</code> or <code>~/.ssh</code> can’t leak by accident.</p>
+
+    <h2 style="margin-top:2.4rem">If a pod is compromised</h2>
+    <p class="doc-p">A malicious dependency, a prompt-injected agent, a leaked pod — here is exactly what it gets:</p>
+    <ul class="threat">
+      <li class="ok"><strong>An opaque handle</strong> — revocable in one call and worthless anywhere but your broker.</li>
+      <li class="ok"><strong>A scoped, disposable pod</strong> — no long-lived vendor keys on disk, in env, or in memory.</li>
+      <li class="bad"><strong>Not your provider key</strong> — it is never materialized inside the pod, only injected at the egress boundary.</li>
+      <li class="bad"><strong>Not the secrets in the prompt</strong> — scrubbed before they leave the broker.</li>
+    </ul>
+
+    <Callout type="note" title="What poddle does not claim">
+      <p>The real credential is present on the broker→provider hop — that is unavoidable, since the provider must authenticate you. poddle’s guarantee is narrower and exact: the raw secret is never materialized inside the pod, and never rides in a body it shouldn’t. Revoke a handle at the broker and the pod is locked out immediately.</p>
+    </Callout>
+  </section>
+
+  <div class="doc-more">
+    <a href="/docs/concepts">Concepts →</a>
+    <a href="/docs/templates">Templates →</a>
+    <a href="/docs/connectors">Connectors →</a>
+  </div>
+</DocsLayout>
+
+<style>
+  .threat { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+  .threat li { position: relative; padding-left: 1.9rem; color: var(--muted); line-height: 1.5; }
+  .threat li strong { color: var(--ink); font-weight: 600; }
+  .threat li::before { content: ""; position: absolute; left: 0; top: 0.12em; width: 17px; height: 17px; border-radius: 50%; background-repeat: no-repeat; background-position: center; background-size: 10px; }
+  .threat .ok::before { background-color: #dff0e8; background-image: url(/icons/check.svg); }
+  .threat .bad::before { background-color: #f6dcd2; background-image: url(/icons/x.svg); }
+</style>

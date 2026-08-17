@@ -1,0 +1,112 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Callout from '../../components/Callout.astro';
+
+// Paths mirror config.go (templates), identity.go DefaultBase (identities), and
+// the connectors store — all under the OS config dir (~/.config/poddle on
+// Linux/macOS, %AppData%\poddle on Windows).
+const paths: [string, string, string][] = [
+  ['Identities', '~/.config/poddle/identities/<name>/', 'One directory per login — meta.toml plus the sealed token, mode 0600.'],
+  ['User templates', '~/.config/poddle/templates/<name>.toml', 'Your personal blueprints, available in any project.'],
+  ['Connectors', '~/.config/poddle/connectors/', 'Brokered service definitions added with poddle connect.'],
+  ['Project templates', '.poddle/<name>.toml', 'Checked into the repo and shared with the team.'],
+  ['Project default', '.poddle.toml', 'Auto-applied when you run poddle up with no --template.'],
+];
+
+// Environment variables read by the CLI and daemon. Grounded in the source:
+// root.go (PODDLE_HOST), up/command.go (PODDLE_BROKER_ADDR), anthropic.go
+// (PODDLE_ANTHROPIC_BASE_URL), autoscale_serve.go (PODDLE_AUTOSCALE_INTERVAL).
+const envs: { name: string; def: string; desc: string }[] = [
+  { name: 'PODDLE_HOST', def: 'local podman', desc: 'Target a remote host as ssh://user@host — the same commands run against it. Empty means local Podman.' },
+  { name: 'PODDLE_BROKER_ADDR', def: 'host.containers.internal', desc: 'The routable address a remote pod dials to reach the broker (e.g. this machine’s LAN IP). Local pods use the default.' },
+  { name: 'PODDLE_ANTHROPIC_BASE_URL', def: 'https://api.anthropic.com', desc: 'Point the Anthropic provider at a compatible proxy or gateway instead of the public API.' },
+  { name: 'PODDLE_AUTOSCALE_INTERVAL', def: '15s', desc: 'How often the daemon’s autoscaler samples memory pressure (a Go duration like 5s or 1m).' },
+];
+---
+<DocsLayout title="Configuration" description="Where poddle stores identities, templates, and connectors — how templates resolve and merge, and every environment variable.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs · Configuration</p>
+    <h1 class="doc-title">Where everything lives.</h1>
+    <p class="doc-lead">
+      poddle keeps state in plain files under your OS config directory, resolves templates
+      from three predictable places, and reads a short list of environment variables. No hidden
+      global state.
+    </p>
+  </div>
+
+  <section class="doc-block" style="margin-top:1.8rem">
+    <h2>On-disk layout</h2>
+    <p class="doc-p">Everything is a file you can read, back up, or check in. Secrets are stored mode <code>0600</code> and never leave your machine — the broker seals them into its vault at spin-up.</p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>What</th><th>Path</th><th>Notes</th></tr></thead>
+        <tbody>
+          {paths.map(([what, path, notes]) => (
+            <tr>
+              <td>{what}</td>
+              <td data-label="Path"><code>{path}</code></td>
+              <td data-label="Info">{notes}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <Callout type="note" title="OS-correct paths">
+      <p><code>~/.config/poddle</code> is the Linux/macOS location; on Windows it resolves to <code>%AppData%\poddle</code>. poddle uses the platform config dir, so you don’t hard-code paths.</p>
+    </Callout>
+
+    <h2 style="margin-top:2.4rem">How a template is chosen</h2>
+    <p class="doc-p">When you pass <code>--template &lt;name&gt;</code>, poddle looks it up by filename across two locations. A project file <strong>shadows</strong> a user file of the same name, so a repo can pin its own version of a shared blueprint:</p>
+    <ol class="doc-list">
+      <li><strong>Project</strong> — <code>.poddle/&lt;name&gt;.toml</code> (wins on a name clash).</li>
+      <li><strong>User</strong> — <code>~/.config/poddle/templates/&lt;name&gt;.toml</code>.</li>
+    </ol>
+    <p class="doc-p">With <em>no</em> <code>--template</code>, poddle applies the project default — the repo’s root <code>.poddle.toml</code> — if one exists. Missing files are never an error; you only need what you use.</p>
+
+    <h2 style="margin-top:2.4rem">How <code>extends</code> merges</h2>
+    <p class="doc-p">A template can <code>extends</code> one parent or a list of them; chains flatten and a cycle is a hard error. When a child layers over a parent, values combine by type:</p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Field kind</th><th>Rule</th><th>Examples</th></tr></thead>
+        <tbody>
+          <tr><td>Scalars</td><td data-label="Rule">Child overrides — a non-empty child value wins.</td><td data-label="Info"><code>image</code>, <code>size</code>, <code>harness</code>, <code>identity</code>, <code>repo</code>, <code>secret_scan</code>, <code>egress</code></td></tr>
+          <tr><td>Lists</td><td data-label="Rule">Append — parent items first, then child.</td><td data-label="Info"><code>setup</code>, <code>scripts</code>, <code>connectors</code>, <code>block_paths</code>, <code>mounts</code></td></tr>
+          <tr><td>Maps</td><td data-label="Rule">Merge — child keys override same-named parent keys.</td><td data-label="Info"><code>env</code></td></tr>
+          <tr><td>Flags</td><td data-label="Rule">Sticky — once a parent turns it on it stays on.</td><td data-label="Info"><code>autoscale</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <Callout type="tip" title="One base, many specializations">
+      <p>Because lists append and scalars override, a shared <code>base</code> that sets safe defaults (image, <code>secret_scan</code>, <code>egress</code>) is inherited by every template that extends it — a project template only states what differs. See the <a href="/docs/templates">Templates</a> examples for the pattern.</p>
+    </Callout>
+
+    <h2 style="margin-top:2.4rem">Environment variables</h2>
+    <p class="doc-p">A handful of variables tune the CLI and daemon. All are optional — the defaults are the common case.</p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Variable</th><th>Default</th><th>Effect</th></tr></thead>
+        <tbody>
+          {envs.map((e) => (
+            <tr>
+              <td><code>{e.name}</code></td>
+              <td data-label="Default"><code>{e.def}</code></td>
+              <td data-label="Info">{e.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="term" style="margin-top:1.2rem">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmt"># run the same commands against a remote host</span>
+<span class="cmd">export PODDLE_HOST=ssh://you@build-box</span>
+<span class="cmd">poddle up my-sandbox --identity work</span></code></pre>
+    </div>
+  </section>
+
+  <div class="doc-more">
+    <a href="/docs/templates">Templates →</a>
+    <a href="/docs/headless">Headless &amp; CI →</a>
+    <a href="/docs/commands">Command reference →</a>
+  </div>
+</DocsLayout>
