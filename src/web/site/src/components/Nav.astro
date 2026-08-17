@@ -1,0 +1,28 @@
+---
+import Button from './Button.astro';
+const repo = 'https://github.com/datadir-lab/poddle';
+---
+<header class="nav">
+  <div class="container nav__inner">
+    <a class="nav__brand" href="/">
+      <img class="nav__logo" src="/logo.svg" alt="" width="46" height="46" />
+      <span>poddle</span>
+    </a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="/connectors">Connectors</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/docs">Docs</a>
+      <a href={repo}>Source</a>
+      <Button href="/docs" variant="primary">Get started</Button>
+    </nav>
+  </div>
+</header>
+<style>
+  .nav { border-bottom: 1px solid var(--border); }
+  .nav__inner { display: flex; align-items: center; justify-content: space-between; padding-block: 0.65rem; }
+  .nav__brand { display: inline-flex; align-items: center; gap: 0.55rem; font-family: var(--font-serif); font-size: 1.6rem; color: var(--ink); letter-spacing: -0.01em; }
+  .nav__logo { width: 46px; height: 46px; display: block; margin-block: -6px; }
+  .nav__links { display: flex; align-items: center; gap: 1.5rem; }
+  .nav__links > a { color: var(--muted); font-size: 0.95rem; }
+  .nav__links > a:hover { color: var(--ink); }
+</style>

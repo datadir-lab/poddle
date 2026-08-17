@@ -1,0 +1,96 @@
+---
+import Legal from '../layouts/Legal.astro';
+---
+<Legal
+  title="Privacy Policy"
+  updated="17 August 2026"
+  description="How datadir handles data for poddle — and why the product is built to hold as little of yours as possible."
+>
+  <p class="lead">
+    poddle is built to hold as little of your data as possible. The broker keeps credentials in a
+    sealed vault; your code and prompts run in pods on infrastructure you control. This policy explains
+    what we do collect, and why.
+  </p>
+
+  <p>
+    This Privacy Policy describes how <strong>datadir s. r. o.</strong> ("datadir", "we", "us"),
+    operator of poddle, processes personal data. It applies to poddle.dev and the poddle service.
+    We are the controller for that data. Registered office: <strong>[registered address]</strong>.
+  </p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><strong>Account data</strong> — your name, email, and organisation, so you can sign in and we can contact you.</li>
+    <li><strong>Billing data</strong> — handled by our payment processor; we store a customer reference and invoices, not full card details.</li>
+    <li><strong>Usage &amp; telemetry</strong> — coarse product events and error diagnostics to keep the service reliable and secure.</li>
+    <li><strong>Audit records</strong> — which identity performed which action and when, so your team has an accountable trail.</li>
+    <li><strong>Support communications</strong> — anything you send us when you ask for help.</li>
+  </ul>
+
+  <h3>What we do <em>not</em> want</h3>
+  <p>
+    We do not want your vendor secrets or your source code. Credentials are sealed in the broker vault
+    and injected on the wire; pods run on your own cloud or self-hosted compute. We are not in the path
+    of your repositories or your prompts, and we do not train models on your data.
+  </p>
+
+  <h2>How we use it</h2>
+  <ul>
+    <li>To provide, secure, and improve the service.</li>
+    <li>To bill you and prevent fraud.</li>
+    <li>To respond to support requests and send essential service notices.</li>
+    <li>To meet legal and security obligations.</li>
+  </ul>
+
+  <h2>Legal bases (GDPR)</h2>
+  <p>
+    We process personal data to perform our contract with you, on the basis of our legitimate interests
+    in running a secure and reliable service, to comply with legal obligations, and — where required —
+    with your consent, which you may withdraw at any time.
+  </p>
+
+  <h2>Sharing &amp; processors</h2>
+  <p>
+    We share data only with vetted sub-processors that help us run poddle — cloud hosting, payment
+    processing, error monitoring, and email delivery — each under a data-processing agreement. We do
+    not sell personal data. A current list of sub-processors is available on request.
+  </p>
+
+  <h2>Retention</h2>
+  <p>
+    We keep account and audit data for the life of your account and as long as needed for legal,
+    accounting, or security purposes, then delete or anonymise it. You can ask us to delete your
+    account data at any time.
+  </p>
+
+  <h2>Your rights</h2>
+  <p>
+    Under the GDPR you may request access, rectification, erasure, restriction, portability, and object
+    to certain processing. To exercise any of these, email
+    <a href="mailto:privacy@datadir.co">privacy@datadir.co</a>. You also have the right to lodge a
+    complaint with your local supervisory authority.
+  </p>
+
+  <h2>International transfers</h2>
+  <p>
+    Where data is transferred outside the EEA, we rely on appropriate safeguards such as the European
+    Commission's Standard Contractual Clauses.
+  </p>
+
+  <h2>Cookies</h2>
+  <p>
+    poddle.dev uses only what's necessary to serve the site and, where enabled, privacy-friendly,
+    cookieless analytics. We do not use advertising trackers.
+  </p>
+
+  <h2>Changes</h2>
+  <p>We'll post any changes here and update the date above; material changes will be notified to account holders.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or requests: <a href="mailto:privacy@datadir.co">privacy@datadir.co</a>.</p>
+
+  <p class="note">
+    This is a working draft intended as a starting point and should be reviewed by counsel before
+    launch. Bracketed items and processor lists need to be completed with datadir's specifics.
+  </p>
+</Legal>

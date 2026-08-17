@@ -1,0 +1,325 @@
+[
+  {
+    "path": "poddle",
+    "name": "poddle",
+    "use": "poddle",
+    "short": "poddle — secret-safe dev sandboxes for coding agents",
+    "subcommands": [
+      "poddle attach",
+      "poddle connect",
+      "poddle down",
+      "poddle identity",
+      "poddle logs",
+      "poddle ls",
+      "poddle move",
+      "poddle resize",
+      "poddle run",
+      "poddle task",
+      "poddle up",
+      "poddle version"
+    ]
+  },
+  {
+    "path": "poddle attach",
+    "name": "attach",
+    "use": "attach \u003cname|id\u003e",
+    "short": "Reconnect to a running sandbox"
+  },
+  {
+    "path": "poddle connect",
+    "name": "connect",
+    "use": "connect",
+    "short": "Manage service connections (git, CI, …) brokered into pods",
+    "subcommands": [
+      "poddle connect add",
+      "poddle connect ls",
+      "poddle connect rm"
+    ]
+  },
+  {
+    "path": "poddle connect add",
+    "name": "add",
+    "use": "add \u003cname\u003e",
+    "short": "Add a service connection (the token is brokered, never stored in a pod)",
+    "flags": [
+      {
+        "name": "connector",
+        "type": "string",
+        "usage": "connector type (forgejo, woodpecker, or a custom one)"
+      },
+      {
+        "name": "token",
+        "type": "string",
+        "usage": "service token (or pipe it on stdin)"
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "usage": "service base URL"
+      },
+      {
+        "name": "user",
+        "type": "string",
+        "usage": "service username (for basic auth)"
+      }
+    ]
+  },
+  {
+    "path": "poddle connect ls",
+    "name": "ls",
+    "use": "ls",
+    "short": "List service connections"
+  },
+  {
+    "path": "poddle connect rm",
+    "name": "rm",
+    "use": "rm \u003cname\u003e",
+    "short": "Remove a service connection"
+  },
+  {
+    "path": "poddle down",
+    "name": "down",
+    "use": "down \u003cname|id\u003e",
+    "short": "Stop and remove a sandbox"
+  },
+  {
+    "path": "poddle identity",
+    "name": "identity",
+    "use": "identity",
+    "short": "Manage coding-agent logins (identities)",
+    "subcommands": [
+      "poddle identity add",
+      "poddle identity ls",
+      "poddle identity rm",
+      "poddle identity status"
+    ]
+  },
+  {
+    "path": "poddle identity add",
+    "name": "add",
+    "use": "add \u003cname\u003e",
+    "short": "Add an identity by logging into a provider (client-side)",
+    "flags": [
+      {
+        "name": "provider",
+        "type": "string",
+        "default": "anthropic",
+        "usage": "auth provider (anthropic)"
+      }
+    ]
+  },
+  {
+    "path": "poddle identity ls",
+    "name": "ls",
+    "use": "ls",
+    "short": "List identities"
+  },
+  {
+    "path": "poddle identity rm",
+    "name": "rm",
+    "use": "rm \u003cname\u003e",
+    "short": "Remove an identity"
+  },
+  {
+    "path": "poddle identity status",
+    "name": "status",
+    "use": "status \u003cname\u003e",
+    "short": "Check whether an identity is authenticated"
+  },
+  {
+    "path": "poddle logs",
+    "name": "logs",
+    "use": "logs \u003cname|id\u003e",
+    "short": "Show a detached task's output",
+    "flags": [
+      {
+        "name": "follow",
+        "shorthand": "f",
+        "type": "bool",
+        "default": "false",
+        "usage": "stream the log (tail -f)"
+      }
+    ]
+  },
+  {
+    "path": "poddle ls",
+    "name": "ls",
+    "use": "ls",
+    "short": "List sandboxes"
+  },
+  {
+    "path": "poddle move",
+    "name": "move",
+    "use": "move \u003cname\u003e",
+    "short": "Re-home a pod's session onto a fresh, re-sized shell (keeps workspace + state)",
+    "flags": [
+      {
+        "name": "detach",
+        "shorthand": "d",
+        "type": "bool",
+        "default": "false",
+        "usage": "recreate without attaching"
+      },
+      {
+        "name": "harness",
+        "type": "string",
+        "default": "claude-code",
+        "usage": "coding-agent runtime (must match the original for state)"
+      },
+      {
+        "name": "image",
+        "type": "string",
+        "usage": "new base image"
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "usage": "new resource size (weak|strong)"
+      },
+      {
+        "name": "template",
+        "type": "string",
+        "usage": "template to resolve identity/connectors from"
+      }
+    ]
+  },
+  {
+    "path": "poddle resize",
+    "name": "resize",
+    "use": "resize \u003cname|id\u003e [size]",
+    "short": "Change a running pod's CPU/memory live (no restart)",
+    "flags": [
+      {
+        "name": "cpus",
+        "type": "float64",
+        "default": "0",
+        "usage": "CPU ceiling in cores (bursts up to this; idle floats to ~0)"
+      },
+      {
+        "name": "memory",
+        "type": "string",
+        "usage": "memory cap, e.g. 8g"
+      }
+    ]
+  },
+  {
+    "path": "poddle run",
+    "name": "run",
+    "use": "run \u003cname|id\u003e \u003ccommand\u003e...",
+    "short": "Run a command in a running sandbox"
+  },
+  {
+    "path": "poddle task",
+    "name": "task",
+    "use": "task \u003cprompt\u003e",
+    "short": "Run a coding agent headless on a prompt in a fresh secretless pod",
+    "flags": [
+      {
+        "name": "detach",
+        "shorthand": "d",
+        "type": "bool",
+        "default": "false",
+        "usage": "run the agent in the background; leave the pod up (poddle logs/down)"
+      },
+      {
+        "name": "harness",
+        "type": "string",
+        "default": "claude-code",
+        "usage": "coding-agent runtime"
+      },
+      {
+        "name": "identity",
+        "type": "string",
+        "usage": "coding-agent login to use (required unless the template sets one)"
+      },
+      {
+        "name": "image",
+        "type": "string",
+        "default": "docker.io/library/debian:stable-slim",
+        "usage": "base image"
+      },
+      {
+        "name": "keep",
+        "type": "bool",
+        "default": "false",
+        "usage": "keep the pod running after the task (attach/inspect later)"
+      },
+      {
+        "name": "max-turns",
+        "type": "int",
+        "default": "24",
+        "usage": "maximum agent turns"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "usage": "pod name (default: a generated poddle-task-* name)"
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "default": "weak",
+        "usage": "resource size (weak|strong)"
+      },
+      {
+        "name": "template",
+        "type": "string",
+        "usage": "template to base the pod on"
+      }
+    ]
+  },
+  {
+    "path": "poddle up",
+    "name": "up",
+    "use": "up [name]",
+    "short": "Create a sandbox and connect to it",
+    "flags": [
+      {
+        "name": "detach",
+        "shorthand": "d",
+        "type": "bool",
+        "default": "false",
+        "usage": "create without attaching"
+      },
+      {
+        "name": "exec",
+        "type": "string",
+        "usage": "run a command in the sandbox instead of attaching, then tear down"
+      },
+      {
+        "name": "harness",
+        "type": "string",
+        "default": "claude-code",
+        "usage": "coding-agent runtime to run in the sandbox"
+      },
+      {
+        "name": "identity",
+        "type": "string",
+        "usage": "coding-agent login to use in the sandbox"
+      },
+      {
+        "name": "image",
+        "type": "string",
+        "default": "docker.io/library/debian:stable-slim",
+        "usage": "base image"
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "default": "weak",
+        "usage": "resource size (weak|strong)"
+      },
+      {
+        "name": "template",
+        "type": "string",
+        "usage": "template to base the sandbox on (from .poddle/ or ~/.config/poddle/templates)"
+      }
+    ]
+  },
+  {
+    "path": "poddle version",
+    "name": "version",
+    "use": "version",
+    "short": "Print the poddle version"
+  }
+]

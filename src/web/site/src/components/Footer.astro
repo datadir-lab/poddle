@@ -1,0 +1,62 @@
+---
+const repo = 'https://github.com/datadir-lab/poddle';
+---
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="footer__lockup" href="/">
+        <img class="footer__logo" src="/logo.svg" alt="" width="52" height="52" />
+        <span class="footer__mark">poddle</span>
+      </a>
+      <p class="footer__tag">Secret-safe dev sandboxes for coding agents.</p>
+    </div>
+    <div class="footer__cols">
+      <div>
+        <p class="footer__h">Product</p>
+        <a href="/connectors">Connectors</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/docs">Docs</a>
+      </div>
+      <div>
+        <p class="footer__h">Learn</p>
+        <a href="/security">Security</a>
+        <a href="/#how-it-works">How it works</a>
+      </div>
+      <div>
+        <p class="footer__h">Company</p>
+        <a href="/about">About</a>
+        <a href={repo}>Source</a>
+        <a href={`${repo}/issues`}>Issues</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer__base">
+    <span>Secret-safe pods for coding agents.</span>
+    <span class="footer__legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></span>
+    <span>© 2026 datadir s. r. o. · <a href="https://datadir.co">datadir.co</a></span>
+  </div>
+</footer>
+<style>
+  .footer {
+    background: var(--footer-bg);
+    color: var(--footer-fg);
+    margin-top: var(--space-section);
+    padding-block: 3.5rem 2rem;
+  }
+  .footer__inner { display: flex; flex-wrap: wrap; gap: 2.5rem 3rem; justify-content: space-between; }
+  .footer__lockup { display: inline-flex; align-items: center; gap: 0.6rem; text-decoration: none; }
+  .footer__logo { width: 52px; height: 52px; display: block; }
+  .footer__mark { font-family: var(--font-serif); font-size: 1.5rem; color: var(--footer-mark); }
+  .footer__tag { color: var(--footer-muted); max-width: 32ch; margin: 0.7rem 0 0; }
+  .footer__cols { display: flex; gap: 3rem; }
+  .footer__h { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.12em; color: var(--footer-faint); margin: 0 0 0.7rem; }
+  .footer__cols a { display: block; color: var(--footer-link); font-size: 0.95rem; margin-bottom: 0.4rem; text-decoration: none; }
+  .footer__cols a:hover { color: #ffffff; }
+  .footer__base {
+    display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: space-between;
+    margin-top: 2.75rem; padding-top: 1.5rem; border-top: 1px solid var(--footer-border);
+    color: var(--footer-faint); font-size: 0.85rem;
+  }
+  .footer__base a { color: var(--footer-muted); text-decoration: none; }
+  .footer__base a:hover { color: #ffffff; }
+</style>

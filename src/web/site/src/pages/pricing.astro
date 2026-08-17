@@ -1,0 +1,215 @@
+---
+import Base from '../layouts/Base.astro';
+import Button from '../components/Button.astro';
+
+const tiers = [
+  {
+    name: 'Solo',
+    tag: 'For one developer kicking the tires.',
+    amount: '$0',
+    period: 'free forever',
+    note: '',
+    cta: { label: 'Start free', href: '/docs', variant: 'ghost' },
+    feats: [
+      '1 identity',
+      'Up to 2 pods at once',
+      'Secretless broker + revocable handles',
+      'Forge, pipeline & registry connectors',
+      'Community support',
+    ],
+  },
+  {
+    name: 'Team',
+    tag: 'For teams shipping with coding agents.',
+    amount: '$20',
+    period: 'per developer / month',
+    note: 'billed annually — or $25 monthly',
+    featured: true,
+    cta: { label: 'Start a team', href: '/docs', variant: 'primary' },
+    feats: [
+      'Everything in Solo',
+      'Unlimited identities',
+      'Parallel pods that burst & scale',
+      'Every connector, plus write-your-own',
+      'Per-user policy & full audit trail',
+      'Share pods with per-person identity',
+      'Priority support',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    tag: 'For orgs that answer to auditors.',
+    amount: "Let's talk",
+    period: 'custom',
+    note: '',
+    cta: { label: 'Contact sales', href: 'mailto:hello@datadir.co', variant: 'ghost' },
+    feats: [
+      'Everything in Team',
+      'SSO / SCIM & SAML',
+      'DORA & AI-Act compliance controls',
+      'Audit-log export & retention',
+      'SLA & dedicated support',
+      'Custom pod ceilings & invoicing',
+    ],
+  },
+];
+
+const included = [
+  'No vendor secret inside the pod',
+  'Isolated, disposable pods',
+  'Credentials injected on the wire',
+  'Bring your own provider & harness',
+];
+
+const faqs = [
+  {
+    q: 'What counts as a developer?',
+    a: 'Anyone in your org who spins up or drives a pod. Read-only viewers of an audit trail are free.',
+  },
+  {
+    q: 'Do I pay poddle for compute?',
+    a: 'Only for managed pods — metered at a small margin over raw cloud, billed per second with scale-to-zero when idle. Bring your own cloud or self-hosted compute and you pay that provider directly; poddle just brokers the credentials.',
+  },
+  {
+    q: 'Can I self-host the broker?',
+    a: 'The broker is a managed, hardened control plane we run for you — that is what keeps the raw secret out of every pod and gives you one audited place to govern access.',
+  },
+  {
+    q: 'Is there a trial for Team?',
+    a: 'Yes — 14 days, no card. Your pods and identities carry straight over if you keep going.',
+  },
+];
+---
+<Base
+  title="Pricing - poddle"
+  description="Priced per developer for the broker that keeps secrets out of your pods. Pods run on your own self-hosted or cloud compute."
+>
+  <section class="container pr-hero">
+    <p class="eyebrow">Pricing</p>
+    <h1 class="pr-title">Priced per developer. Secrets are never an add-on.</h1>
+    <p class="pr-lead">
+      poddle bills per developer for the broker that keeps secrets out of your pods — the control
+      plane, identities, and connectors. Run pods on our managed cloud at a small margin, or bring
+      your own cloud or self-hosted compute and pay your provider directly.
+    </p>
+  </section>
+
+  <section class="container pr-body">
+    <div class="tiers">
+      {tiers.map((t) => (
+        <div class:list={['tier', t.featured && 'tier--featured']}>
+          {t.featured && <span class="badge">Most popular</span>}
+          <h2 class="tier__name">{t.name}</h2>
+          <p class="tier__tag">{t.tag}</p>
+          <div class="tier__price">
+            <span class="tier__amount">{t.amount}</span>
+            <span class="tier__period">{t.period}</span>
+          </div>
+          <p class="tier__note">{t.note}</p>
+          <div class="tier__cta">
+            <Button href={t.cta.href} variant={t.cta.variant as 'primary' | 'ghost'}>{t.cta.label}</Button>
+          </div>
+          <ul class="feats">
+            {t.feats.map((f) => <li>{f}</li>)}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    <div class="pods">
+      <p class="ilabel">Pods &amp; compute</p>
+      <div class="pods__grid">
+        <div class="pod-card pod-card--managed">
+          <h3 class="pod-card__h">Managed cloud pods</h3>
+          <p class="pod-card__sub">We run them — billed per second, scale-to-zero when idle. A small margin over raw cloud, so there's no capacity for you to manage.</p>
+          <ul class="pod-rates">
+            <li><span class="pod-rates__size">Small · 2 vCPU / 4 GB</span><span class="pod-rates__price">$0.19<span>/hr</span></span></li>
+            <li><span class="pod-rates__size">Medium · 4 vCPU / 8 GB</span><span class="pod-rates__price">$0.38<span>/hr</span></span></li>
+            <li><span class="pod-rates__size">Large · 8 vCPU / 16 GB</span><span class="pod-rates__price">$0.75<span>/hr</span></span></li>
+            <li><span class="pod-rates__size">XL · 16 vCPU / 32 GB</span><span class="pod-rates__price">$1.50<span>/hr</span></span></li>
+          </ul>
+          <p class="pod-card__note">Suspended pods bill storage only (~$0.10/GB-month). Regions across AWS, GCP, Hetzner &amp; Fly.io. Team seats include 60 pod-hours/developer each month.</p>
+        </div>
+        <div class="pod-card">
+          <h3 class="pod-card__h">Bring your own compute</h3>
+          <p class="pod-card__sub">Point poddle at your own cloud account or self-hosted runners. You pay your infrastructure provider directly — poddle only charges the per-developer broker fee.</p>
+          <ul class="feats">
+            <li>Your cloud or on-prem, your region</li>
+            <li>Data and compute stay in your account</li>
+            <li>No poddle compute margin</li>
+            <li>Same broker, identities &amp; audit trail</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="included">
+      <p class="ilabel">Every plan includes</p>
+      <div class="included__grid">
+        {included.map((i) => <span class="included__item">{i}</span>)}
+      </div>
+    </div>
+
+    <div class="faq">
+      {faqs.map((f) => (
+        <div class="faq__item">
+          <p class="faq__q">{f.q}</p>
+          <p class="faq__a">{f.a}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+</Base>
+
+<style>
+  .pr-hero { padding-block: clamp(2.5rem, 6vw, 4.5rem) 0.5rem; }
+  .pr-title { font-size: var(--fs-hero); max-width: 20ch; margin: 1rem 0 0; }
+  .pr-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 60ch; margin: 1.2rem 0 0; }
+  .pr-body { padding-bottom: var(--space-section); }
+
+  .tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4rem; margin-top: 2.6rem; align-items: start; }
+  .tier { position: relative; border: 1px solid var(--border); border-radius: 18px; background: #fff; padding: 1.9rem 1.6rem; display: flex; flex-direction: column; }
+  .tier--featured { border-color: var(--accent); box-shadow: 0 16px 46px -20px rgba(47, 158, 111, 0.45); }
+  .badge { position: absolute; top: -0.72rem; left: 1.6rem; background: var(--accent); color: #fff; font: 700 0.62rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.38rem 0.62rem; border-radius: 999px; }
+  .tier__name { font-family: var(--font-serif); font-weight: 400; font-size: 1.7rem; margin: 0; color: var(--ink); }
+  .tier__tag { color: var(--muted); font-size: 0.9rem; line-height: 1.35; margin: 0.4rem 0 1.3rem; min-height: 2.5em; }
+  .tier__price { display: flex; align-items: baseline; gap: 0.45rem; flex-wrap: wrap; }
+  .tier__amount { font-family: var(--font-serif); font-size: 2.7rem; line-height: 1; color: var(--ink); }
+  .tier__period { color: var(--faint); font-size: 0.82rem; }
+  .tier__note { color: var(--faint); font-size: 0.72rem; margin: 0.45rem 0 0; min-height: 1.1em; }
+  .tier__cta { margin: 1.4rem 0 0.4rem; }
+  .tier__cta :global(.btn) { display: flex; width: 100%; justify-content: center; }
+  .feats { list-style: none; margin: 1.3rem 0 0; padding: 1.3rem 0 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.62rem; }
+  .feats li { position: relative; padding-left: 1.65rem; font-size: 0.88rem; color: var(--ink); line-height: 1.35; }
+  .feats li::before { content: ""; position: absolute; left: 0; top: 0.05em; width: 16px; height: 16px; border-radius: 50%; background: #dff0e8 url(/icons/check.svg) center / 9px no-repeat; }
+
+  .included { margin-top: 3rem; padding-top: 2rem; border-top: 1px dashed var(--border); }
+  .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 0 0 0.4rem; }
+  .included__grid { display: flex; flex-wrap: wrap; gap: 0.9rem 2rem; margin-top: 0.9rem; }
+  .included__item { position: relative; padding-left: 1.65rem; font-size: 0.9rem; color: var(--muted); }
+  .included__item::before { content: ""; position: absolute; left: 0; top: 0.05em; width: 16px; height: 16px; border-radius: 50%; background: #dff0e8 url(/icons/check.svg) center / 9px no-repeat; }
+
+  .faq { margin-top: 3.2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.8rem 2.6rem; }
+  .faq__q { font-weight: 600; font-size: 0.98rem; margin: 0 0 0.4rem; color: var(--ink); }
+  .faq__a { color: var(--muted); font-size: 0.9rem; line-height: 1.5; margin: 0; max-width: 46ch; }
+
+  .pods { margin-top: 3rem; }
+  .pods__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; margin-top: 0.9rem; }
+  .pod-card { border: 1px solid var(--border); border-radius: 16px; background: #fff; padding: 1.6rem 1.5rem; }
+  .pod-card--managed { border-color: var(--accent); }
+  .pod-card__h { font-family: var(--font-serif); font-weight: 400; font-size: 1.4rem; margin: 0 0 0.45rem; color: var(--ink); }
+  .pod-card__sub { color: var(--muted); font-size: 0.9rem; line-height: 1.42; margin: 0 0 1.1rem; }
+  .pod-card__note { color: var(--faint); font-size: 0.78rem; line-height: 1.45; margin: 1rem 0 0; }
+  .pod-rates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .pod-rates li { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.62rem 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
+  .pod-rates li:first-child { border-top: none; padding-top: 0; }
+  .pod-rates__size { color: var(--ink); }
+  .pod-rates__price { font-family: var(--font-serif); font-size: 1.18rem; color: var(--ink); white-space: nowrap; }
+  .pod-rates__price span { font-family: var(--font-sans); font-size: 0.72rem; color: var(--faint); }
+
+  @media (max-width: 900px) {
+    .tiers { grid-template-columns: 1fr; max-width: 30rem; margin-inline: auto; }
+    .pods__grid { grid-template-columns: 1fr; }
+    .faq { grid-template-columns: 1fr; }
+  }
+</style>
