@@ -65,6 +65,17 @@ func TestE2E_Poddled_DaemonStatus(t *testing.T) {
 		t.Fatalf("daemon status should list the active pod:\n%s", got)
 	}
 
+	// `poddle stats` shows the running pod's live resource usage.
+	statsCmd := exec.Command(bin, "stats")
+	statsCmd.Env = env
+	statsOut, err := statsCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("stats failed: %v\n%s", err, statsOut)
+	}
+	if !strings.Contains(string(statsOut), pod) || !strings.Contains(string(statsOut), "%") {
+		t.Errorf("stats should show %q with a percent usage:\n%s", pod, statsOut)
+	}
+
 	down := exec.Command(bin, "down", pod)
 	down.Env = env
 	if out, err := down.CombinedOutput(); err != nil {

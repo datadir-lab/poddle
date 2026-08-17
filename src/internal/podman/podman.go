@@ -126,6 +126,35 @@ func (p *Provider) ExecDetached(id, command string) error {
 	return nil
 }
 
+// Stats returns live CPU/memory for running poddle-managed pods.
+func (p *Provider) Stats() ([]sandbox.Stat, error) {
+	ps, err := p.Runner.Run("podman", p.podman("ps", "--filter", "label=poddle.managed=true", "--format", "{{.Names}}")...)
+	if err != nil {
+		return nil, fmt.Errorf("podman ps: %w: %s", err, ps.Stderr)
+	}
+	names := strings.Fields(ps.Stdout)
+	if len(names) == 0 {
+		return nil, nil
+	}
+	args := append([]string{"stats", "--no-stream", "--format", "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}"}, names...)
+	res, err := p.Runner.Run("podman", p.podman(args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("podman stats: %w: %s", err, res.Stderr)
+	}
+	var stats []sandbox.Stat
+	for _, line := range strings.Split(strings.TrimSpace(res.Stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "|")
+		if len(f) != 4 {
+			continue
+		}
+		stats = append(stats, sandbox.Stat{Name: f[0], CPU: f[1], Mem: f[2], MemPerc: f[3]})
+	}
+	return stats, nil
+}
+
 // Resize live-updates a running sandbox's CPU ceiling and/or memory cap
 // (cgroup update, no restart). cpus is a ceiling — idle pods still float to ~0.
 func (p *Provider) Resize(id string, cpus float64, memory string) error {

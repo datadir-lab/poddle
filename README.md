@@ -101,6 +101,7 @@ poddle run <pod> <cmd>...   run a command in a running pod
 poddle resize <pod> <size>  change a running pod's CPU live (no restart)
 poddle move <pod> [--size]  re-home the session onto a fresh, re-sized shell
 poddle ls                   list pods
+poddle stats                live CPU/memory for running pods
 poddle down <pod>           revoke the pod's handles and remove it
 poddle identity add|ls|rm   manage agent logins
 poddle connect add|ls|rm    manage brokered service connections
