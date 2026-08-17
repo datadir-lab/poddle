@@ -41,6 +41,11 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Move ./tests/e2e/...
 
+  e2e-remote:
+    desc: Remote e2e (needs podman) — up/ls/down over ssh (loopback fixture provides PODDLE_HOST)
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Remote_Loopback ./tests/e2e/...
+
   e2e-templates:
     desc: Templates e2e (needs podman) — extends nesting, scripts, repo clone, harness install
     cmds:
