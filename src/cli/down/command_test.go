@@ -9,13 +9,19 @@ import (
 
 type fakeRemover struct {
 	engine.Engine
-	removed string
-	err     error
+	removed     string
+	volsRemoved string
+	err         error
 }
 
 func (f *fakeRemover) Remove(id string) error {
 	f.removed = id
 	return f.err
+}
+
+func (f *fakeRemover) RemoveVolumesForPod(pod string) error {
+	f.volsRemoved = pod
+	return nil
 }
 
 type spyRevoker struct{ revoked string }
@@ -36,5 +42,8 @@ func TestDown_RevokesThenRemoves(t *testing.T) {
 	}
 	if f.removed != "mybox" {
 		t.Errorf("removed = %q, want mybox", f.removed)
+	}
+	if f.volsRemoved != "mybox" {
+		t.Errorf("volumes removed = %q, want mybox (session state purged)", f.volsRemoved)
 	}
 }

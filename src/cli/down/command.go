@@ -23,7 +23,10 @@ func NewCmd(a *app.App, r podRevoker) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = r.RevokePod(args[0]) // best-effort: the pod's handles die with it
-			return a.Engine.Remove(args[0])
+			if err := a.Engine.Remove(args[0]); err != nil {
+				return err
+			}
+			return a.Engine.RemoveVolumesForPod(args[0]) // the session's state is gone
 		},
 	}
 }

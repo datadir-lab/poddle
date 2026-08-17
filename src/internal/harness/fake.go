@@ -9,7 +9,8 @@ type FakeHarness struct {
 	HarnessName string
 	Provs       []string
 	Vendors     []string
-	Task        string // returned by TaskCommand; %s is replaced with the prompt
+	States      []string // returned by StateDirs
+	Task        string   // returned by TaskCommand; %s is replaced with the prompt
 }
 
 func (f *FakeHarness) Name() string { return f.HarnessName }
@@ -35,3 +36,5 @@ func (f *FakeHarness) TaskCommand(prompt string, _ int) string {
 	}
 	return strings.ReplaceAll(f.Task, "%s", prompt)
 }
+
+func (f *FakeHarness) StateDirs() []string { return f.States }

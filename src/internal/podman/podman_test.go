@@ -74,8 +74,9 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 	id, err := p.Create(sandbox.Spec{
 		Name: "box", Image: "debian:slim", Template: "base",
 		Runtime: "container", Size: "strong", CPUs: 8, Memory: "16g", Repo: "r",
-		Mounts: []sandbox.Mount{{Host: "/h/.claude", Container: "/root/.claude", ReadOnly: true}},
-		Env:    map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "tok"},
+		Mounts:  []sandbox.Mount{{Host: "/h/.claude", Container: "/root/.claude", ReadOnly: true}},
+		Volumes: []sandbox.Volume{{Name: "poddle-box-workspace", Container: "/workspace"}},
+		Env:     map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "tok"},
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -83,14 +84,20 @@ func TestCreate_BuildsRunArgs(t *testing.T) {
 	if id != "cid123" {
 		t.Errorf("id = %q", id)
 	}
-	call := strings.Join(f.Calls[0], " ")
+	var call string
+	for _, c := range f.Calls {
+		if j := strings.Join(c, " "); strings.Contains(j, "run -d") {
+			call = j
+		}
+	}
 	for _, w := range []string{
 		"podman run -d", "--name box",
 		"--label poddle.managed=true", "--label poddle.name=box",
 		"--label poddle.template=base", "--label poddle.runtime=container",
 		"--label poddle.size=strong", "--label poddle.repo=r",
 		"--cpus 8", "--memory 16g",
-		"--volume /h/.claude:/root/.claude:ro", "--env CLAUDE_CODE_OAUTH_TOKEN=tok",
+		"--volume /h/.claude:/root/.claude:ro", "--volume poddle-box-workspace:/workspace",
+		"--env CLAUDE_CODE_OAUTH_TOKEN=tok",
 		"debian:slim tail -f /dev/null",
 	} {
 		if !strings.Contains(call, w) {

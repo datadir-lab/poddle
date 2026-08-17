@@ -34,6 +34,12 @@ func TestProvisions(t *testing.T) {
 	}
 }
 
+func TestStateDirs(t *testing.T) {
+	if got := New().StateDirs(); len(got) != 1 || got[0] != "/root/.claude" {
+		t.Errorf("state dirs = %v, want [/root/.claude]", got)
+	}
+}
+
 func TestTaskCommand(t *testing.T) {
 	got := New().TaskCommand("fix the bug in it's parser", 5)
 	for _, want := range []string{
