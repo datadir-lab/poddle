@@ -1,0 +1,205 @@
+---
+import Base from './Base.astro';
+import cli from '../data/cli.json';
+import '../styles/docs.css';
+
+type CommandDoc = {
+  path: string; name: string; use: string; short: string;
+  long?: string; example?: string;
+  flags?: { name: string; shorthand?: string; type: string; default?: string; usage: string }[];
+  subcommands?: string[];
+};
+
+// Single source of truth: the command tree generated from the cobra CLI by
+// src/cli/docgen (task web-docs). The sidebar is derived from it, so it always
+// matches the code — new commands appear automatically (in "More" if ungrouped).
+const commands = (cli as CommandDoc[]).filter((c) => c.path !== 'poddle');
+const top = commands.filter((c) => c.path.split(' ').length === 2);
+const subsOf = (path: string) => commands.filter((c) => c.path.startsWith(path + ' '));
+const byName: Record<string, CommandDoc> = Object.fromEntries(top.map((c) => [c.name, c]));
+
+// Presentation-only grouping of top-level commands. Anything not listed falls
+// through to "More", so the nav never silently drops a command.
+const NAV_GROUPS = [
+  { label: 'Pods & sessions', names: ['up', 'down', 'ls', 'attach', 'run', 'logs', 'stats', 'resize', 'move'] },
+  { label: 'Headless agents', names: ['task'] },
+  { label: 'Auth', names: ['identity'] },
+  { label: 'Connectors', names: ['connect'] },
+  { label: 'System', names: ['daemon', 'version'] },
+];
+const grouped = new Set(NAV_GROUPS.flatMap((g) => g.names));
+const groups = NAV_GROUPS
+  .map((g) => ({ label: g.label, cmds: g.names.map((n) => byName[n]).filter(Boolean) as CommandDoc[] }))
+  .filter((g) => g.cmds.length);
+const more = top.filter((c) => !grouped.has(c.name));
+if (more.length) groups.push({ label: 'More', cmds: more });
+
+export function cmdSlug(path: string) {
+  return path.replace(/^poddle\s+/, '').replace(/\s+/g, '-');
+}
+const cmdHref = (path: string) => `/docs/commands/${cmdSlug(path)}`;
+
+interface Props { title: string; description?: string }
+const { title, description } = Astro.props;
+
+const here = (Astro.url.pathname.replace(/\/+$/, '') || '/docs');
+const isActive = (href: string) => here === href.replace(/\/+$/, '');
+
+// Sequential prev/next across the guide pages.
+const SEQUENCE = [
+  { href: '/docs', label: 'Getting started' },
+  { href: '/docs/examples', label: 'Examples' },
+  { href: '/docs/concepts', label: 'Concepts' },
+  { href: '/docs/connectors', label: 'Connectors' },
+  { href: '/docs/templates', label: 'Templates' },
+  { href: '/docs/commands', label: 'Command reference' },
+];
+const seqIdx = SEQUENCE.findIndex((s) => isActive(s.href));
+const prevPage = seqIdx > 0 ? SEQUENCE[seqIdx - 1] : null;
+const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx + 1] : null;
+---
+<Base title={`${title} - poddle docs`} description={description}>
+  <div class="container doc-shell">
+    <aside class="doc-nav">
+      <div class="doc-search-wrap">
+        <div class="doc-search" id="docsearch"></div>
+        <kbd class="doc-search__key" aria-hidden="true">/</kbd>
+      </div>
+      <nav aria-label="Docs">
+        <div class="doc-nav__section doc-nav__guide">
+          <a href="/docs" class:list={[isActive('/docs') && 'is-active']}>Getting started</a>
+          <a href="/docs/examples" class:list={[isActive('/docs/examples') && 'is-active']}>Examples</a>
+          <a href="/docs/concepts" class:list={[isActive('/docs/concepts') && 'is-active']}>Concepts</a>
+          <a href="/docs/connectors" class:list={[isActive('/docs/connectors') && 'is-active']}>Connectors</a>
+          <a href="/docs/templates" class:list={[isActive('/docs/templates') && 'is-active']}>Templates</a>
+          <a href="/docs/commands" class:list={[isActive('/docs/commands') && 'is-active']}>Command reference</a>
+        </div>
+
+        {groups.map((g) => (
+          <div class="doc-nav__section doc-nav__cmds">
+            <p class="doc-nav__group">{g.label}</p>
+            {g.cmds.map((c) => (
+              <>
+                <a class="doc-nav__cmd" href={cmdHref(c.path)} class:list={[isActive(cmdHref(c.path)) && 'is-active']}>{c.name}</a>
+                {subsOf(c.path).length > 0 && (
+                  <div class="doc-nav__subs">
+                    {subsOf(c.path).map((s) => (
+                      <a class="doc-nav__cmd doc-nav__sub" href={cmdHref(s.path)} class:list={[isActive(cmdHref(s.path)) && 'is-active']}>{s.name}</a>
+                    ))}
+                  </div>
+                )}
+              </>
+            ))}
+          </div>
+        ))}
+      </nav>
+    </aside>
+    <main class="doc-main" data-pagefind-body>
+      <slot />
+      {(prevPage || nextPage) && (
+        <nav class="doc-pager" aria-label="Pagination">
+          {prevPage ? (
+            <a class="doc-pager__link doc-pager__prev" href={prevPage.href}>
+              <span class="doc-pager__dir">← Previous</span>
+              <span class="doc-pager__label">{prevPage.label}</span>
+            </a>
+          ) : <span />}
+          {nextPage && (
+            <a class="doc-pager__link doc-pager__next" href={nextPage.href}>
+              <span class="doc-pager__dir">Next →</span>
+              <span class="doc-pager__label">{nextPage.label}</span>
+            </a>
+          )}
+        </nav>
+      )}
+    </main>
+    <aside class="doc-toc-rail">
+      <nav class="doc-toc" aria-label="On this page">
+        <p class="doc-toc__title">On this page</p>
+        <ul></ul>
+      </nav>
+    </aside>
+  </div>
+
+  <!-- Pagefind static search. Generated into /pagefind by `postbuild`; inert during `astro dev`. -->
+  <link rel="stylesheet" href="/pagefind/pagefind-ui.css" />
+  <script src="/pagefind/pagefind-ui.js" is:inline></script>
+  <script is:inline>
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.PagefindUI) {
+        new window.PagefindUI({ element: '#docsearch', showImages: false, showSubResults: true, translations: { placeholder: 'Search the docs…' } });
+      }
+    });
+  </script>
+
+  <!-- Docs enhancements: TOC + scrollspy, heading anchors, copy buttons. -->
+  <script is:inline>
+    (function () {
+      const main = document.querySelector('.doc-main');
+      if (!main) return;
+      const slug = (s) => s.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+
+      // Heading IDs + anchors + TOC
+      const headings = Array.from(main.querySelectorAll('h2, h3'));
+      const tocList = document.querySelector('.doc-toc ul');
+      const rail = document.querySelector('.doc-toc-rail');
+      const used = {};
+      headings.forEach((h) => {
+        if (!h.id) { let id = slug(h.textContent) || 'section'; if (used[id]) id += '-' + (used[id]++); else used[id] = 1; h.id = id; }
+        const anchor = document.createElement('a');
+        anchor.className = 'heading-anchor'; anchor.href = '#' + h.id; anchor.setAttribute('aria-hidden', 'true'); anchor.textContent = '#';
+        h.appendChild(anchor);
+        if (tocList) {
+          const li = document.createElement('li');
+          li.className = 'doc-toc__' + h.tagName.toLowerCase();
+          const a = document.createElement('a');
+          a.href = '#' + h.id; a.textContent = h.textContent.replace(/#$/, '').trim();
+          li.appendChild(a); tocList.appendChild(li);
+        }
+      });
+      if (rail && headings.length < 2) rail.style.visibility = 'hidden';
+
+      // Scrollspy
+      if (tocList && headings.length) {
+        const links = {};
+        tocList.querySelectorAll('a').forEach((a) => { links[a.getAttribute('href').slice(1)] = a; });
+        const setActive = (id) => { tocList.querySelectorAll('a').forEach((x) => x.classList.remove('is-active')); if (links[id]) links[id].classList.add('is-active'); };
+        const obs = new IntersectionObserver((entries) => {
+          entries.filter((e) => e.isIntersecting).forEach((e) => setActive(e.target.id));
+        }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
+        headings.forEach((h) => obs.observe(h));
+      }
+
+      // Copy buttons
+      const codeText = (pre) => {
+        const cmds = pre.querySelectorAll('.cmd');
+        if (cmds.length) return Array.from(cmds).map((c) => c.textContent).join('\n');
+        return pre.innerText.replace(/^\$\s/gm, '');
+      };
+      main.querySelectorAll('pre.term__body, pre.code').forEach((pre) => {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'copy-btn'; btn.setAttribute('aria-label', 'Copy'); btn.textContent = 'Copy';
+        btn.addEventListener('click', () => {
+          navigator.clipboard.writeText(codeText(pre)).then(() => {
+            btn.textContent = 'Copied'; btn.classList.add('is-done');
+            setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('is-done'); }, 1400);
+          });
+        });
+        const term = pre.closest('.term');
+        if (term) { term.querySelector('.term__bar').appendChild(btn); btn.classList.add('copy-btn--bar'); }
+        else { pre.classList.add('has-copy'); pre.appendChild(btn); }
+      });
+
+      // "/" focuses the docs search
+      if (!window.__docSearchKey) {
+        window.__docSearchKey = true;
+        document.addEventListener('keydown', (e) => {
+          if (e.key === '/' && !/^(input|textarea|select)$/i.test(e.target.tagName) && !e.target.isContentEditable) {
+            const input = document.querySelector('.doc-search input');
+            if (input) { e.preventDefault(); input.focus(); }
+          }
+        });
+      }
+    })();
+  </script>
+</Base>

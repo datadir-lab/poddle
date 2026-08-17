@@ -1,0 +1,14 @@
+extends = "base"
+image = "docker.io/library/node:22"
+size = "strong"
+identity = "work"
+repo = "git@github.com:acme/api.git"
+
+env = { NODE_ENV = "development" }
+setup = ["npm ci"]
+connectors = ["github", "postgres-prod"]
+
+# secret-safety
+block_paths = ["~/.aws", "~/.ssh"]
+secret_scan = "block"
+egress = "redact"

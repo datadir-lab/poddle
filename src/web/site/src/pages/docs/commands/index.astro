@@ -1,0 +1,27 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import cli from '../../../data/cli.json';
+
+type CommandDoc = { path: string; name: string; use: string; short: string; subcommands?: string[] };
+const all = (cli as CommandDoc[]).filter((c) => c.path !== 'poddle');
+const top = all.filter((c) => c.path.split(' ').length === 2);
+const cmdSlug = (p: string) => p.replace(/^poddle\s+/, '').replace(/\s+/g, '-');
+---
+<DocsLayout title="Command reference" description="Every poddle command — generated from the CLI.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs · Reference</p>
+    <h1 class="doc-title">Command reference.</h1>
+    <p class="doc-lead">Generated from the CLI — <code>poddle &lt;command&gt; --help</code> shows the same. Pick a command:</p>
+  </div>
+
+  <ul class="cmd-list">
+    {top.map((c) => (
+      <li>
+        <a href={`/docs/commands/${cmdSlug(c.path)}`}>{c.path}</a>
+        <p>{c.short}{c.subcommands && c.subcommands.length > 0 ? ` · ${c.subcommands.length} subcommands` : ''}</p>
+      </li>
+    ))}
+  </ul>
+
+  <div class="doc-more"><a href="/docs">← Get started</a></div>
+</DocsLayout>

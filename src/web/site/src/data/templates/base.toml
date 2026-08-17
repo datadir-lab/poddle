@@ -1,0 +1,6 @@
+# base — shared defaults other templates extend
+image = "docker.io/library/debian:stable-slim"
+size = "weak"
+harness = "claude-code"
+secret_scan = "warn"
+egress = "redact"

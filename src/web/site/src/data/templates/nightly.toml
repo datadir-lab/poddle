@@ -1,0 +1,6 @@
+extends = "api"
+identity = "work"
+
+# burst to a strong pod for the run, shrink back to weak if the pod is kept
+before_task = "strong"
+after_task = "weak"

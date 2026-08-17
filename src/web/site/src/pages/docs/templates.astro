@@ -1,0 +1,140 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Callout from '../../components/Callout.astro';
+import baseToml from '../../data/templates/base.toml?raw';
+import apiToml from '../../data/templates/api.toml?raw';
+import mlToml from '../../data/templates/python-ml.toml?raw';
+import regToml from '../../data/templates/regulated.toml?raw';
+import nightlyToml from '../../data/templates/nightly.toml?raw';
+
+// The examples are rendered straight from the linted .toml files
+// (src/web/site/src/data/templates), validated against the real parser by
+// TestDocExampleTemplates — so a shown example can never be invalid.
+const hl = (src: string) => src.trimEnd()
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/("(?:[^"\\]|\\.)*")/g, '<span class="ok">$1</span>')
+  .replace(/^(\s*#.*)$/gm, '<span class="cmt">$1</span>');
+
+const examples = [
+  {
+    file: '.poddle/base.toml',
+    title: 'The foundation',
+    blurb: 'Shared defaults every other template extends — image, size, harness, and safe egress. Put the common bits here and override per project.',
+    html: hl(baseToml),
+  },
+  {
+    file: '.poddle/api.toml',
+    title: 'A service, built on base',
+    blurb: 'A Node backend that extends base: it clones the repo, installs deps on spin-up, brokers in GitHub and Postgres, and keeps cloud and SSH creds out of the pod.',
+    html: hl(apiToml),
+  },
+  {
+    file: '.poddle/python-ml.toml',
+    title: 'Data work, locked down',
+    blurb: 'Strong compute, a read-only dataset mount, and egress blocked — the agent can work with your data but cannot send it anywhere.',
+    html: hl(mlToml),
+  },
+  {
+    file: '.poddle/regulated.toml',
+    title: 'For sensitive repositories',
+    blurb: 'Refuses to start if a mount carries a credential file, keeps host secrets out entirely, and blocks outbound leaks — the settings auditors ask about.',
+    html: hl(regToml),
+  },
+  {
+    file: '.poddle/nightly.toml',
+    title: 'Tuned for headless runs',
+    blurb: 'Built on api: it bursts to a strong pod for a poddle task and shrinks back after, so autonomous jobs get horsepower without paying for it while idle.',
+    html: hl(nightlyToml),
+  },
+];
+
+// Fields mirror the Template struct in src/internal/config/config.go.
+const fields: [string, string][] = [
+  ['extends', 'Inherit from another template — a name or a list. Later values win.'],
+  ['image', 'Base container image.'],
+  ['size', 'weak (2 vCPU / 4 GB) or strong (8 vCPU / 16 GB).'],
+  ['harness', 'Coding-agent runtime (default claude-code).'],
+  ['identity', 'Identity to authenticate the harness with.'],
+  ['repo', 'Repository to clone into the pod (through a brokered connector).'],
+  ['env', 'Environment variables (table).'],
+  ['mounts', 'Host paths to mount — each { host, container, ro }.'],
+  ['setup', 'Inline commands run once on spin-up.'],
+  ['scripts', 'Script files run on spin-up.'],
+  ['connectors', 'Connection names to broker into the pod.'],
+  ['block_paths', 'Host paths that must never enter the pod.'],
+  ['secret_scan', 'Scan mounts for credential files: off · warn (default) · block.'],
+  ['egress', 'Broker egress redaction: redact (default) · block · off.'],
+  ['before_task / after_task', 'Resize to this size before / after a poddle task run.'],
+];
+---
+<DocsLayout title="Templates" description="Reproducible pod blueprints — image, tools, repo, connectors, and secret-safety, in one TOML file.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs · Templates</p>
+    <h1 class="doc-title">Reproducible pods, one file.</h1>
+    <p class="doc-lead">
+      A template is a blueprint for a pod — image, tools, repo, connectors, and secret-safety rules —
+      so <code>poddle up</code> gives everyone the exact same environment.
+    </p>
+  </div>
+
+  <section class="doc-block" style="margin-top:1.8rem">
+    <h2>Where they live</h2>
+    <ul class="doc-list">
+      <li><strong>Project</strong> — <code>.poddle/</code> in your repo (checked in, shared with the team).</li>
+      <li><strong>User</strong> — <code>~/.config/poddle/templates</code> (your personal blueprints).</li>
+    </ul>
+
+    <h2 style="margin-top:2rem">Use one</h2>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmd">poddle up api --template api --identity work</span>
+<span class="cmd">poddle task "fix the failing e2e" --template api --identity work</span></code></pre>
+    </div>
+
+    <h2 style="margin-top:2rem">Examples</h2>
+    <p class="doc-p">Compose from a shared <code>base</code> and specialize per project. These are the exact files the docs load — <a href="#lint">linted against the real parser</a> on every build, so they're always valid.</p>
+
+    {examples.map((ex) => (
+      <div class="tmpl-ex">
+        <h3>{ex.title} <span class="tmpl-ex__file">{ex.file}</span></h3>
+        <p class="doc-p">{ex.blurb}</p>
+        <div class="term">
+          <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">{ex.file}</span></div>
+          <pre class="term__body"><code set:html={ex.html} /></pre>
+        </div>
+      </div>
+    ))}
+
+    <Callout type="note" title="Linted in CI">
+      <p id="lint">Every example on this page is parsed and resolved by poddle's own template loader in CI (<code>TestDocExampleTemplates</code>) — rejected if a key is misspelled or an <code>extends</code> chain is broken. What you copy is what the binary accepts.</p>
+    </Callout>
+
+    <h2 style="margin-top:2rem">Fields</h2>
+    <div class="doc-table">
+    <table class="flags">
+      <thead><tr><th>Key</th><th>Description</th></tr></thead>
+      <tbody>
+        {fields.map(([k, d]) => (
+          <tr><td><code>{k}</code></td><td data-label="Info">{d}</td></tr>
+        ))}
+      </tbody>
+    </table>
+    </div>
+
+    <Callout type="tip" title="The three that lock a pod down">
+      <p><code>block_paths</code>, <code>secret_scan</code>, and <code>egress</code> are the safety trio. Set <code>secret_scan = "block"</code> and <code>egress = "block"</code> in a shared <code>base</code>, and every template that extends it inherits a pod that refuses to start on a stray credential file and cannot phone home.</p>
+    </Callout>
+  </section>
+
+  <div class="doc-more">
+    <a href="/docs/connectors">Connectors →</a>
+    <a href="/docs/commands/up">up reference →</a>
+    <a href="/docs/examples">Examples →</a>
+  </div>
+</DocsLayout>
+
+<style>
+  .tmpl-ex { margin-top: 2.2rem; }
+  .tmpl-ex h3 { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
+  .tmpl-ex__file { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.76rem; color: var(--faint); font-weight: 400; }
+</style>
