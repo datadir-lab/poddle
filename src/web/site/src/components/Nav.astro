@@ -2,13 +2,16 @@
 import Button from './Button.astro';
 const repo = 'https://git.dev.datadir.co/datadir/poddle';
 ---
-<header class="nav">
+<header class="nav" id="site-nav">
   <div class="container nav__inner">
     <a class="nav__brand" href="/">
       <img class="nav__logo" src="/logo.svg" alt="" width="46" height="46" />
       <span>poddle</span>
     </a>
-    <nav class="nav__links" aria-label="Primary">
+    <button class="nav__toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
+      <span class="nav__bars"></span>
+    </button>
+    <nav class="nav__links" id="nav-links" aria-label="Primary">
       <a href="/connectors">Connectors</a>
       <a href="/pricing">Pricing</a>
       <a href="/docs">Docs</a>
@@ -17,12 +20,48 @@ const repo = 'https://git.dev.datadir.co/datadir/poddle';
     </nav>
   </div>
 </header>
+<script is:inline>
+  (() => {
+    const nav = document.getElementById('site-nav');
+    if (!nav) return;
+    const btn = nav.querySelector('.nav__toggle');
+    btn?.addEventListener('click', () => {
+      const open = nav.classList.toggle('nav--open');
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    nav.querySelectorAll('.nav__links a').forEach((a) =>
+      a.addEventListener('click', () => nav.classList.remove('nav--open')),
+    );
+  })();
+</script>
 <style>
-  .nav { border-bottom: 1px solid var(--border); }
-  .nav__inner { display: flex; align-items: center; justify-content: space-between; padding-block: 0.65rem; }
+  .nav { border-bottom: 1px solid var(--border); position: relative; }
+  .nav__inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; padding-block: 0.65rem; }
   .nav__brand { display: inline-flex; align-items: center; gap: 0.55rem; font-family: var(--font-serif); font-size: 1.6rem; color: var(--ink); letter-spacing: -0.01em; }
   .nav__logo { width: 46px; height: 46px; display: block; margin-block: -6px; }
   .nav__links { display: flex; align-items: center; gap: 1.5rem; }
-  .nav__links > a { color: var(--muted); font-size: 0.95rem; }
+  .nav__links > a { color: var(--muted); font-size: 0.95rem; text-decoration: none; }
   .nav__links > a:hover { color: var(--ink); }
+
+  /* Hamburger — hidden on desktop */
+  .nav__toggle { display: none; width: 42px; height: 42px; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
+  .nav__bars, .nav__bars::before, .nav__bars::after { display: block; width: 18px; height: 2px; border-radius: 2px; background: var(--ink); transition: transform 0.2s ease, opacity 0.2s ease; }
+  .nav__bars { position: relative; }
+  .nav__bars::before, .nav__bars::after { content: ''; position: absolute; left: 0; }
+  .nav__bars::before { top: -6px; }
+  .nav__bars::after { top: 6px; }
+
+  @media (max-width: 760px) {
+    .nav__toggle { display: inline-flex; }
+    .nav__links {
+      order: 3; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0;
+      display: none; padding: 0.4rem 0 0.7rem;
+    }
+    .nav--open .nav__links { display: flex; }
+    .nav__links > a { padding: 0.72rem 0.2rem; font-size: 1rem; border-top: 1px solid var(--border); }
+    .nav__links > :global(.btn) { margin-top: 0.7rem; justify-content: center; }
+    .nav--open .nav__bars { background: transparent; }
+    .nav--open .nav__bars::before { transform: translateY(6px) rotate(45deg); }
+    .nav--open .nav__bars::after { transform: translateY(-6px) rotate(-45deg); }
+  }
 </style>

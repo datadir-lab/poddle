@@ -1,0 +1,11 @@
+extends = "base"
+identity = "work"
+
+# host secrets never enter the pod
+block_paths = ["~/.aws", "~/.ssh", "~/.config/gcloud", "~/.kube"]
+
+# refuse to start if a mount carries a credential file
+secret_scan = "block"
+
+# no outbound leaks
+egress = "block"
