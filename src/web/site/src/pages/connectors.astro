@@ -1,0 +1,157 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base
+  title="Connectors - poddle"
+  description="Connect forges, pipelines, secrets, cloud, databases, and more to your pods - authed through the broker, so the pod never holds a token."
+>
+  <section class="container cx-hero">
+    <p class="eyebrow">Connectors</p>
+    <h1 class="cx-title">Connect your world - without handing over a key.</h1>
+    <p class="cx-lead">
+      Wire your repos, pipelines, and services into a pod through the broker. Clones, pushes,
+      and API calls are authed on the wire - the pod never sees a token. Pick a connector, or write your own.
+    </p>
+  </section>
+
+  <section class="container cx-body">
+    <p class="ilabel">Forges</p>
+    <div class="conns">
+      <span class="conn"><img class="conn__i" src="/icons/github.svg" alt="" width="30" height="30" />GitHub</span>
+      <span class="conn"><img class="conn__i" src="/icons/gitlab.svg" alt="" width="30" height="30" />GitLab</span>
+      <span class="conn"><img class="conn__i" src="/icons/forgejo.svg" alt="" width="30" height="30" />Forgejo</span>
+      <span class="conn"><img class="conn__i" src="/icons/gitea.svg" alt="" width="30" height="30" />Gitea</span>
+      <span class="conn"><img class="conn__i" src="/icons/codeberg.svg" alt="" width="30" height="30" />Codeberg</span>
+      <span class="conn"><img class="conn__i" src="/icons/bitbucket.svg" alt="" width="30" height="30" />Bitbucket</span>
+    </div>
+
+    <p class="ilabel">Pipelines</p>
+    <div class="conns">
+      <span class="conn"><img class="conn__i" src="/icons/woodpecker.svg" alt="" width="30" height="30" />Woodpecker</span>
+      <span class="conn"><img class="conn__i" src="/icons/githubactions.svg" alt="" width="30" height="30" />GitHub Actions</span>
+      <span class="conn"><img class="conn__i" src="/icons/jenkins.svg" alt="" width="30" height="30" />Jenkins</span>
+      <span class="conn"><img class="conn__i" src="/icons/drone.svg" alt="" width="30" height="30" />Drone</span>
+      <span class="conn"><img class="conn__i" src="/icons/circleci.svg" alt="" width="30" height="30" />CircleCI</span>
+      <span class="conn"><img class="conn__i" src="/icons/argo.svg" alt="" width="30" height="30" />Argo</span>
+      <span class="conn"><img class="conn__i" src="/icons/buildkite.svg" alt="" width="30" height="30" />Buildkite</span>
+      <span class="conn"><img class="conn__i" src="/icons/tekton.svg" alt="" width="30" height="30" />Tekton</span>
+      <span class="conn"><img class="conn__i" src="/icons/teamcity.svg" alt="" width="30" height="30" />TeamCity</span>
+      <span class="conn"><img class="conn__i" src="/icons/travisci.svg" alt="" width="30" height="30" />Travis CI</span>
+      <span class="conn"><img class="conn__i" src="/icons/semaphoreci.svg" alt="" width="30" height="30" />Semaphore</span>
+    </div>
+
+    <p class="ilabel">Registries &amp; data</p>
+    <div class="conns">
+      <span class="conn"><img class="conn__i" src="/icons/npm.svg" alt="" width="30" height="30" />npm</span>
+      <span class="conn"><img class="conn__i" src="/icons/pypi.svg" alt="" width="30" height="30" />PyPI</span>
+      <span class="conn"><img class="conn__i" src="/icons/apachemaven.svg" alt="" width="30" height="30" />Maven</span>
+      <span class="conn"><img class="conn__i" src="/icons/nuget.svg" alt="" width="30" height="30" />NuGet</span>
+      <span class="conn"><img class="conn__i" src="/icons/rubygems.svg" alt="" width="30" height="30" />RubyGems</span>
+      <span class="conn"><img class="conn__i" src="/icons/rust.svg" alt="" width="30" height="30" />crates.io</span>
+      <span class="conn"><img class="conn__i" src="/icons/docker.svg" alt="" width="30" height="30" />Docker</span>
+      <span class="conn"><img class="conn__i" src="/icons/postgresql.svg" alt="" width="30" height="30" />Postgres</span>
+      <span class="conn"><img class="conn__i" src="/icons/mysql.svg" alt="" width="30" height="30" />MySQL</span>
+      <span class="conn"><img class="conn__i" src="/icons/mongodb.svg" alt="" width="30" height="30" />MongoDB</span>
+      <span class="conn"><img class="conn__i" src="/icons/redis.svg" alt="" width="30" height="30" />Redis</span>
+      <span class="conn"><img class="conn__i" src="/icons/sqlite.svg" alt="" width="30" height="30" />SQLite</span>
+      <span class="conn"><img class="conn__i" src="/icons/supabase.svg" alt="" width="30" height="30" />Supabase</span>
+      <span class="conn"><img class="conn__i" src="/icons/clickhouse.svg" alt="" width="30" height="30" />ClickHouse</span>
+      <span class="conn"><img class="conn__i" src="/icons/snowflake.svg" alt="" width="30" height="30" />Snowflake</span>
+      <span class="conn"><img class="conn__i" src="/icons/elasticsearch.svg" alt="" width="30" height="30" />Elastic</span>
+      <a class="conn conn--diy" href="/docs"><span class="conn__plus">+</span>Write your own</a>
+    </div>
+
+    <div class="planned">
+      <p class="ilabel ilabel--planned">Planned</p>
+
+      <p class="glabel">Cloud</p>
+      <div class="conns conns--off">
+        <span class="conn"><img class="conn__i" src="/icons/amazonwebservices.svg" alt="" width="30" height="30" />AWS</span>
+        <span class="conn"><img class="conn__i" src="/icons/googlecloud.svg" alt="" width="30" height="30" />GCP</span>
+        <span class="conn"><img class="conn__i" src="/icons/microsoftazure.svg" alt="" width="30" height="30" />Azure</span>
+        <span class="conn"><img class="conn__i" src="/icons/cloudflare.svg" alt="" width="30" height="30" />Cloudflare</span>
+        <span class="conn"><img class="conn__i" src="/icons/ovh.svg" alt="" width="30" height="30" />OVHcloud</span>
+        <span class="conn"><img class="conn__i" src="/icons/scaleway.svg" alt="" width="30" height="30" />Scaleway</span>
+        <span class="conn"><img class="conn__i" src="/icons/hetzner.svg" alt="" width="30" height="30" />Hetzner</span>
+        <span class="conn"><img class="conn__i" src="/icons/exoscale.svg" alt="" width="30" height="30" />Exoscale</span>
+        <span class="conn"><img class="conn__i" src="/icons/ionos.svg" alt="" width="30" height="30" />IONOS</span>
+        <span class="conn"><img class="conn__i" src="/icons/upcloud.svg" alt="" width="30" height="30" />UpCloud</span>
+        <span class="conn"><img class="conn__i" src="/icons/gcore.svg" alt="" width="30" height="30" />Gcore</span>
+        <span class="conn"><img class="conn__i" src="/icons/clevercloud.svg" alt="" width="30" height="30" />Clever Cloud</span>
+        <span class="conn"><img class="conn__i" src="/icons/digitalocean.svg" alt="" width="30" height="30" />DigitalOcean</span>
+        <span class="conn"><img class="conn__i" src="/icons/vultr.svg" alt="" width="30" height="30" />Vultr</span>
+        <span class="conn"><img class="conn__i" src="/icons/linode.svg" alt="" width="30" height="30" />Linode</span>
+        <span class="conn"><img class="conn__i" src="/icons/flydotio.svg" alt="" width="30" height="30" />Fly.io</span>
+        <span class="conn"><img class="conn__i" src="/icons/render.svg" alt="" width="30" height="30" />Render</span>
+        <span class="conn"><img class="conn__i" src="/icons/railway.svg" alt="" width="30" height="30" />Railway</span>
+        <span class="conn"><img class="conn__i" src="/icons/vercel.svg" alt="" width="30" height="30" />Vercel</span>
+        <span class="conn"><img class="conn__i" src="/icons/netlify.svg" alt="" width="30" height="30" />Netlify</span>
+      </div>
+
+      <p class="glabel">Secrets</p>
+      <div class="conns conns--off">
+        <span class="conn"><img class="conn__i" src="/icons/vault.svg" alt="" width="30" height="30" />Vault</span>
+        <span class="conn"><img class="conn__i" src="/icons/1password.svg" alt="" width="30" height="30" />1Password</span>
+        <span class="conn"><img class="conn__i" src="/icons/bitwarden.svg" alt="" width="30" height="30" />Bitwarden</span>
+        <span class="conn"><img class="conn__i" src="/icons/keeper.svg" alt="" width="30" height="30" />Keeper</span>
+        <span class="conn"><img class="conn__i" src="/icons/dashlane.svg" alt="" width="30" height="30" />Dashlane</span>
+        <span class="conn"><img class="conn__i" src="/icons/lastpass.svg" alt="" width="30" height="30" />LastPass</span>
+      </div>
+
+      <p class="glabel">Trackers</p>
+      <div class="conns conns--off">
+        <span class="conn"><img class="conn__i" src="/icons/jira.svg" alt="" width="30" height="30" />Jira</span>
+        <span class="conn"><img class="conn__i" src="/icons/linear.svg" alt="" width="30" height="30" />Linear</span>
+        <span class="conn"><img class="conn__i" src="/icons/notion.svg" alt="" width="30" height="30" />Notion</span>
+        <span class="conn"><img class="conn__i" src="/icons/asana.svg" alt="" width="30" height="30" />Asana</span>
+        <span class="conn"><img class="conn__i" src="/icons/trello.svg" alt="" width="30" height="30" />Trello</span>
+        <span class="conn"><img class="conn__i" src="/icons/clickup.svg" alt="" width="30" height="30" />ClickUp</span>
+        <span class="conn"><img class="conn__i" src="/icons/shortcut.svg" alt="" width="30" height="30" />Shortcut</span>
+        <span class="conn"><img class="conn__i" src="/icons/basecamp.svg" alt="" width="30" height="30" />Basecamp</span>
+      </div>
+
+      <p class="glabel">Observability</p>
+      <div class="conns conns--off">
+        <span class="conn"><img class="conn__i" src="/icons/sentry.svg" alt="" width="30" height="30" />Sentry</span>
+        <span class="conn"><img class="conn__i" src="/icons/datadog.svg" alt="" width="30" height="30" />Datadog</span>
+        <span class="conn"><img class="conn__i" src="/icons/grafana.svg" alt="" width="30" height="30" />Grafana</span>
+        <span class="conn"><img class="conn__i" src="/icons/prometheus.svg" alt="" width="30" height="30" />Prometheus</span>
+        <span class="conn"><img class="conn__i" src="/icons/pagerduty.svg" alt="" width="30" height="30" />PagerDuty</span>
+        <span class="conn"><img class="conn__i" src="/icons/newrelic.svg" alt="" width="30" height="30" />New Relic</span>
+        <span class="conn"><img class="conn__i" src="/icons/elastic.svg" alt="" width="30" height="30" />Elastic</span>
+        <span class="conn"><img class="conn__i" src="/icons/opentelemetry.svg" alt="" width="30" height="30" />OpenTelemetry</span>
+        <span class="conn"><img class="conn__i" src="/icons/jaeger.svg" alt="" width="30" height="30" />Jaeger</span>
+      </div>
+
+      <p class="glabel">Comms</p>
+      <div class="conns conns--off">
+        <span class="conn"><img class="conn__i" src="/icons/slack.svg" alt="" width="30" height="30" />Slack</span>
+        <span class="conn"><img class="conn__i" src="/icons/discord.svg" alt="" width="30" height="30" />Discord</span>
+        <span class="conn"><img class="conn__i" src="/icons/microsoftteams.svg" alt="" width="30" height="30" />Teams</span>
+        <span class="conn"><img class="conn__i" src="/icons/mattermost.svg" alt="" width="30" height="30" />Mattermost</span>
+        <span class="conn"><img class="conn__i" src="/icons/telegram.svg" alt="" width="30" height="30" />Telegram</span>
+        <span class="conn"><img class="conn__i" src="/icons/rocketdotchat.svg" alt="" width="30" height="30" />Rocket.Chat</span>
+        <span class="conn"><img class="conn__i" src="/icons/zulip.svg" alt="" width="30" height="30" />Zulip</span>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .cx-hero { padding-block: clamp(2.5rem, 6vw, 4.5rem) 0.5rem; }
+  .cx-title { font-size: var(--fs-hero); max-width: 18ch; margin: 1rem 0 0; }
+  .cx-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 56ch; margin: 1.2rem 0 0; }
+  .cx-body { padding-bottom: var(--space-section); }
+  .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 2rem 0 0.7rem; }
+  .conns { display: flex; flex-wrap: wrap; gap: 1.4rem 1.6rem; margin: 0.3rem 0 0.4rem; }
+  .conn { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; width: 78px; text-align: center; text-decoration: none; color: var(--muted); font-size: 0.82rem; font-weight: 500; }
+  .conn__i { width: 30px; height: 30px; object-fit: contain; opacity: 0.82; }
+  .conn__plus { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 2px dashed var(--border); border-radius: 8px; color: var(--accent); font-size: 20px; line-height: 1; }
+  a.conn:hover { color: var(--ink); }
+  a.conn:hover .conn__i { opacity: 1; }
+  .planned { margin-top: 2.6rem; padding-top: 1.8rem; border-top: 1px dashed var(--border); }
+  .ilabel--planned { color: var(--faint); margin-top: 0; }
+  .glabel { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint); margin: 1.3rem 0 0.55rem; }
+  .conns--off { pointer-events: none; }
+  .conns--off .conn { opacity: 0.4; }
+</style>

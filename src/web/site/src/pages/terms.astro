@@ -1,0 +1,95 @@
+---
+import Legal from '../layouts/Legal.astro';
+---
+<Legal
+  title="Terms of Service"
+  updated="17 August 2026"
+  description="The terms under which datadir provides the poddle service."
+>
+  <p class="lead">These terms govern your use of poddle. By using the service, you agree to them.</p>
+
+  <p>
+    poddle is provided by <strong>datadir s. r. o.</strong> ("datadir", "we", "us"). "You" means the
+    individual or organisation using the service.
+  </p>
+
+  <h2>The service</h2>
+  <p>
+    poddle is a credential broker and control plane for coding-agent sandboxes ("pods"). We provide the
+    broker, identities, connectors, and — optionally — managed pod compute. You are responsible for the
+    pods you run and the workloads inside them.
+  </p>
+
+  <h2>Accounts</h2>
+  <p>
+    You must provide accurate information, keep your credentials secure, and are responsible for activity
+    under your account. You must be able to form a binding contract to use poddle.
+  </p>
+
+  <h2>Acceptable use</h2>
+  <ul>
+    <li>Don't break the law, infringe others' rights, or violate a provider's or connector's terms.</li>
+    <li>Don't attempt to defeat the isolation or security of the service or other tenants.</li>
+    <li>Don't resell or misrepresent the service.</li>
+  </ul>
+
+  <h2>Your content &amp; infrastructure</h2>
+  <p>
+    You own your code, prompts, and data. When you connect a provider or a connector, you authorise
+    poddle's broker to inject the relevant credential on your behalf on outbound requests. You are
+    responsible for having the rights to use those providers and for complying with their terms. Where
+    you bring your own compute, your relationship with that infrastructure provider is yours.
+  </p>
+
+  <h2>Fees &amp; billing</h2>
+  <p>
+    Paid plans are billed per developer as described on our <a href="/pricing">pricing page</a>. Managed
+    pod compute, if used, is metered and billed in arrears. Fees are exclusive of taxes. Except where
+    required by law, fees are non-refundable. We may change pricing with reasonable notice.
+  </p>
+
+  <h2>Trials</h2>
+  <p>Trials are provided as-is and may be changed or ended at any time.</p>
+
+  <h2>Cancellation &amp; termination</h2>
+  <p>
+    You may cancel at any time; access continues to the end of the paid period. We may suspend or
+    terminate for material breach, non-payment, or to comply with the law, and will give notice where
+    reasonable.
+  </p>
+
+  <h2>Warranties &amp; disclaimers</h2>
+  <p>
+    We work hard to keep poddle secure and available, but the service is provided "as is" without
+    warranties of any kind to the extent permitted by law. poddle reduces the blast radius of leaked
+    secrets; it is not a guarantee against every possible compromise.
+  </p>
+
+  <h2>Limitation of liability</h2>
+  <p>
+    To the maximum extent permitted by law, neither party is liable for indirect or consequential
+    damages, and our total liability is limited to the fees you paid in the twelve months before the
+    claim.
+  </p>
+
+  <h2>Indemnity</h2>
+  <p>You will defend and indemnify datadir against claims arising from your use of the service in breach of these terms.</p>
+
+  <h2>Governing law</h2>
+  <p>
+    These terms are governed by the laws of <strong>[jurisdiction]</strong>, and disputes are subject to
+    the exclusive jurisdiction of its courts, without prejudice to any mandatory consumer protections.
+  </p>
+
+  <h2>Changes</h2>
+  <p>We may update these terms; material changes will be notified and the date above updated.</p>
+
+  <h2>Contact</h2>
+  <p><a href="mailto:hello@datadir.co">hello@datadir.co</a>.</p>
+
+  <p class="note">
+    This is a working draft intended as a starting point and should be reviewed by counsel before
+    launch. Bracketed items (jurisdiction, registered details) need to be completed with datadir's
+    specifics.
+  </p>
+</Legal>

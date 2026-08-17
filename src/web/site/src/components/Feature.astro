@@ -1,0 +1,15 @@
+---
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+<div class="feature">
+  <h3 class="feature__title">{title}</h3>
+  <p class="feature__body"><slot /></p>
+</div>
+<style>
+  .feature { padding: 1.4rem 0; }
+  .feature__title { font-family: var(--font-sans); font-weight: 600; font-size: var(--fs-h3); margin: 0 0 0.4rem; }
+  .feature__body { color: var(--muted); margin: 0; }
+</style>

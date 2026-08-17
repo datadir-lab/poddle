@@ -1,0 +1,25 @@
+---
+import Base from '../layouts/Base.astro';
+import Button from '../components/Button.astro';
+---
+<Base title="Not found - poddle" description="This page couldn't be found.">
+  <section class="container nf">
+    <img class="nf__logo" src="/logo.svg" alt="" width="96" height="96" />
+    <p class="nf__code">404</p>
+    <h1 class="nf__title">This pod doesn’t exist.</h1>
+    <p class="nf__lead">The page you’re after was torn down, moved, or never spun up. No secrets leaked either way.</p>
+    <div class="nf__cta">
+      <Button href="/" variant="primary">Back home</Button>
+      <Button href="/docs" variant="ghost">Read the docs</Button>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .nf { text-align: center; padding-block: clamp(3rem, 10vw, 7rem) var(--space-section); max-width: 42rem; margin-inline: auto; }
+  .nf__logo { width: 96px; height: 96px; margin: 0 auto; display: block; }
+  .nf__code { font-family: var(--font-serif); font-size: 1.1rem; letter-spacing: 0.3em; color: var(--faint); margin: 1.4rem 0 0.2rem; }
+  .nf__title { font-size: var(--fs-hero); margin: 0.3rem 0 0; }
+  .nf__lead { font-size: var(--fs-lead); color: var(--muted); margin: 1.1rem auto 0; max-width: 44ch; }
+  .nf__cta { display: flex; flex-wrap: wrap; gap: 0.8rem; justify-content: center; margin-top: 2rem; }
+</style>

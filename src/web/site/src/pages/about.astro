@@ -1,0 +1,107 @@
+---
+import Base from '../layouts/Base.astro';
+import Button from '../components/Button.astro';
+
+const principles = [
+  ['Secretless by construction', 'The safest place for a secret is not in the pod. The broker holds it; the pod gets a revocable handle. Security you don\'t have to remember to turn on.'],
+  ['Your infra, your data', 'Pods run on your own cloud or self-hosted compute, in your region. We broker credentials — we\'re not in the path of your code or your prompts.'],
+  ['Accountable by default', 'Every pod runs under a real identity and every action is on the record, so teams can move fast and still answer to auditors.'],
+  ['Open to your stack', 'Bring your provider, your harness, and your connectors. A registry you can extend, not a walled garden.'],
+];
+---
+<Base
+  title="About - poddle"
+  description="Why datadir built poddle: coding agents want your keys, and they shouldn't have them."
+>
+  <section class="container ab-hero">
+    <p class="eyebrow">About</p>
+    <h1 class="ab-title">Coding agents shouldn’t hold your keys.</h1>
+    <p class="ab-lead">
+      Agentic tools are astonishingly capable — and they run with your credentials, in your environment,
+      with access to everything you can reach. poddle exists so you can hand an agent real work without
+      handing it real secrets.
+    </p>
+  </section>
+
+  <section class="container ab-body">
+    <div class="ab-block">
+      <h2>Why we built it</h2>
+      <p>
+        Every coding agent asks for your keys: a provider token here, a cloud credential there, a
+        long-lived secret pasted into an environment variable. It works — until an agent reads a secret
+        from your repo and pastes it into a prompt, or a compromised dependency walks off with a token
+        that never expires.
+      </p>
+      <p>
+        We thought the fix shouldn't be "trust the agent more." It should be to make sure the agent
+        never holds the secret in the first place. So we built a broker: the raw credential stays in a
+        sealed vault, the pod carries a handle you can revoke in one call, and the real key is injected
+        only at the egress boundary — while stray secrets in outbound requests are scrubbed on the way
+        out. The provider still authenticates you; the pod is never the place your secret lives.
+      </p>
+    </div>
+
+    <div class="ab-block">
+      <h2>How we work</h2>
+      <div class="principles">
+        {principles.map(([h, p]) => (
+          <div class="principle">
+            <h3>{h}</h3>
+            <p>{p}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="ab-block ab-company">
+      <h2>datadir</h2>
+      <p>
+        poddle is built by <strong>datadir s. r. o.</strong>, a European company building secure
+        infrastructure for the agentic era. We care about developer experience, honest security, and
+        keeping your data on infrastructure you control.
+      </p>
+      <p class="ab-links">
+        <a href="https://datadir.co">datadir.co</a>
+        <a href="https://github.com/datadir-lab/poddle">Source</a>
+        <a href="mailto:hello@datadir.co">hello@datadir.co</a>
+      </p>
+    </div>
+
+    <div class="ab-cta">
+      <h2>Hand your agent real work — not real secrets.</h2>
+      <div class="ab-cta__row">
+        <Button href="/docs" variant="primary">Get started</Button>
+        <Button href="/security" variant="ghost">Read the security model</Button>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .ab-hero { padding-block: clamp(2.5rem, 6vw, 4.5rem) 0.5rem; }
+  .ab-title { font-size: var(--fs-hero); max-width: 18ch; margin: 1rem 0 0; }
+  .ab-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 62ch; margin: 1.2rem 0 0; }
+  .ab-body { padding-bottom: var(--space-section); }
+
+  .ab-block { margin-top: 3rem; max-width: 68ch; }
+  .ab-block > h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.9rem; margin: 0 0 1rem; }
+  .ab-block > p { color: var(--muted); line-height: 1.65; margin: 0.7rem 0; max-width: 64ch; }
+
+  .principles { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+  .principle { border: 1px solid var(--border); border-radius: 14px; background: #fff; padding: 1.3rem 1.4rem; }
+  .principle h3 { font-size: 1.02rem; margin: 0 0 0.45rem; color: var(--ink); }
+  .principle p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; margin: 0; }
+
+  .ab-company strong { color: var(--ink); }
+  .ab-links { display: flex; flex-wrap: wrap; gap: 1.4rem; margin-top: 1rem; }
+  .ab-links a { color: var(--accent); text-decoration: none; }
+  .ab-links a:hover { text-decoration: underline; }
+
+  .ab-cta { margin-top: 3.4rem; padding-top: 2.4rem; border-top: 1px solid var(--border); }
+  .ab-cta h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.7rem; margin: 0 0 1.2rem; max-width: 24ch; }
+  .ab-cta__row { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+
+  @media (max-width: 820px) {
+    .principles { grid-template-columns: 1fr; }
+  }
+</style>

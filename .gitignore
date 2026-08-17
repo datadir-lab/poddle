@@ -14,5 +14,13 @@
 .idea/
 .vscode/
 
+# Brainstorming visual companion (superpowers)
+.superpowers/
+
+# Web (Astro) build + deps
+src/web/site/node_modules/
+src/web/site/dist/
+src/web/site/.astro/
+
 # Agent scratch / parallel git worktrees
 .claude/worktrees/

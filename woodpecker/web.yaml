@@ -1,0 +1,22 @@
+# Web pipeline: typecheck + build the marketing site (src/web/site).
+# Runs only when web files change, and is independent of the Go `ci` gate.
+#
+# NOTE: like the other files here, this relies on the project's Woodpecker
+# "Pipeline Path" being set to `woodpecker/`.
+
+when:
+  - event: [push, pull_request, manual]
+    path:
+      include: ['src/web/**']
+
+steps:
+  web:
+    image: node:22
+    commands:
+      - cd src/web/site
+      - npm ci
+      - npm run check
+      - npm run test
+      - npm run build
+      - test -f dist/index.html
+      - grep -q "leak out of" dist/index.html

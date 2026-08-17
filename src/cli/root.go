@@ -41,7 +41,7 @@ var version = "dev"
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "poddle",
-		Short:        "poddle — self-hostable, secret-safe agent dev environments",
+		Short:        "poddle — secret-safe dev sandboxes for coding agents",
 		Version:      version,
 		SilenceUsage: true,
 	}
