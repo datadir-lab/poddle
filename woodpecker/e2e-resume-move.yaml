@@ -1,0 +1,23 @@
+# Resume-on-move e2e — `poddle move` auto-resumes the agent in its original mode.
+#
+# On this step's nested podman: `poddle task --detach` runs a coding agent
+# headless (node:22) whose conversation persists on a named state volume; then
+# `poddle move --size strong` recreates the shell on the carried-over volumes,
+# sees the pod's headless mode, and auto-resumes the agent — which reaches the
+# mock Anthropic upstream again through the broker (never leaking the handle).
+# Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-resume-move:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-resume-move

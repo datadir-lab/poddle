@@ -73,6 +73,54 @@ func TestTask_DetachRunsBackgroundAndKeepsPod(t *testing.T) {
 	}
 }
 
+// A task that outlives its run (--detach/--keep) can be moved or auto-moved, so
+// its session must persist on named volumes; a one-shot task stays ephemeral.
+func hasWorkspaceVol(f *fakeCreator, pod string) bool {
+	for _, v := range f.spec.Volumes {
+		if v.Name == "poddle-"+pod+"-workspace" && v.Container == "/workspace" {
+			return true
+		}
+	}
+	return false
+}
+
+func TestTask_DetachPersistsStateForMove(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewTaskCmd(taskApp(t, f, "AGENT: %s"), stubBroker{})
+	c.SetArgs([]string{"big job", "--identity", "work", "--name", "dpod", "--detach"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !hasWorkspaceVol(f, "dpod") {
+		t.Errorf("a detached task must persist state on named volumes; volumes = %v", f.spec.Volumes)
+	}
+}
+
+func TestTask_KeepPersistsStateForMove(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewTaskCmd(taskApp(t, f, "run %s"), stubBroker{})
+	c.SetArgs([]string{"x", "--identity", "work", "--name", "kpod", "--keep"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !hasWorkspaceVol(f, "kpod") {
+		t.Errorf("a kept task must persist state on named volumes; volumes = %v", f.spec.Volumes)
+	}
+}
+
+func TestTask_OneShotIsEphemeral(t *testing.T) {
+	var log []string
+	f := &fakeCreator{log: &log}
+	c := NewTaskCmd(taskApp(t, f, "run %s"), &spyBroker{log: &log})
+	c.SetArgs([]string{"x", "--identity", "work", "--name", "opod"}) // torn down after
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(f.spec.Volumes) != 0 {
+		t.Errorf("a one-shot task should be ephemeral (no named volumes); volumes = %v", f.spec.Volumes)
+	}
+}
+
 func TestTask_SizingHooks(t *testing.T) {
 	f := &fakeCreator{}
 	ap := taskApp(t, f, "run %s")
