@@ -16,68 +16,90 @@ tasks:
     cmds:
       - go test ./tests/architecture/...
 
+  _docker-mirror:
+    internal: true
+    desc: CI-only — route docker.io pulls through AWS ECR Public so nested-podman e2e dodges Docker Hub's anonymous rate limit
+    status:
+      - test -z "$CI" # skip locally (only CI writes /etc/containers); Woodpecker sets $CI
+    cmds:
+      - mkdir -p /etc/containers/registries.conf.d
+      - printf '%s\n' '[[registry]]' 'location = "docker.io"' '[[registry.mirror]]' 'location = "public.ecr.aws/docker"' > /etc/containers/registries.conf.d/aws-mirror.conf
+
   e2e:
     desc: Pod lifecycle e2e (needs podman) — local + remote up/ls/down. Feature suites have their own e2e-* tasks.
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run 'TestE2E_Local_Lifecycle|TestE2E_Remote_Lifecycle' ./tests/e2e/...
 
   e2e-claude:
     desc: Real Claude Code secretless round-trip (needs docker; pulls node:22 + installs claude-code)
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Secretless ./src/internal/broker/...
 
   e2e-up:
     desc: Full poddle up --identity --exec secretless e2e (needs podman)
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Up_Secretless ./tests/e2e/...
 
   e2e-resize:
     desc: Resize e2e (needs podman) — live CPU update on a running pod
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Up_Resize ./tests/e2e/...
 
   e2e-move:
     desc: Move e2e (needs podman) — session state survives a move to a re-sized shell
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Move ./tests/e2e/...
 
   e2e-resume-move:
     desc: Resume-on-move e2e (needs podman) — a moved headless task auto-resumes the agent
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_ResumeMove ./tests/e2e/...
 
   e2e-remote:
     desc: Remote e2e (needs podman) — up/ls/down over ssh (loopback fixture provides PODDLE_HOST)
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Remote_Loopback ./tests/e2e/...
 
   e2e-templates:
     desc: Templates e2e (needs podman) — extends nesting, scripts, repo clone, harness install
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Templates ./tests/e2e/...
 
   e2e-connector:
     desc: Connector e2e (needs podman) — every built-in connector through the broker (one subtest each)
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Connectors ./tests/e2e/...
 
   e2e-secure:
     desc: Secret-safety e2e (needs podman) — blocked-mount refusal + broker egress redaction
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Secure ./tests/e2e/...
 
   e2e-poddled:
     desc: Poddled e2e (needs podman) — up --detach -> run -> down through the persistent broker
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Poddled ./tests/e2e/...
 
   e2e-l4:
     desc: L4 broker e2e (needs podman) — a pod hits real Redis + Postgres through the broker with only a handle
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_L4 ./tests/e2e/...
 
   e2e-task:
     desc: Task e2e (needs podman) — poddle task runs a coding agent headless through the broker
+    deps: [_docker-mirror]
     cmds:
       - go test -tags e2e -v -run TestE2E_Task ./tests/e2e/...
 
