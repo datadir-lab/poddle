@@ -40,6 +40,7 @@ type Template struct {
 	Egress     string            `toml:"egress"`      // broker egress redaction: redact (default) | block | off
 	BeforeTask string            `toml:"before_task"` // resize to this size before a `poddle task` run
 	AfterTask  string            `toml:"after_task"`  // resize to this size after a kept task run
+	Autoscale  bool              `toml:"autoscale"`   // opt in to the daemon's reactive memory-grow autoscaler
 }
 
 // extendsList normalizes the string-or-list `extends` into a slice.
@@ -161,6 +162,7 @@ func merge(base, over Template) Template {
 		Egress:     pick(over.Egress, base.Egress),
 		BeforeTask: pick(over.BeforeTask, base.BeforeTask),
 		AfterTask:  pick(over.AfterTask, base.AfterTask),
+		Autoscale:  over.Autoscale || base.Autoscale,
 		Setup:      concat(base.Setup, over.Setup),
 		Scripts:    concat(base.Scripts, over.Scripts),
 		Connectors: concat(base.Connectors, over.Connectors),

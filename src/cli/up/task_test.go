@@ -121,6 +121,46 @@ func TestTask_OneShotIsEphemeral(t *testing.T) {
 	}
 }
 
+func TestTask_AutoscaleFlag(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewTaskCmd(taskApp(t, f, "run %s"), stubBroker{})
+	c.SetArgs([]string{"job", "--identity", "work", "--name", "apod", "--autoscale"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !f.spec.Autoscale {
+		t.Error("--autoscale should set spec.Autoscale")
+	}
+}
+
+func TestTask_NoAutoscaleByDefault(t *testing.T) {
+	f := &fakeCreator{}
+	c := NewTaskCmd(taskApp(t, f, "run %s"), stubBroker{})
+	c.SetArgs([]string{"job", "--identity", "work", "--name", "npod"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.Autoscale {
+		t.Error("autoscale should be off by default")
+	}
+}
+
+func TestTask_AutoscaleFromTemplate(t *testing.T) {
+	f := &fakeCreator{}
+	ap := taskApp(t, f, "run %s")
+	ap.Templates = fakeTemplates{tpl: config.Template{
+		Identity: "work", Harness: "claude-code", Autoscale: true,
+	}}
+	c := NewTaskCmd(ap, stubBroker{})
+	c.SetArgs([]string{"job", "--name", "tpod"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !f.spec.Autoscale {
+		t.Error("template autoscale = true should set spec.Autoscale")
+	}
+}
+
 func TestTask_SizingHooks(t *testing.T) {
 	f := &fakeCreator{}
 	ap := taskApp(t, f, "run %s")

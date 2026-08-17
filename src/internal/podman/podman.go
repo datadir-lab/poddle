@@ -58,6 +58,7 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		"--label", "poddle.size="+s.Size,
 		"--label", "poddle.repo="+s.Repo,
 		"--label", "poddle.mode="+s.Mode,
+		"--label", fmt.Sprintf("poddle.autoscale=%t", s.Autoscale),
 	)
 	if s.CPUs > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
