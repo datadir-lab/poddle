@@ -53,10 +53,12 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				return err
 			}
 
-			// before_task hook: burst the pod up for the run.
+			// before_task hook: burst the pod's CPU up for the run. CPU only —
+			// shrinking memory below live usage would OOM the pod; the memory
+			// answer is `poddle move`, not resize.
 			if tpl.BeforeTask != "" {
-				c, m := resolveSize(tpl.BeforeTask)
-				_ = a.Engine.Resize(name, c, m)
+				c, _ := resolveSize(tpl.BeforeTask)
+				_ = a.Engine.Resize(name, c, "")
 			}
 
 			if detach {
@@ -75,10 +77,10 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 
 			runErr := a.Engine.Exec(id, taskCmd)
 			if keep {
-				// after_task hook: drop the (kept) pod back down.
+				// after_task hook: drop the (kept) pod's CPU back down (CPU only).
 				if tpl.AfterTask != "" {
-					c, m := resolveSize(tpl.AfterTask)
-					_ = a.Engine.Resize(name, c, m)
+					c, _ := resolveSize(tpl.AfterTask)
+					_ = a.Engine.Resize(name, c, "")
 				}
 			} else {
 				_ = b.RevokePod(name)     // best-effort: kill the pod's handles
