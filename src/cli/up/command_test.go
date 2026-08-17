@@ -37,7 +37,7 @@ type fakeCreator struct {
 	detached    string
 	removed     string
 	volsRemoved string
-	podMode     string
+	podInfo     sandbox.PodInfo
 	ttyExeced   string
 	resized     []string
 	createErr   error
@@ -89,8 +89,8 @@ func (f *fakeCreator) RemoveVolumesForPod(pod string) error {
 	return nil
 }
 
-func (f *fakeCreator) PodMode(id string) (string, error) { return f.podMode, nil }
-func (f *fakeCreator) ExecTTY(id, command string) error  { f.ttyExeced = command; return nil }
+func (f *fakeCreator) PodInfo(id string) (sandbox.PodInfo, error) { return f.podInfo, nil }
+func (f *fakeCreator) ExecTTY(id, command string) error           { f.ttyExeced = command; return nil }
 
 // spyBroker satisfies up's podBroker seam and records the call order.
 type spyBroker struct {

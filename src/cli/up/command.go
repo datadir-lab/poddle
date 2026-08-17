@@ -164,6 +164,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		Name: o.name, Image: image, Template: "base",
 		Runtime: "container", Size: size, CPUs: cpus, Memory: mem, Repo: tpl.Repo,
 		Autoscale: o.autoscale || tpl.Autoscale, // opt in via flag or template
+		Harness:   harnessName,                  // labelled so `move` recreates with the same runtime
 	}
 
 	// Session state on named volumes: /workspace + the harness's state dirs. They
@@ -223,6 +224,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 	if o.requireIdentity && identityName == "" {
 		return fail(fmt.Errorf("no identity: pass --identity or set one in the template"))
 	}
+	spec.Identity = identityName // labelled so `move` can re-broker the same login
 
 	// Any brokered credential — an identity and/or connectors — is issued
 	// against the persistent poddled broker; the handles live until `down`.

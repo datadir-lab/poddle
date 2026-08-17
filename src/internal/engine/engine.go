@@ -17,7 +17,7 @@ type Engine interface {
 	ExecTTY(id string, command string) error             // run an interactive (TTY) command in the sandbox
 	ExecDetached(id string, command string) error        // run a command in the background in the sandbox
 	Resize(id string, cpus float64, memory string) error // live-update a running sandbox's cpu/memory
-	PodMode(id string) (string, error)                   // pod mode label (interactive|headless|exec), for resume on move
+	PodInfo(id string) (sandbox.PodInfo, error)          // pod config read from labels, so move recreates it faithfully
 	Remove(id string) error
 	RemoveVolumesForPod(pod string) error // remove a pod's session-state volumes
 }

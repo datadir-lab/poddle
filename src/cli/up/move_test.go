@@ -6,6 +6,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/config"
+	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
 
 func TestMove_RecreatesWithVolumesNoClone(t *testing.T) {
@@ -64,8 +65,39 @@ func moveApp(t *testing.T, f *fakeCreator) *app.App {
 	return ap
 }
 
+func TestMove_InheritsPodSpecFromLabels(t *testing.T) {
+	// No template: image/identity/harness/repo/mode come only from the pod's
+	// own labels, so a context-free `poddle move` preserves them.
+	f := &fakeCreator{podInfo: sandbox.PodInfo{
+		Image: "docker.io/library/node:22", Size: "weak", Harness: "claude-code",
+		Identity: "work", Repo: "https://git/r.git", Mode: "headless",
+	}}
+	ap := taskApp(t, f, "run %s") // identity "work" exists; a.Templates is nil
+	var log []string
+	c := NewMoveCmd(ap, &spyBroker{log: &log})
+	c.SetArgs([]string{"proj", "--size", "strong"}) // only size is overridden
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.Image != "docker.io/library/node:22" {
+		t.Errorf("move should inherit the pod's image from its label; got %q", f.spec.Image)
+	}
+	if f.spec.Identity != "work" || f.spec.Harness != "claude-code" {
+		t.Errorf("move should inherit identity+harness from labels; spec = %+v", f.spec)
+	}
+	if f.spec.Repo != "https://git/r.git" {
+		t.Errorf("move should preserve the repo label; got %q", f.spec.Repo)
+	}
+	if f.spec.Size != "strong" {
+		t.Errorf("explicit --size should override the label; got %q", f.spec.Size)
+	}
+	if f.spec.Mode != "headless" {
+		t.Errorf("move should preserve mode; got %q", f.spec.Mode)
+	}
+}
+
 func TestMove_ResumesHeadlessInBackground(t *testing.T) {
-	f := &fakeCreator{podMode: "headless"}
+	f := &fakeCreator{podInfo: sandbox.PodInfo{Mode: "headless"}}
 	var log []string
 	c := NewMoveCmd(moveApp(t, f), &spyBroker{log: &log})
 	c.SetArgs([]string{"proj", "--size", "strong"})
@@ -81,7 +113,7 @@ func TestMove_ResumesHeadlessInBackground(t *testing.T) {
 }
 
 func TestMove_ResumesInteractive(t *testing.T) {
-	f := &fakeCreator{podMode: "interactive"}
+	f := &fakeCreator{podInfo: sandbox.PodInfo{Mode: "interactive"}}
 	var log []string
 	c := NewMoveCmd(moveApp(t, f), &spyBroker{log: &log})
 	c.SetArgs([]string{"proj"}) // no --detach → interactive resume

@@ -28,6 +28,20 @@ type Volume struct {
 	Container string // mount path in the pod, e.g. /workspace
 }
 
+// PodInfo is a pod's reconstructable configuration, read back from its labels,
+// so `move` (and the daemon's autoscaler) can recreate the shell preserving
+// image / identity / harness / repo / mode / autoscale — without a working
+// directory or template.
+type PodInfo struct {
+	Image     string
+	Size      string
+	Harness   string
+	Identity  string
+	Repo      string
+	Mode      string
+	Autoscale bool
+}
+
 // Stat is a running sandbox's live resource usage.
 type Stat struct {
 	Name    string // pod name
@@ -48,6 +62,8 @@ type Spec struct {
 	Repo      string            // label
 	Mode      string            // label: how the agent runs (interactive | headless | exec) — drives resume on move
 	Autoscale bool              // label poddle.autoscale: opt in to the daemon's reactive memory-grow autoscaler
+	Identity  string            // label poddle.identity: the coding-agent login, so `move` can re-broker it
+	Harness   string            // label poddle.harness: the agent runtime, so `move` recreates with the same one
 	Mounts    []Mount           // credential/workspace mounts (e.g. an identity)
 	Volumes   []Volume          // named volumes for session state (workspace, agent state)
 	Env       map[string]string // env vars injected into the sandbox
