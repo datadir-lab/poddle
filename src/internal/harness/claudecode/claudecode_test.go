@@ -34,6 +34,19 @@ func TestProvisions(t *testing.T) {
 	}
 }
 
+func TestResumeCommand(t *testing.T) {
+	h := New()
+	if got := h.ResumeCommand("interactive"); got != "claude --continue" {
+		t.Errorf("interactive resume = %q", got)
+	}
+	hl := h.ResumeCommand("headless")
+	for _, w := range []string{"claude -p --continue", "IS_SANDBOX", "</dev/null"} {
+		if !strings.Contains(hl, w) {
+			t.Errorf("headless resume missing %q:\n%s", w, hl)
+		}
+	}
+}
+
 func TestStateDirs(t *testing.T) {
 	if got := New().StateDirs(); len(got) != 1 || got[0] != "/root/.claude" {
 		t.Errorf("state dirs = %v, want [/root/.claude]", got)

@@ -46,6 +46,7 @@ type Spec struct {
 	CPUs     float64           // 0 = leave unset
 	Memory   string            // e.g. "16g"; "" = leave unset
 	Repo     string            // label
+	Mode     string            // label: how the agent runs (interactive | headless | exec) — drives resume on move
 	Mounts   []Mount           // credential/workspace mounts (e.g. an identity)
 	Volumes  []Volume          // named volumes for session state (workspace, agent state)
 	Env      map[string]string // env vars injected into the sandbox

@@ -47,6 +47,7 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 			if taskCmd == "" {
 				return fmt.Errorf("harness %q has no headless task mode", h.Name())
 			}
+			spec.Mode = "headless" // a moved task resumes the agent headless
 
 			id, err := a.Engine.Create(spec)
 			if err != nil {

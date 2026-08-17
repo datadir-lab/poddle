@@ -14,8 +14,10 @@ type Engine interface {
 	Create(spec sandbox.Spec) (id string, err error)
 	Attach(id string) error
 	Exec(id string, command string) error                // run a one-shot command in the sandbox (streams)
+	ExecTTY(id string, command string) error             // run an interactive (TTY) command in the sandbox
 	ExecDetached(id string, command string) error        // run a command in the background in the sandbox
 	Resize(id string, cpus float64, memory string) error // live-update a running sandbox's cpu/memory
+	PodMode(id string) (string, error)                   // pod mode label (interactive|headless|exec), for resume on move
 	Remove(id string) error
 	RemoveVolumesForPod(pod string) error // remove a pod's session-state volumes
 }

@@ -25,6 +25,11 @@ type Harness interface {
 	// conversation history). They become named volumes so the session survives
 	// `poddle move`. Empty for a stateless harness.
 	StateDirs() []string
+	// ResumeCommand is the shell command that resumes the agent's most recent
+	// conversation after a `poddle move`, in the given mode ("interactive" or
+	// "headless"). It reads the state dirs the move carried over. Empty if the
+	// harness can't resume (move then just recreates the shell).
+	ResumeCommand(mode string) string
 }
 
 // Registry maps harness names to implementations.
