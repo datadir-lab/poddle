@@ -1,0 +1,298 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero.astro';
+import Section from '../components/Section.astro';
+import Feature from '../components/Feature.astro';
+import Step from '../components/Step.astro';
+import Button from '../components/Button.astro';
+---
+<Base title="poddle - secret-safe sandboxes for coding agents">
+  <Hero />
+
+  <Section eyebrow="The problem" title="Coding agents want your keys. Don’t give them any.">
+    <div class="fmap">
+      <div class="fmap__row">
+        <div class="fmap__h">Without poddle <span class="fmap__note">One machine, serial — your real key and any secrets in the prompt travel raw, straight to the provider</span></div>
+        <div class="fmap__track">
+          <div class="fnode">
+            <span class="fnode__top"><img class="fnode__i" src="/icons/laptop.svg" alt="" width="18" height="18" />Your computer</span>
+            <ul class="nstat"><li class="bad">Agent sees your key</li><li class="bad">Agent reads your secrets</li></ul>
+          </div>
+          <div class="hop hop--one">
+            <div class="lane"><span class="pill pill--danger"><i class="picon picon--key"></i>Key + secrets, raw</span><i class="ldot ldot--danger"></i></div>
+          </div>
+          <div class="fnode fnode--muted">
+            <span class="fnode__top"><span class="provx"><img src="/icons/anthropic.svg" alt="" style="animation-delay:0s" /><img src="/icons/openai.svg" alt="" style="animation-delay:2s" /><img src="/icons/deepseek.svg" alt="" style="animation-delay:4s" /><img src="/icons/googlegemini.svg" alt="" style="animation-delay:6s" /><img src="/icons/mistralai.svg" alt="" style="animation-delay:8s" /><img src="/icons/meta.svg" alt="" style="animation-delay:10s" /><img src="/icons/perplexity.svg" alt="" style="animation-delay:12s" /><img src="/icons/ollama.svg" alt="" style="animation-delay:14s" /></span>Provider</span>
+            <ul class="nstat"><li class="bad">Gets your key</li><li class="bad">Gets your secrets</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="fmap__row">
+        <div class="fmap__h">With poddle <span class="fmap__note">Prompts fan out to parallel pods that burst and scale. The pod only ever holds a revocable handle — at the broker the real key is injected into the header while stray secrets in the body are scrubbed to «redacted:poddle»</span></div>
+        <div class="fmap__track">
+          <div class="fnode">
+            <span class="fnode__top"><img class="fnode__i" src="/icons/user.svg" alt="" width="18" height="18" />You</span>
+          </div>
+          <div class="hop hop--one"><div class="lane"><span class="pill"><i class="picon picon--msg"></i>Prompt</span><i class="ldot"></i></div></div>
+          <div class="podbox">
+            <span class="podbox__cap">self-hosted / cloud</span>
+            <div class="fpods">
+              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:9s"><span>small</span><span>medium</span><span>high</span></span><span class="meter"><span class="meter__bar"></span></span></div>
+              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:13s"><span>small</span><span>medium</span><span>high</span></span><span class="meter"><span class="meter__bar meter__bar--b"></span></span></div>
+              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:17s"><span>small</span><span>medium</span><span>high</span></span><span class="meter"><span class="meter__bar meter__bar--c"></span></span></div>
+            </div>
+          </div>
+          <div class="hop">
+            <div class="lane"><span class="pill pill--handle"><i class="picon picon--ticket"></i>poddle_…</span><i class="ldot"></i></div>
+            <div class="lane"><span class="pill pill--leak"><i class="picon picon--file"></i>AKIA…</span><i class="ldot ldot--danger" style="animation-delay:.8s"></i></div>
+          </div>
+          <div class="fcluster">
+          <div class="fnode fnode--broker">
+            <span class="fnode__top"><img class="fnode__i" src="/icons/shield.svg" alt="" width="18" height="18" />Broker</span>
+            <ul class="nstat"><li class="ok">Injects provider key</li><li class="ok">Injects connector keys</li><li class="ok">Scrubs body secrets</li></ul>
+          </div>
+          <div class="fconns">
+            <svg class="ffan" width="152" height="28" viewBox="0 0 152 28" aria-hidden="true"><path class="ffan__line" d="M76 0 L12 28 M76 0 L44 28 M76 0 L76 28 M76 0 L108 28 M76 0 L140 28" /><circle class="sig" r="2.7" style="offset-path:path('M76 0 L12 28');animation-delay:0s" /><circle class="sig" r="2.7" style="offset-path:path('M76 0 L44 28');animation-delay:.35s" /><circle class="sig" r="2.7" style="offset-path:path('M76 0 L76 28');animation-delay:.7s" /><circle class="sig" r="2.7" style="offset-path:path('M76 0 L108 28');animation-delay:1.05s" /><circle class="sig" r="2.7" style="offset-path:path('M76 0 L140 28');animation-delay:1.4s" /></svg>
+            <div class="fconns__row">
+              <span class="fcirc"><img src="/icons/github.svg" alt="GitHub" /></span>
+              <span class="fcirc"><img src="/icons/woodpecker.svg" alt="Woodpecker" /></span>
+              <span class="fcirc"><img src="/icons/postgresql.svg" alt="Postgres" /></span>
+              <span class="fcirc"><img src="/icons/amazonwebservices.svg" alt="AWS" /></span>
+              <span class="fcirc"><img src="/icons/slack.svg" alt="Slack" /></span>
+            </div>
+            <span class="fconns__cap">Brokered connectors</span>
+          </div>
+          </div>
+          <div class="hop">
+            <div class="lane"><span class="pill pill--real"><i class="picon picon--key"></i>Provider key</span><i class="ldot"></i></div>
+            <div class="lane"><span class="pill pill--clean"><i class="picon picon--file"></i>«redacted»</span><i class="ldot" style="animation-delay:.8s"></i></div>
+          </div>
+          <div class="fnode fnode--muted">
+            <span class="fnode__top"><span class="provx"><img src="/icons/anthropic.svg" alt="" style="animation-delay:0s" /><img src="/icons/openai.svg" alt="" style="animation-delay:2s" /><img src="/icons/deepseek.svg" alt="" style="animation-delay:4s" /><img src="/icons/googlegemini.svg" alt="" style="animation-delay:6s" /><img src="/icons/mistralai.svg" alt="" style="animation-delay:8s" /><img src="/icons/meta.svg" alt="" style="animation-delay:10s" /><img src="/icons/perplexity.svg" alt="" style="animation-delay:12s" /><img src="/icons/ollama.svg" alt="" style="animation-delay:14s" /></span>Provider</span>
+            <ul class="nstat"><li class="ok">Valid auth</li><li class="ok">Clean body</li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="fcompare">
+      <div class="fcompare__col">
+        <h4 class="fcompare__h">Without poddle</h4>
+        <ul class="nstat">
+          <li class="bad">The local agent can read your key and your repo secrets</li>
+          <li class="bad">Your key and those secrets travel raw to the provider</li>
+          <li class="bad">The provider ends up with your real key and your secrets</li>
+        </ul>
+      </div>
+      <div class="fcompare__col">
+        <h4 class="fcompare__h">With poddle</h4>
+        <ul class="nstat">
+          <li class="ok">Pods run in a self-hosted or cloud sandbox and hold only a revocable handle</li>
+          <li class="ok">The broker injects the provider key and each connector credential</li>
+          <li class="ok">Secrets in the request body are scrubbed to «redacted:poddle»</li>
+          <li class="ok">The provider gets valid auth and a clean body — your key never leaves the broker</li>
+        </ul>
+      </div>
+    </div>
+  </Section>
+
+  <Section eyebrow="Why poddle" title="A truly secure way to run your agentic workflows.">
+    <div class="features">
+      <Feature title="Reproducible lab templates">
+        Pick a lab and go - podman, toolchains, and services preinstalled, with a full desktop or headless. Spin the same environment every time, or publish your own blueprint.
+      </Feature>
+      <Feature title="Isolated, disposable pods">
+        Podman-backed sandboxes, isolated per project - clean on every spin-up, gone on teardown.
+      </Feature>
+      <Feature title="Secretless by construction">
+        A broker issues revocable handles; the real secret never enters the pod.
+      </Feature>
+      <Feature title="Performance on demand">
+        Spin up the horsepower when you need it and suspend when you don't - pods burst to a ceiling, and you pay for what you actually use.
+      </Feature>
+      <Feature title="Auditable">
+        Every action ties back to a real identity - who spun up what, which credential was used, and when. A complete trail for review.
+      </Feature>
+      <Feature title="Governable">
+        Set the rules centrally - per-user policy, SSO/SCIM, and compliance-ready controls (DORA, AI-Act) for teams that answer to auditors.
+      </Feature>
+      <Feature title="Share without spilling secrets">
+        Hand a live pod to a teammate; each driver works through their own identity, so credentials and attribution stay per-person.
+      </Feature>
+      <Feature title="Bring your own agent">
+        A harness registry - claude-code today; codex, aider, pi, and local planned.
+      </Feature>
+    </div>
+  </Section>
+
+  <Section eyebrow="Providers &amp; harnesses" title="Bring your provider. Bring your harness.">
+    <p class="prose">
+      poddle wires your coding agent to your model provider through the broker - the harness
+      installs itself in the pod, and authentication syncs to your identity. No keys to copy,
+      nothing to configure: a remote dev environment that just works.
+    </p>
+
+    <p class="ilabel">Providers</p>
+    <div class="chips">
+      <a class="chip" href="https://www.anthropic.com" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/anthropic.svg" alt="" width="18" height="18" />Anthropic<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <span class="chip"><img class="chip__logo" src="/icons/local.svg" alt="" width="18" height="18" />Local</span>
+      <span class="chip chip--soon">more coming</span>
+    </div>
+
+    <p class="ilabel">Harnesses</p>
+    <div class="chips">
+      <a class="chip" href="https://pi.dev" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/pi.svg" alt="" width="18" height="18" />Pi<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://github.com/anthropics/claude-code" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/claude.svg" alt="" width="18" height="18" />Claude Code<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://github.com/openai/codex" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/openai.svg" alt="" width="18" height="18" />Codex<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/googlegemini.svg" alt="" width="18" height="18" />Gemini<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://aider.chat" target="_blank" rel="noopener">
+        <span class="chip__mark">Ai</span>Aider<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://opencode.ai" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/opencode.svg" alt="" width="18" height="18" />OpenCode<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+    </div>
+  </Section>
+
+  <Section eyebrow="Connectors" title="Connect your world - without handing over a key.">
+    <p class="prose">
+      Connect forges, pipelines, secrets, cloud, databases, and more - wired into a pod through
+      the broker and authed on the wire, so the pod never sees a token.
+    </p>
+    <div class="conns">
+      <span class="conn"><img class="conn__i" src="/icons/github.svg" alt="" width="30" height="30" />GitHub</span>
+      <span class="conn"><img class="conn__i" src="/icons/woodpecker.svg" alt="" width="30" height="30" />Woodpecker</span>
+      <span class="conn"><img class="conn__i" src="/icons/vault.svg" alt="" width="30" height="30" />Vault</span>
+      <span class="conn"><img class="conn__i" src="/icons/amazonwebservices.svg" alt="" width="30" height="30" />AWS</span>
+      <span class="conn"><img class="conn__i" src="/icons/postgresql.svg" alt="" width="30" height="30" />Postgres</span>
+      <span class="conn"><img class="conn__i" src="/icons/slack.svg" alt="" width="30" height="30" />Slack</span>
+    </div>
+    <p class="conn-more"><a href="/connectors">See all connectors →</a></p>
+  </Section>
+
+  <Section id="how-it-works" eyebrow="How it works" title="Three commands, no secrets leaked.">
+    <ol class="steps">
+      <Step n={1} title="Add an identity" code="poddle identity add work" />
+      <Step n={2} title="Spin up" code="poddle up my-sandbox --identity work" />
+      <Step n={3} title="Work - then tear down" code="poddle down my-sandbox" />
+    </ol>
+  </Section>
+
+  <Section title="Give your agents a room of their own.">
+    <div class="closing">
+      <Button href="/docs" variant="primary">Get started</Button>
+    </div>
+  </Section>
+</Base>
+
+<style>
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem 3rem; }
+  .steps { margin: 0; padding: 0; }
+  .closing { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+  .prose { color: var(--muted); max-width: 60ch; }
+  .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 1.8rem 0 0.7rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .chip { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.85rem 0.4rem 0.4rem; border: 1px solid var(--border); border-radius: 999px; background: #fff; color: var(--ink); font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: border-color 0.12s, transform 0.12s; }
+  a.chip:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .chip__mark { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 999px; background: var(--surface); color: var(--accent); font-family: var(--font-serif); font-size: 0.85rem; line-height: 1; }
+  .chip__ext { color: var(--faint); font-size: 0.8rem; }
+  .chip--soon { color: var(--faint); font-style: italic; background: transparent; padding: 0.4rem 0.85rem; }
+  .conns { display: flex; flex-wrap: wrap; gap: 1.4rem 1.6rem; margin: 0.3rem 0 0.4rem; }
+  .conn { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; width: 78px; text-align: center; text-decoration: none; color: var(--muted); font-size: 0.82rem; font-weight: 500; }
+  .conn__i { width: 30px; height: 30px; object-fit: contain; opacity: 0.82; }
+  .conn__plus { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 2px dashed var(--border); border-radius: 8px; color: var(--accent); font-size: 20px; line-height: 1; }
+  a.conn:hover { color: var(--ink); }
+  a.conn:hover .conn__i { opacity: 1; }
+  .chip__logo { width: 18px; height: 18px; object-fit: contain; }
+  .planned { margin-top: 2.4rem; padding-top: 1.7rem; border-top: 1px dashed var(--border); }
+  .ilabel--planned { color: var(--faint); margin-top: 0; }
+  .glabel { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint); margin: 1.1rem 0 0.55rem; }
+  .conns--off { pointer-events: none; }
+  .conns--off .conn { opacity: 0.4; }
+  .conn-more { margin-top: 1.6rem; }
+  .conn-more a { font-weight: 600; }
+  .fmap { margin-top: 1.6rem; display: flex; flex-direction: column; gap: 2rem; }
+  .fmap__h { font: 600 0.78rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink); margin-bottom: 0.9rem; }
+  .fmap__note { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--faint); }
+  .fmap__track { display: flex; align-items: center; flex-wrap: nowrap; gap: 0.4rem; padding: 1.5rem 0 6px; }
+  .fmap__row:last-child .fmap__track { padding-bottom: 92px; }
+  .fnode { flex: none; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; padding: 0.65rem 0.85rem; border-radius: 12px; background: #fff; border: 1px solid var(--border); font: 600 0.82rem/1.2 var(--font-sans); color: var(--ink); white-space: nowrap; box-shadow: 0 1px 3px rgba(21, 20, 15, 0.05); }
+  .fnode--muted { color: var(--muted); }
+  .fnode--broker { border-color: var(--accent); }
+  .nstat { list-style: none; margin: 0.42rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.22rem; }
+  .nstat li { display: flex; align-items: center; gap: 0.3rem; font: 500 0.64rem/1.15 var(--font-sans); white-space: nowrap; }
+  .nstat li::before { content: ""; flex: none; width: 15px; height: 15px; border-radius: 50%; background-repeat: no-repeat; background-position: center; background-size: 9px; }
+  .nstat .ok { color: var(--ink); }
+  .nstat .ok::before { background-color: #dff0e8; background-image: url(/icons/check.svg); }
+  .nstat .bad { color: #9a5a45; }
+  .nstat .bad::before { background-color: #f6dcd2; background-image: url(/icons/x.svg); }
+  .podbox { position: relative; display: flex; flex-direction: column; gap: 0.35rem; border: 1px dashed var(--faint); border-radius: 12px; padding: 0.45rem 0.5rem 0.5rem; }
+  .podbox__cap { text-align: center; font: 700 0.52rem/1 var(--font-sans); letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); }
+  .fnode__top { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .fnode__i { width: 18px; height: 18px; object-fit: contain; }
+  .provx { position: relative; display: inline-block; width: 18px; height: 18px; }
+  .provx img { position: absolute; inset: 0; width: 18px; height: 18px; object-fit: contain; opacity: 0; animation: provcycle 16s ease-in-out infinite; }
+  @keyframes provcycle { 0% { opacity: 0; } 1.5% { opacity: 1; } 11% { opacity: 1; } 12.5% { opacity: 0; } 100% { opacity: 0; } }
+  .fpod__i { width: 18px; height: 18px; object-fit: contain; }
+  .meter { display: inline-block; width: 44px; height: 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
+  .meter__bar { display: block; height: 100%; width: 15%; background: var(--accent); border-radius: 999px; animation: crunch 2.4s ease-in-out infinite; }
+  .meter__bar--b { animation-delay: 0.8s; }
+  .meter__bar--c { animation-delay: 1.6s; }
+  @keyframes crunch { 0%, 100% { width: 15%; } 20% { width: 92%; } 46% { width: 92%; } 64% { width: 22%; } }
+  .size { position: relative; display: inline-block; min-width: 3.9em; height: 1.15em; }
+  .size > span { position: absolute; left: 0; top: 0; opacity: 0; font: 600 0.6rem/1 var(--font-sans); padding: 0.14rem 0.42rem; border-radius: 999px; background: var(--surface); color: var(--accent); animation: sizecycle var(--d, 12s) linear infinite; }
+  .size > span:nth-child(2) { animation-delay: calc(var(--d, 12s) / 3); }
+  .size > span:nth-child(3) { animation-delay: calc(var(--d, 12s) * 2 / 3); }
+  @keyframes sizecycle { 0%, 33% { opacity: 1; } 34%, 100% { opacity: 0; } }
+  .fcluster { flex: none; position: relative; align-self: center; display: flex; flex-direction: column; align-items: center; }
+  .fcirc { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; }
+  .fcirc img { width: 14px; height: 14px; object-fit: contain; }
+  .fconns { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .ffan { display: block; overflow: visible; }
+  .ffan__line { fill: none; stroke: rgba(47, 158, 111, 0.3); stroke-width: 1.4; }
+  .sig { fill: var(--accent); filter: drop-shadow(0 0 2px rgba(47, 158, 111, 0.55)); animation: sigmove 2s ease-in-out infinite alternate; }
+  .fconns__row { display: flex; gap: 8px; }
+  .fconns__cap { margin-top: 3px; font: 500 0.6rem/1.2 var(--font-sans); color: var(--faint); white-space: nowrap; }
+  .fcompare { display: none; margin-top: 1.6rem; gap: 1rem; grid-template-columns: 1fr; }
+  .fcompare__col { padding: 1.15rem 1.3rem; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: 0 1px 3px rgba(21, 20, 15, 0.05); }
+  .fcompare__h { font-family: var(--font-serif); font-size: 1.45rem; font-weight: 400; margin: 0 0 0.85rem; color: var(--ink); }
+  .fcompare .nstat { gap: 0.6rem; margin: 0; }
+  .fcompare .nstat li { font: 500 0.98rem/1.4 var(--font-sans); color: var(--ink); white-space: normal; align-items: flex-start; }
+  .fcompare .nstat li::before { margin-top: 3px; }
+  .fcompare .nstat .bad { color: #8a5a4a; }
+  @keyframes sigmove { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+  .fpods { flex: none; display: flex; flex-direction: column; gap: 0.35rem; }
+  .fpod { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.55rem; border-radius: 10px; background: #fff; border: 1px solid var(--border); font: 600 0.72rem/1 var(--font-sans); color: var(--ink); white-space: nowrap; }
+  .hop { flex: 1 1 92px; min-width: 92px; align-self: center; position: relative; display: flex; flex-direction: column; justify-content: center; gap: 22px; }
+  .hop--one { gap: 0; }
+  .lane { position: relative; height: 2px; background: var(--border); }
+  .lane::after { content: ""; position: absolute; right: -1px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 7px solid var(--faint); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .pill { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; display: inline-flex; align-items: center; gap: 0.26rem; height: 20px; padding: 0 0.5rem; border-radius: 999px; font: 600 0.64rem/1 var(--font-sans); white-space: nowrap; background: #fff; border: 1px solid var(--border); color: var(--ink); box-shadow: 0 1px 3px rgba(21, 20, 15, 0.12); }
+  .ldot { position: absolute; top: 50%; left: 0; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 3px rgba(47, 158, 111, 0.6); z-index: 0; animation: ldotflow 2.3s linear infinite; }
+  .ldot--danger { background: #c0693f; box-shadow: 0 0 3px rgba(192, 105, 63, 0.6); }
+  .pill--handle { border-color: var(--accent); color: var(--accent); }
+  .pill--real { border-color: var(--accent); background: #dff0e8; color: var(--accent); }
+  .pill--clean { border-color: var(--accent); background: #dff0e8; color: var(--accent); }
+  .pill--leak { border-color: #e2b3a3; background: #f6dcd2; color: #b4552f; }
+  .pill--danger { border-color: #e2b3a3; background: #f6dcd2; color: #b4552f; }
+  .picon { flex: none; display: inline-block; width: 12px; height: 12px; background-color: currentColor; -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat; }
+  .picon--key { --i: url(/icons/key.svg); }
+  .picon--file { --i: url(/icons/file-text.svg); }
+  .picon--ticket { --i: url(/icons/ticket.svg); }
+  .picon--msg { --i: url(/icons/message-square.svg); }
+  @keyframes ldotflow { 0% { left: 1%; opacity: 0; } 14% { opacity: 1; } 86% { opacity: 1; } 100% { left: 99%; opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .meter__bar { animation: none; width: 60%; } .provx img { animation: none; opacity: 0; } .provx img:first-child { opacity: 1; } .size > span { animation: none; opacity: 0; } .size > span:nth-child(2) { opacity: 1; } .ldot { animation: none; opacity: 0; } .sig { animation: none; } }
+  @media (max-width: 1080px) { .fmap__track { zoom: 0.9; } }
+  @media (max-width: 940px) { .fmap__track { zoom: 0.8; } }
+  @media (max-width: 840px) { .fmap { display: none; } .fcompare { display: grid; } }
+</style>

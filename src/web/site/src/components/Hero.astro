@@ -1,0 +1,26 @@
+---
+import Button from './Button.astro';
+---
+<section class="hero">
+  <div class="container hero__inner">
+    <p class="eyebrow">Secretless · Isolated</p>
+    <h1 class="hero__title">A sandbox your coding agent <em>can’t</em> leak out of.</h1>
+    <p class="hero__sub">
+      Spin up an isolated, reproducible pod - your agent fully authed, and
+      not one vendor secret inside it.
+    </p>
+    <p class="hero__wit">Every secret stays out of the pod - especially the ones you forgot you had.</p>
+    <div class="hero__cta">
+      <Button href="/docs" variant="primary">Get started</Button>
+      <Button href="/docs" variant="ghost">Read the docs <span aria-hidden="true">→</span></Button>
+    </div>
+  </div>
+</section>
+<style>
+  .hero { padding-block: clamp(3.5rem, 8vw, 6.5rem) var(--space-section); }
+  .hero__title { font-size: var(--fs-hero); max-width: 16ch; margin: 1rem 0 0; }
+  .hero__title em { font-style: italic; color: var(--accent); }
+  .hero__sub { font-size: var(--fs-lead); color: var(--muted); max-width: 52ch; margin: 1.4rem 0 0; }
+  .hero__wit { font-family: var(--font-serif); font-style: italic; font-size: 1.35rem; color: var(--accent); margin: 1.1rem 0 0; }
+  .hero__cta { display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 2rem; }
+</style>

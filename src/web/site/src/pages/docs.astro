@@ -1,0 +1,196 @@
+---
+import Base from '../layouts/Base.astro';
+import cli from '../data/cli.json';
+
+type FlagDoc = { name: string; shorthand?: string; type: string; default?: string; usage: string };
+type CommandDoc = {
+  path: string; name: string; use: string; short: string;
+  long?: string; example?: string; flags?: FlagDoc[]; subcommands?: string[];
+};
+
+// The command reference is generated from the CLI's cobra definitions by
+// `src/cli/docgen` (run: task docs-gen). Root is dropped; the rest render in
+// tree order.
+const commands = (cli as CommandDoc[]).filter((c) => c.path !== 'poddle');
+
+const anchor = (path: string) => path.replace(/\s+/g, '-');
+const usage = (c: { path: string; use: string }) => {
+  const rest = c.use.split(' ').slice(1).join(' ');
+  return rest ? `${c.path} ${rest}` : c.path;
+};
+const depth = (path: string) => path.split(' ').length - 2;
+---
+<Base
+  title="Docs - poddle"
+  description="Install poddle, add an identity, and spin up a secret-safe pod. Full command reference, generated from the CLI."
+>
+  <section class="container doc-hero">
+    <p class="eyebrow">Docs</p>
+    <h1 class="doc-title">Get started with poddle.</h1>
+    <p class="doc-lead">
+      Add a coding-agent identity, spin up an isolated pod wired to it through the broker, and tear it
+      down when you're done. The command reference below is generated straight from the CLI.
+    </p>
+  </section>
+
+  <div class="container doc-layout">
+    <aside class="doc-nav">
+      <nav>
+        <a href="#getting-started">Getting started</a>
+        <a href="#concepts">Concepts</a>
+        <p class="doc-nav__label">Commands</p>
+        {commands.map((c) => (
+          <a class="doc-nav__cmd" href={`#${anchor(c.path)}`} style={`padding-left:${0.2 + depth(c.path) * 0.85}rem`}>{c.name}</a>
+        ))}
+      </nav>
+    </aside>
+
+    <main class="doc-main">
+      <section id="getting-started" class="doc-block">
+        <h2>Getting started</h2>
+
+        <h3>Prerequisites</h3>
+        <ul class="doc-list">
+          <li><strong>Podman</strong> — poddle drives Podman to create and attach sandboxes.</li>
+          <li><strong>Go 1.25+</strong> — to build from source (prebuilt releases are on the way).</li>
+        </ul>
+
+        <h3>Install</h3>
+        <pre class="code"><code>git clone https://git.dev.datadir.co/datadir/poddle
+cd poddle
+go build -o poddle ./src/cli</code></pre>
+
+        <h3>Quickstart</h3>
+        <p>Log into a provider (the login stays on your machine), create a pod wired to that identity, then remove it:</p>
+        <pre class="code"><code><span class="c"># 1 · add an identity — a coding-agent login, stored client-side</span>
+poddle identity add work --provider anthropic
+
+<span class="c"># 2 · create a pod and attach, with your identity + harness</span>
+poddle up my-sandbox --identity work --harness claude-code
+
+<span class="c"># 3 · when you're done</span>
+poddle down my-sandbox</code></pre>
+        <p class="doc-note">
+          Set <code>PODDLE_HOST</code> to <code>ssh://…</code> to run the same commands against a remote
+          host; leave it empty for local Podman.
+        </p>
+      </section>
+
+      <section id="concepts" class="doc-block">
+        <h2>Concepts</h2>
+        <dl class="concepts">
+          <dt>Identity</dt>
+          <dd>A coding-agent login, created and stored on your machine — never only in poddle. You authenticate once with <code>poddle identity add</code>; poddle re-authenticates it if it goes stale before wiring it into a pod, so a dead credential never reaches the sandbox.</dd>
+          <dt>Provider</dt>
+          <dd>The auth vendor behind an identity (e.g. Anthropic). A provider knows how to authenticate a login and materialize it into a pod's mounts and environment.</dd>
+          <dt>Harness</dt>
+          <dd>The coding-agent runtime that runs inside the pod, chosen with <code>--harness</code> (default <code>claude-code</code>).</dd>
+          <dt>Sandbox / pod</dt>
+          <dd>An isolated, disposable Podman-backed environment created by <code>poddle up</code> and removed by <code>poddle down</code>. Sized <code>weak</code> (2 vCPU / 4 GB) or <code>strong</code> (8 vCPU / 16 GB).</dd>
+          <dt>Broker</dt>
+          <dd>The secret-safe egress path: the pod carries a revocable handle, and the broker injects the real credential on the wire — the raw secret never lands in the pod.</dd>
+        </dl>
+      </section>
+
+      <section class="doc-block">
+        <h2>Command reference</h2>
+        <p class="doc-gen-note">Generated from the CLI — <code>poddle &lt;command&gt; --help</code> shows the same.</p>
+
+        {commands.map((c) => (
+          <section id={anchor(c.path)} class="cmd">
+            <h3 class="cmd__name">{c.path}</h3>
+            <p class="cmd__short">{c.short}</p>
+            <pre class="code code--usage"><code>{usage(c)}</code></pre>
+            {c.long && <p class="cmd__long">{c.long}</p>}
+
+            {c.flags && c.flags.length > 0 && (
+              <table class="flags">
+                <thead><tr><th>Flag</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+                <tbody>
+                  {c.flags.map((f) => (
+                    <tr>
+                      <td><code>--{f.name}{f.shorthand ? `, -${f.shorthand}` : ''}</code></td>
+                      <td class="flags__type">{f.type}</td>
+                      <td>{f.default ? <code>{f.default}</code> : <span class="dim">—</span>}</td>
+                      <td>{f.usage}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {c.subcommands && c.subcommands.length > 0 && (
+              <div class="cmd__subs">
+                {c.subcommands.map((s) => (
+                  <a class="subchip" href={`#${anchor(s)}`}><code>{s}</code></a>
+                ))}
+              </div>
+            )}
+          </section>
+        ))}
+      </section>
+    </main>
+  </div>
+</Base>
+
+<style>
+  .doc-hero { padding-block: clamp(2.5rem, 6vw, 4.5rem) 0.5rem; }
+  .doc-title { font-size: var(--fs-hero); margin: 1rem 0 0; }
+  .doc-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 60ch; margin: 1.2rem 0 0; }
+
+  .doc-layout { display: grid; grid-template-columns: 190px 1fr; gap: 2.6rem; padding-block: 2rem var(--space-section); align-items: start; }
+  .doc-nav { position: sticky; top: 1.5rem; }
+  .doc-nav nav { display: flex; flex-direction: column; gap: 0.1rem; border-left: 1px solid var(--border); }
+  .doc-nav a { display: block; padding: 0.28rem 0 0.28rem 0.9rem; margin-left: -1px; border-left: 2px solid transparent; color: var(--muted); font-size: 0.88rem; text-decoration: none; }
+  .doc-nav a:hover { color: var(--ink); border-left-color: var(--accent); }
+  .doc-nav__cmd { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.82rem !important; }
+  .doc-nav__label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--faint); margin: 1rem 0 0.3rem 0.9rem; }
+
+  .doc-main { min-width: 0; max-width: 62ch; }
+  .doc-block { margin-bottom: 3rem; }
+  .doc-block h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.9rem; margin: 0 0 1rem; }
+  .doc-block h3 { font-size: 1rem; margin: 1.6rem 0 0.6rem; color: var(--ink); }
+  .doc-list { margin: 0.4rem 0; padding-left: 1.1rem; color: var(--muted); line-height: 1.55; }
+  .doc-list li { margin: 0.3rem 0; }
+  .doc-note, .doc-gen-note { color: var(--faint); font-size: 0.85rem; line-height: 1.5; }
+  .doc-gen-note { margin: -0.4rem 0 1.4rem; }
+
+  .code { background: #f3efe4; border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1rem; overflow-x: auto; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.85rem; line-height: 1.6; color: var(--ink); margin: 0.6rem 0; }
+  .code code { font-family: inherit; }
+  .code .c { color: var(--faint); }
+  .code--usage { background: #14342b; border-color: #14342b; color: #eae4d3; }
+
+  .concepts dt { font-weight: 600; margin-top: 1.1rem; }
+  .concepts dt:first-child { margin-top: 0; }
+  .concepts dd { margin: 0.25rem 0 0; color: var(--muted); line-height: 1.55; }
+
+  .cmd { padding-top: 1.6rem; margin-top: 1.6rem; border-top: 1px solid var(--border); scroll-margin-top: 1.5rem; }
+  .cmd:first-of-type { border-top: none; }
+  .cmd__name { font-family: var(--font-mono, ui-monospace, monospace); font-size: 1.15rem; margin: 0; color: var(--ink); }
+  .cmd__short { color: var(--muted); margin: 0.35rem 0 0.2rem; }
+  .cmd__long { color: var(--muted); line-height: 1.55; margin: 0.6rem 0 0; }
+
+  .flags { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+  .flags th { text-align: left; font-weight: 600; color: var(--faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0 0.8rem 0.5rem 0; border-bottom: 1px solid var(--border); }
+  .flags td { padding: 0.55rem 0.8rem 0.55rem 0; border-bottom: 1px solid var(--border); color: var(--ink); vertical-align: top; }
+  .flags td:last-child, .flags th:last-child { color: var(--muted); }
+  .flags__type { color: var(--faint); font-family: var(--font-mono, ui-monospace, monospace); }
+  .flags .dim { color: var(--faint); }
+
+  .cmd__subs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; }
+  .subchip { text-decoration: none; border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.6rem; color: var(--muted); font-size: 0.8rem; }
+  .subchip:hover { border-color: var(--accent); color: var(--ink); }
+
+  code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.86em; background: #f3efe4; padding: 0.08em 0.35em; border-radius: 5px; }
+  .cmd__name code, .code code, .doc-nav code, .subchip code { background: none; padding: 0; border-radius: 0; }
+
+  @media (max-width: 820px) {
+    .doc-layout { grid-template-columns: 1fr; gap: 1.4rem; }
+    .doc-nav { position: static; }
+    .doc-nav nav { flex-flow: row wrap; border-left: none; gap: 0.3rem 0.9rem; }
+    .doc-nav a { padding: 0.1rem 0; border-left: none; }
+    .doc-nav__cmd { padding-left: 0 !important; }
+    .doc-nav__label { display: none; }
+    .doc-main { max-width: none; }
+  }
+</style>

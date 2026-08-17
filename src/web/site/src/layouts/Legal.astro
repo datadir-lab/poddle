@@ -1,0 +1,34 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  updated: string;
+  description?: string;
+}
+const { title, updated, description } = Astro.props;
+---
+<Base title={`${title} - poddle`} description={description}>
+  <article class="container legal">
+    <p class="eyebrow">Legal</p>
+    <h1 class="legal__title">{title}</h1>
+    <p class="legal__updated">Last updated {updated}</p>
+    <div class="legal__body"><slot /></div>
+  </article>
+</Base>
+
+<style>
+  .legal { padding-block: clamp(2.5rem, 6vw, 4.5rem) var(--space-section); max-width: 46rem; }
+  .legal__title { font-size: var(--fs-hero); margin: 1rem 0 0; }
+  .legal__updated { color: var(--faint); font-size: 0.9rem; margin: 0.8rem 0 0; }
+
+  .legal__body :global(h2) { font-family: var(--font-serif); font-weight: 400; font-size: 1.5rem; margin: 2.4rem 0 0.7rem; color: var(--ink); }
+  .legal__body :global(h3) { font-size: 1rem; margin: 1.4rem 0 0.4rem; color: var(--ink); }
+  .legal__body :global(p) { color: var(--muted); line-height: 1.65; margin: 0.6rem 0; }
+  .legal__body :global(ul) { color: var(--muted); line-height: 1.6; padding-left: 1.2rem; margin: 0.6rem 0; }
+  .legal__body :global(li) { margin: 0.35rem 0; }
+  .legal__body :global(a) { color: var(--accent); }
+  .legal__body :global(strong) { color: var(--ink); }
+  .legal__body :global(.lead) { font-size: var(--fs-lead); color: var(--muted); margin-top: 1.2rem; }
+  .legal__body :global(.note) { font-size: 0.85rem; color: var(--faint); border-left: 2px solid var(--border); padding-left: 1rem; margin-top: 2rem; }
+</style>
