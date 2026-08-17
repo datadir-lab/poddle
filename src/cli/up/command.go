@@ -74,6 +74,10 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			spec.Mode = "interactive"
+			if execCmd != "" {
+				spec.Mode = "exec" // one-shot, nothing to resume on move
+			}
 			id, err := a.Engine.Create(spec)
 			if err != nil {
 				return err

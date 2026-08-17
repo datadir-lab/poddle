@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/app"
 	"git.dev.datadir.co/datadir/poddle/src/internal/config"
 )
 
@@ -53,5 +54,44 @@ func TestMove_RecreatesWithVolumesNoClone(t *testing.T) {
 	}
 	if !revoked {
 		t.Errorf("move should retire old handles; log = %v", log)
+	}
+}
+
+func moveApp(t *testing.T, f *fakeCreator) *app.App {
+	t.Helper()
+	ap := taskApp(t, f, "run %s")
+	ap.Templates = fakeTemplates{tpl: config.Template{Identity: "work", Harness: "claude-code"}}
+	return ap
+}
+
+func TestMove_ResumesHeadlessInBackground(t *testing.T) {
+	f := &fakeCreator{podMode: "headless"}
+	var log []string
+	c := NewMoveCmd(moveApp(t, f), &spyBroker{log: &log})
+	c.SetArgs([]string{"proj", "--size", "strong"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(f.detached, "resume-headless") {
+		t.Errorf("headless move should resume the agent in the background, detached = %q", f.detached)
+	}
+	if f.attached != "" {
+		t.Errorf("headless move should not attach a shell, attached = %q", f.attached)
+	}
+}
+
+func TestMove_ResumesInteractive(t *testing.T) {
+	f := &fakeCreator{podMode: "interactive"}
+	var log []string
+	c := NewMoveCmd(moveApp(t, f), &spyBroker{log: &log})
+	c.SetArgs([]string{"proj"}) // no --detach → interactive resume
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.ttyExeced != "resume-interactive" {
+		t.Errorf("interactive move should ExecTTY the resume, got %q", f.ttyExeced)
+	}
+	if f.attached != "" {
+		t.Errorf("interactive move should resume, not plain-attach; attached = %q", f.attached)
 	}
 }

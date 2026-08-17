@@ -25,9 +25,10 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			_ = b.RevokePod(name) // best-effort: retire the old shell's handles
+			mode, _ := a.Engine.PodMode(name) // how the agent ran, so we resume it the same way
+			_ = b.RevokePod(name)             // best-effort: retire the old shell's handles
 
-			spec, _, _, err := buildSpec(cmd, a, b, buildOpts{
+			spec, h, _, err := buildSpec(cmd, a, b, buildOpts{
 				name: name, image: image, size: size, templateName: templateName,
 				harnessName: harnessName,
 				withVolumes: true, // reuse the existing session volumes
@@ -36,6 +37,7 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			spec.Mode = mode                              // preserve the mode across the move
 			if err := a.Engine.Remove(name); err != nil { // remove old shell; named volumes persist
 				return err
 			}
@@ -44,6 +46,23 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
+
+			// Auto-resume the agent's conversation in the same mode (the state
+			// volume carried over the history). Resume is harness-specific.
+			switch {
+			case mode == "headless":
+				if r := h.ResumeCommand("headless"); r != "" {
+					if err := a.Engine.ExecDetached(id, "( "+r+" ) > "+TaskLogPath+" 2>&1"); err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.ErrOrStderr(), "resumed %q headless — `poddle logs %s` to watch\n", name, name)
+					return nil
+				}
+			case mode == "interactive" && !detach:
+				if r := h.ResumeCommand("interactive"); r != "" {
+					return a.Engine.ExecTTY(id, r) // reattach, resuming the conversation
+				}
+			}
 			if detach {
 				return nil
 			}

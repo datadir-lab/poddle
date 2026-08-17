@@ -57,6 +57,7 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		"--label", "poddle.runtime="+s.Runtime,
 		"--label", "poddle.size="+s.Size,
 		"--label", "poddle.repo="+s.Repo,
+		"--label", "poddle.mode="+s.Mode,
 	)
 	if s.CPUs > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
@@ -124,6 +125,21 @@ func (p *Provider) ExecDetached(id, command string) error {
 		return fmt.Errorf("podman exec -d: %w: %s", err, res.Stderr)
 	}
 	return nil
+}
+
+// PodMode reads a pod's poddle.mode label (how its agent runs), for resume on move.
+func (p *Provider) PodMode(id string) (string, error) {
+	res, err := p.Runner.Run("podman", p.podman("inspect", "-f", `{{index .Config.Labels "poddle.mode"}}`, id)...)
+	if err != nil {
+		return "", fmt.Errorf("podman inspect: %w: %s", err, res.Stderr)
+	}
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+// ExecTTY runs an interactive (TTY) command in the sandbox — for resuming an
+// interactive agent after a move.
+func (p *Provider) ExecTTY(id, command string) error {
+	return p.Runner.RunInteractive("podman", p.podman("exec", "-it", id, "sh", "-c", command)...)
 }
 
 // Stats returns live CPU/memory for running poddle-managed pods.
