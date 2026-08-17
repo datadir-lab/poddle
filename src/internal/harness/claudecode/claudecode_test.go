@@ -40,7 +40,12 @@ func TestResumeCommand(t *testing.T) {
 		t.Errorf("interactive resume = %q", got)
 	}
 	hl := h.ResumeCommand("headless")
-	for _, w := range []string{"claude -p --continue", "IS_SANDBOX", "</dev/null"} {
+	for _, w := range []string{
+		`claude -p 'continue where you left off' --continue`, // a nudge drives the turn
+		"IS_SANDBOX",
+		"--dangerously-skip-permissions",
+		"</dev/null",
+	} {
 		if !strings.Contains(hl, w) {
 			t.Errorf("headless resume missing %q:\n%s", w, hl)
 		}
