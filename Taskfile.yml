@@ -17,9 +17,9 @@ tasks:
       - go test ./tests/architecture/...
 
   e2e:
-    desc: Run end-to-end tests (drives the built binary; needs podman)
+    desc: Pod lifecycle e2e (needs podman) — local + remote up/ls/down. Feature suites have their own e2e-* tasks.
     cmds:
-      - go test -tags e2e -v ./tests/e2e/...
+      - go test -tags e2e -v -run 'TestE2E_Local_Lifecycle|TestE2E_Remote_Lifecycle' ./tests/e2e/...
 
   e2e-claude:
     desc: Real Claude Code secretless round-trip (needs docker; pulls node:22 + installs claude-code)

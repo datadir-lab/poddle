@@ -16,7 +16,7 @@ import (
 // It removes the old shell (keeping its volumes), recreates one with the same
 // name + volumes (no re-clone), and re-brokers fresh handles.
 func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
-	var size, image, templateName string
+	var size, image, templateName, harnessName string
 	var detach bool
 	c := &cobra.Command{
 		Use:   "move <name>",
@@ -29,6 +29,7 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 
 			spec, _, _, err := buildSpec(cmd, a, b, buildOpts{
 				name: name, image: image, size: size, templateName: templateName,
+				harnessName: harnessName,
 				withVolumes: true, // reuse the existing session volumes
 				skipClone:   true, // the workspace volume already has the code
 			})
@@ -52,6 +53,7 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().StringVar(&size, "size", "", "new resource size (weak|strong)")
 	c.Flags().StringVar(&image, "image", "", "new base image")
 	c.Flags().StringVar(&templateName, "template", "", "template to resolve identity/connectors from")
+	c.Flags().StringVar(&harnessName, "harness", "claude-code", "coding-agent runtime (must match the original for state)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "recreate without attaching")
 	return c
 }
