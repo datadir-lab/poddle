@@ -21,6 +21,10 @@ type Harness interface {
 	// to completion (non-interactive), for `poddle task`. maxTurns bounds the
 	// agent's loop. Returns "" if the harness has no headless mode.
 	TaskCommand(prompt string, maxTurns int) string
+	// StateDirs are pod paths holding the agent's persistable state (e.g.
+	// conversation history). They become named volumes so the session survives
+	// `poddle move`. Empty for a stateless harness.
+	StateDirs() []string
 }
 
 // Registry maps harness names to implementations.

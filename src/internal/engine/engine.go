@@ -16,4 +16,5 @@ type Engine interface {
 	ExecDetached(id string, command string) error        // run a command in the background in the sandbox
 	Resize(id string, cpus float64, memory string) error // live-update a running sandbox's cpu/memory
 	Remove(id string) error
+	RemoveVolumesForPod(pod string) error // remove a pod's session-state volumes
 }

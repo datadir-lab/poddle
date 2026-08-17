@@ -58,6 +58,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				allowSelect: !detach && execCmd == "" && a.Prompter != nil,
+				withVolumes: true, // stateful session (workspace + agent state)
 			})
 			if err != nil {
 				return err
@@ -92,6 +93,24 @@ type buildOpts struct {
 	name, image, size, identityName, harnessName, templateName string
 	allowSelect                                                bool // interactively select an identity when none is given and a Prompter exists
 	requireIdentity                                            bool // error if no identity is resolved (an autonomous task needs auth)
+	withVolumes                                                bool // mount session state on named volumes (up/move; not ephemeral task pods)
+	skipClone                                                  bool // don't clone the repo (move: the workspace volume already has it)
+}
+
+// stateVolName is the deterministic volume name for a pod's harness state dir,
+// so `move` reuses the same volume the pod was created with.
+func stateVolName(pod, dir string) string {
+	s := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + 32
+		default:
+			return '-'
+		}
+	}, strings.Trim(dir, "/"))
+	return "poddle-" + pod + "-" + s
 }
 
 // buildSpec resolves the template + flag overrides, runs secret-safety, and
@@ -128,6 +147,16 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		Runtime: "container", Size: size, CPUs: cpus, Memory: mem, Repo: tpl.Repo,
 	}
 
+	// Session state on named volumes: /workspace + the harness's state dirs. They
+	// survive `poddle move` and are removed by `poddle down`. Ephemeral task pods
+	// opt out (withVolumes=false).
+	if o.withVolumes {
+		spec.Volumes = append(spec.Volumes, sandbox.Volume{Name: "poddle-" + o.name + "-workspace", Container: "/workspace"})
+		for _, dir := range h.StateDirs() {
+			spec.Volumes = append(spec.Volumes, sandbox.Volume{Name: stateVolName(o.name, dir), Container: dir})
+		}
+	}
+
 	if len(tpl.Env) > 0 {
 		spec.Env = map[string]string{}
 		for k, v := range tpl.Env {
@@ -160,7 +189,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 	if err != nil {
 		return fail(err)
 	}
-	if tpl.Repo != "" {
+	if tpl.Repo != "" && !o.skipClone {
 		setupCmds = append([]string{"git clone " + tpl.Repo + " /workspace"}, setupCmds...)
 	}
 	spec.Setup = append(spec.Setup, setupCmds...)

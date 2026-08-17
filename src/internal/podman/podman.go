@@ -71,10 +71,19 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		}
 		args = append(args, "--volume", v)
 	}
+	for _, vol := range s.Volumes {
+		args = append(args, "--volume", vol.Name+":"+vol.Container) // named volume, auto-created
+	}
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "--env", k+"="+s.Env[k])
 	}
 	args = append(args, s.Image, "tail", "-f", "/dev/null")
+
+	// Pre-create named volumes with a pod label so `down` can find + remove them.
+	// Best-effort — an already-existing volume (e.g. on `move`) is fine.
+	for _, vol := range s.Volumes {
+		_, _ = p.Runner.Run("podman", p.podman("volume", "create", "--label", "poddle.pod="+s.Name, vol.Name)...)
+	}
 
 	res, err := p.Runner.Run("podman", args...)
 	if err != nil {
@@ -131,6 +140,23 @@ func (p *Provider) Resize(id string, cpus float64, memory string) error {
 	res, err := p.Runner.Run("podman", p.podman(u...)...)
 	if err != nil {
 		return fmt.Errorf("podman update: %w: %s", err, res.Stderr)
+	}
+	return nil
+}
+
+// RemoveVolumesForPod removes the named volumes labeled for a pod (its session
+// state). Best-effort: no volumes is not an error.
+func (p *Provider) RemoveVolumesForPod(pod string) error {
+	res, err := p.Runner.Run("podman", p.podman("volume", "ls", "-q", "--filter", "label=poddle.pod="+pod)...)
+	if err != nil {
+		return fmt.Errorf("podman volume ls: %w: %s", err, res.Stderr)
+	}
+	names := strings.Fields(res.Stdout)
+	if len(names) == 0 {
+		return nil
+	}
+	if r, err := p.Runner.Run("podman", p.podman(append([]string{"volume", "rm"}, names...)...)...); err != nil {
+		return fmt.Errorf("podman volume rm: %w: %s", err, r.Stderr)
 	}
 	return nil
 }
