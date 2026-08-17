@@ -38,10 +38,25 @@ type Daemon struct {
 	broker         brokerAPI
 	mu             sync.Mutex
 	pods           map[string][]string
+	events         []string // recent autoscale activity (bounded ring), for `daemon status`
 	l4Redis        net.Listener
 	l4RedisAddr    string
 	l4Postgres     net.Listener
 	l4PostgresAddr string
+}
+
+// maxEvents bounds the autoscale event ring surfaced in `daemon status`.
+const maxEvents = 50
+
+// recordEvent appends a timestamped autoscale event, keeping the ring bounded.
+// The autoscaler feeds it through its Log/Warn hooks; `daemon status` shows it.
+func (d *Daemon) recordEvent(msg string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.events = append(d.events, msg)
+	if len(d.events) > maxEvents {
+		d.events = d.events[len(d.events)-maxEvents:]
+	}
 }
 
 // New returns a Daemon wrapping b.
@@ -122,6 +137,7 @@ type Status struct {
 	Redis    string         `json:"redis"`
 	Postgres string         `json:"postgres"`
 	Pods     map[string]int `json:"pods"`
+	Events   []string       `json:"events"` // recent autoscale activity (grows, warnings)
 }
 
 // Handler returns the control API:
@@ -144,9 +160,11 @@ func (d *Daemon) Handler() http.Handler {
 		for name, handles := range d.pods {
 			pods[name] = len(handles)
 		}
+		events := append([]string(nil), d.events...)
 		d.mu.Unlock()
 		writeJSON(w, http.StatusOK, Status{
-			Gateway: d.broker.Addr(), Redis: d.l4RedisAddr, Postgres: d.l4PostgresAddr, Pods: pods,
+			Gateway: d.broker.Addr(), Redis: d.l4RedisAddr, Postgres: d.l4PostgresAddr,
+			Pods: pods, Events: events,
 		})
 	})
 	mux.HandleFunc("POST /pods/{pod}/handles", func(w http.ResponseWriter, r *http.Request) {

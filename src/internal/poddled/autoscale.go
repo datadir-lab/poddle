@@ -6,11 +6,13 @@ import (
 )
 
 // PodStat is one opted-in pod's live memory pressure, as the autoscaler sees it.
+// JSON-tagged so the daemon's stats-file seam (PODDLE_AUTOSCALE_STATS) can feed
+// synthetic pressure in environments where `podman stats` has no cgroup.
 type PodStat struct {
-	Name       string
-	Mode       string  // interactive | headless | exec
-	Size       string  // weak | strong
-	MemPercent float64 // memory used as a percent of the pod's cap
+	Name       string  `json:"name"`
+	Mode       string  `json:"mode"`       // interactive | headless | exec
+	Size       string  `json:"size"`       // weak | strong
+	MemPercent float64 `json:"memPercent"` // memory used as a percent of the pod's cap
 }
 
 // StatsSource returns the current autoscale-opted-in pods and their pressure.
