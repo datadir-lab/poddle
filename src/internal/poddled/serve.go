@@ -2,12 +2,16 @@ package poddled
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
+	"git.dev.datadir.co/datadir/poddle/src/internal/exec"
+	"git.dev.datadir.co/datadir/poddle/src/internal/podman"
 )
 
 // SocketPath is the default control-socket path: under XDG_RUNTIME_DIR when set
@@ -33,6 +37,19 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 	if _, err := d.Start(gatewayBind, egress, l4RedisBind, l4PostgresBind); err != nil {
 		return err
 	}
+
+	// Reactive autoscaler: watch opted-in pods and grow headless ones under
+	// sustained memory pressure (warn interactive ones). Label-gated, so it is a
+	// no-op unless a pod opted in with --autoscale. Its activity is recorded as
+	// daemon events surfaced by `poddle daemon status`.
+	as := &Autoscaler{
+		Interval: autoscaleInterval(), Cooldown: 60 * time.Second,
+		HighWater: 85, Sustain: 3,
+		Stats: productionStats(podman.New(exec.OS{}, "")),
+		Move:  selfMover(),
+		Log:   func(format string, args ...any) { d.recordEvent(fmt.Sprintf(format, args...)) },
+	}
+	go as.Run(ctx)
 	if err := os.MkdirAll(filepath.Dir(sockPath), 0o700); err != nil {
 		return err
 	}

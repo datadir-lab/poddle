@@ -63,11 +63,17 @@ func statusCmd() *cobra.Command {
 			}
 			if len(s.Pods) == 0 {
 				fmt.Fprintln(out, "  pods:     none")
-				return nil
+			} else {
+				fmt.Fprintf(out, "  pods:     %d\n", len(s.Pods))
+				for name, n := range s.Pods {
+					fmt.Fprintf(out, "    - %s (%d handles)\n", name, n)
+				}
 			}
-			fmt.Fprintf(out, "  pods:     %d\n", len(s.Pods))
-			for name, n := range s.Pods {
-				fmt.Fprintf(out, "    - %s (%d handles)\n", name, n)
+			if len(s.Events) > 0 {
+				fmt.Fprintln(out, "  autoscale:")
+				for _, e := range s.Events {
+					fmt.Fprintf(out, "    - %s\n", e)
+				}
 			}
 			return nil
 		},

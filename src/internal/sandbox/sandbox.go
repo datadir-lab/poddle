@@ -42,6 +42,15 @@ type PodInfo struct {
 	Autoscale bool
 }
 
+// MemStat is an autoscale-opted-in pod's live memory pressure, joined from its
+// labels (mode/size) and `podman stats` — what the daemon's autoscaler watches.
+type MemStat struct {
+	Name       string
+	Mode       string
+	Size       string
+	MemPercent float64
+}
+
 // Stat is a running sandbox's live resource usage.
 type Stat struct {
 	Name    string // pod name

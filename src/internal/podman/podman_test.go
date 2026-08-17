@@ -67,6 +67,61 @@ func TestList_EmptyOutput(t *testing.T) {
 	}
 }
 
+// twoStepRunner returns one output for the `ps` call and another for `stats`.
+type twoStepRunner struct {
+	ps, stats string
+	calls     [][]string
+}
+
+func (r *twoStepRunner) Run(name string, args ...string) (exec.Result, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	for _, a := range args {
+		if a == "stats" {
+			return exec.Result{Stdout: r.stats}, nil
+		}
+	}
+	return exec.Result{Stdout: r.ps}, nil
+}
+func (r *twoStepRunner) RunInteractive(string, ...string) error { return nil }
+
+func TestAutoscaleStats_JoinsLabelsAndMem(t *testing.T) {
+	r := &twoStepRunner{
+		ps:    "job|headless|weak\ndev|interactive|strong\n",
+		stats: "job|91.5%\ndev|40.0%\n",
+	}
+	p := New(r, "")
+	got, err := p.AutoscaleStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []sandbox.MemStat{
+		{Name: "job", Mode: "headless", Size: "weak", MemPercent: 91.5},
+		{Name: "dev", Mode: "interactive", Size: "strong", MemPercent: 40.0},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("AutoscaleStats = %+v, want %+v", got, want)
+	}
+	// It filters to opted-in pods.
+	if j := strings.Join(r.calls[0], " "); !strings.Contains(j, "label=poddle.autoscale=true") {
+		t.Errorf("should filter by the autoscale label: %q", j)
+	}
+}
+
+func TestAutoscaleStats_NoneOptedIn(t *testing.T) {
+	r := &twoStepRunner{ps: "\n"}
+	p := New(r, "")
+	got, err := p.AutoscaleStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("want empty, got %+v", got)
+	}
+	if len(r.calls) != 1 {
+		t.Errorf("should skip `podman stats` when no pod opted in; calls = %d", len(r.calls))
+	}
+}
+
 func TestPodInfo_ParsesLabels(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{
 		"podman": "node:22|strong|claude-code|work|https://git/r.git|headless|true\n",
