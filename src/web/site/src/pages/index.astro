@@ -99,7 +99,7 @@ import Button from '../components/Button.astro';
   <Section eyebrow="Why poddle" title="A truly secure way to run your agentic workflows.">
     <div class="features">
       <Feature title="Reproducible lab templates">
-        Pick a lab and go — podman, toolchains, and services preinstalled, with a full desktop or headless. Spin the same environment every time, or publish your own blueprint.
+        Pick a lab and go — podman, toolchains, and services preinstalled, interactive or headless. Spin the same environment every time, or publish your own blueprint.
       </Feature>
       <Feature title="Isolated, disposable pods">
         Podman-backed sandboxes, isolated per project — clean on every spin-up, gone on teardown.
@@ -108,7 +108,7 @@ import Button from '../components/Button.astro';
         A broker issues revocable handles; the real secret never enters the pod.
       </Feature>
       <Feature title="Performance on demand">
-        Spin up the horsepower when you need it and suspend when you don't — pods burst to a ceiling, and scale back when idle.
+        Start small and let poddled auto-grow a pod when it nears its memory limit; burst to a stronger shell for a headless task and drop back after. Size for the common case, not the peak.
       </Feature>
       <Feature title="Auditable">
         Every action ties back to a real identity — who spun up what, which credential was used, and when. A complete trail for review.
@@ -116,8 +116,8 @@ import Button from '../components/Button.astro';
       <Feature title="Governable">
         Per-user identity and revocable credentials today; SSO/SCIM and DORA / AI-Act controls on the roadmap — for teams that answer to auditors.
       </Feature>
-      <Feature title="Share without spilling secrets">
-        Hand a live pod to a teammate; each driver works through their own identity, so credentials and attribution stay per-person.
+      <Feature title="Per-person, revocable access">
+        Every pod runs under a real identity, so what an agent did ties back to a person — and its credentials revoke at the broker in one call. Offboard a teammate or rotate a key and the pod is locked out instantly.
       </Feature>
       <Feature title="Bring your own agent">
         A harness registry — claude-code today; codex, aider, pi, and local planned.
