@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("loads the governance dashboard with both tabs", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("h1")).toContainText("poddle");
+  await expect(page.locator(".brand__name")).toContainText("poddle");
   await expect(page.getByRole("button", { name: "Audit" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Policies" })).toBeVisible();
 });
