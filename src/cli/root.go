@@ -11,6 +11,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/cli/attach"
 	"git.dev.datadir.co/datadir/poddle/src/cli/connect"
 	"git.dev.datadir.co/datadir/poddle/src/cli/daemon"
+	"git.dev.datadir.co/datadir/poddle/src/cli/dashboard"
 	"git.dev.datadir.co/datadir/poddle/src/cli/down"
 	cliidentity "git.dev.datadir.co/datadir/poddle/src/cli/identity"
 	"git.dev.datadir.co/datadir/poddle/src/cli/ls"
@@ -107,6 +108,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(cliidentity.NewCmd(a))
 	root.AddCommand(connect.NewCmd(a))
 	root.AddCommand(daemon.NewCmd())
+	root.AddCommand(dashboard.NewCmd())
 	return root
 }
 
