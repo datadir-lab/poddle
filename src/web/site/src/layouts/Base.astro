@@ -18,6 +18,43 @@ const {
 const site = Astro.site ?? new URL('https://poddle.dev');
 const canonical = new URL(Astro.url.pathname, site).href;
 const ogImage = new URL('/og.png', site).href;
+
+// Site-wide structured data — one @graph, entities defined once (Organization,
+// WebSite, SoftwareApplication) so search engines and AI crawlers get a single,
+// consistent signal. URLs derive from the configured site so they follow the
+// canonical domain.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${site.href}#organization`,
+      name: 'poddle',
+      url: site.href,
+      logo: new URL('/logo.svg', site).href,
+      description: 'Secret-safe dev sandboxes for coding agents.',
+      sameAs: ['https://git.dev.datadir.co/datadir/poddle'],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${site.href}#website`,
+      url: site.href,
+      name: 'poddle',
+      description: 'Secret-safe dev sandboxes for coding agents.',
+      publisher: { '@id': `${site.href}#organization` },
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${site.href}#software`,
+      name: 'poddle',
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Linux, macOS',
+      url: site.href,
+      description:
+        'A secretless credential broker for coding agents: pods hold a revocable handle while the broker injects the real key on the wire and scrubs stray secrets from outbound requests.',
+    },
+  ],
+};
 ---
 <!doctype html>
 <html lang="en">
@@ -42,6 +79,7 @@ const ogImage = new URL('/og.png', site).href;
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   </head>
   <body>
     <Nav />
