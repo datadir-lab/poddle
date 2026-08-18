@@ -5,6 +5,7 @@ import Section from '../components/Section.astro';
 import Feature from '../components/Feature.astro';
 import Step from '../components/Step.astro';
 import Button from '../components/Button.astro';
+import compare from '../data/compare.json';
 
 // Workflows shown in the auto-rotating "How it works" carousel.
 const flows = [
@@ -270,9 +271,39 @@ const flows = [
     </div>
   </Section>
 
+  <Section eyebrow="How poddle compares" title="Why not just isolate, or just store the key?">
+    <p class="prose">
+      Isolation and secret managers each solve half of it. poddle is the only approach that keeps
+      the real secret out of the workload entirely - injected on the wire, scrubbed from outbound
+      traffic, and provable after the fact.
+    </p>
+    <div class="cmp-cards">
+      {compare.summary.map((s) => (
+        <div class="cmp-card">
+          <h3 class="cmp-card__h">{s.h}</h3>
+          <p class="cmp-card__p">{s.p}</p>
+        </div>
+      ))}
+    </div>
+    <p class="conn-more"><a href="/compare">See the full comparison →</a></p>
+  </Section>
+
   <Section title="Give your agents a room of their own.">
     <div class="closing">
-      <Button href="/docs" variant="primary">Get started</Button>
+      <p class="closing__lead">
+        Secretless by construction, isolated per task, and provable after the fact. Start free in
+        the cloud, or self-host the open-source broker - the same guarantees either way.
+      </p>
+      <div class="closing__cta">
+        <Button href="/cloud" variant="primary">Start free</Button>
+        <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">→</span></Button>
+      </div>
+      <ul class="closing__reassure">
+        <li>Free tier at launch</li>
+        <li>No credit card</li>
+        <li>Open source</li>
+        <li>Self-host anytime</li>
+      </ul>
     </div>
   </Section>
 
@@ -326,7 +357,16 @@ const flows = [
   .flows__sub { color: var(--muted); max-width: 62ch; margin: 0 0 0.8rem; }
   @keyframes flowin { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
   .steps { margin: 0; padding: 0; }
-  .closing { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+  .closing { max-width: 62ch; }
+  .closing__lead { font-size: var(--fs-lead); color: var(--muted); margin: 0 0 1.7rem; }
+  .closing__cta { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+  .closing__reassure { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin: 1.6rem 0 0; padding: 0; }
+  .closing__reassure li { position: relative; padding-left: 1.45rem; color: var(--faint); font-size: 0.86rem; }
+  .closing__reassure li::before { content: ""; position: absolute; left: 0; top: 0.08em; width: 15px; height: 15px; border-radius: 50%; background: #dff0e8 url(/icons/check.svg) center / 9px no-repeat; }
+  .cmp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+  .cmp-card { border: 1px solid var(--border); border-radius: 14px; background: #fff; padding: 1.2rem 1.25rem 1.3rem; }
+  .cmp-card__h { font-size: 1rem; margin: 0 0 0.5rem; color: var(--ink); }
+  .cmp-card__p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; margin: 0; }
   .prose { color: var(--muted); max-width: 60ch; }
   .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 1.8rem 0 0.7rem; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }

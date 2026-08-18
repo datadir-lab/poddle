@@ -5,14 +5,18 @@ import Button from './Button.astro';
   <div class="container hero__inner">
     <h1 class="hero__title">A sandbox your coding agent <em>can’t</em> leak out of.</h1>
     <p class="hero__sub">
-      Spin up an isolated, reproducible pod - your agent fully authed, and
-      not one vendor secret inside it.
+      Full access, zero secrets. Spin up an isolated, reproducible pod - your agent fully authed,
+      and not one vendor secret inside it.
     </p>
     <p class="hero__wit">Every secret stays out of the pod - especially the ones you forgot you had.</p>
     <div class="hero__cta">
-      <Button href="/docs" variant="primary">Get started</Button>
-      <Button href="/docs" variant="ghost">Read the docs <span aria-hidden="true">→</span></Button>
+      <Button href="/cloud" variant="primary">Start free</Button>
+      <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">→</span></Button>
     </div>
+    <p class="hero__meta">
+      <strong>We run it all in the cloud</strong> - broker, vault, and pods, nothing for you to
+      operate. Or self-host the open source; the same guarantee either way.
+    </p>
   </div>
 </section>
 <style>
@@ -22,4 +26,6 @@ import Button from './Button.astro';
   .hero__sub { font-size: var(--fs-lead); color: var(--muted); max-width: 52ch; margin: 1.4rem 0 0; }
   .hero__wit { font-family: var(--font-serif); font-style: italic; font-size: 1.35rem; color: var(--accent); margin: 1.1rem 0 0; }
   .hero__cta { display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 2rem; }
+  .hero__meta { color: var(--muted); font-size: 0.95rem; line-height: 1.5; max-width: 54ch; margin: 1.3rem 0 0; }
+  .hero__meta strong { color: var(--ink); font-weight: 600; }
 </style>

@@ -7,6 +7,6 @@ test('Hero renders headline, subhead, and both CTAs', async () => {
   const html = await container.renderToString(Hero);
   expect(html).toContain('leak out of');
   expect(html).toContain('not one vendor secret inside it');
-  expect(html).toContain('Get started');
-  expect(html).toContain('Read the docs');
+  expect(html).toContain('Start free');
+  expect(html).toContain('Self-host it');
 });

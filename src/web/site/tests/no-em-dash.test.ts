@@ -25,6 +25,8 @@ test('no em/en dashes in rendered content - use a normal hyphen', () => {
     join(ROOT, 'src/data/cli.json'),
     join(ROOT, 'src/data/legal.json'),
     join(ROOT, 'src/data/pricing.json'),
+    join(ROOT, 'src/data/compare.json'),
+    join(ROOT, 'src/data/site.json'),
   ];
   const offenders: string[] = [];
   for (const file of files) {
