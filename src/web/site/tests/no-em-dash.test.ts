@@ -20,7 +20,12 @@ function collect(dir: string, out: string[] = []): string[] {
 }
 
 test('no em/en dashes in rendered content - use a normal hyphen', () => {
-  const files = [...collect(join(ROOT, 'src')), join(ROOT, 'src/data/cli.json'), join(ROOT, 'src/data/legal.json')];
+  const files = [
+    ...collect(join(ROOT, 'src')),
+    join(ROOT, 'src/data/cli.json'),
+    join(ROOT, 'src/data/legal.json'),
+    join(ROOT, 'src/data/pricing.json'),
+  ];
   const offenders: string[] = [];
   for (const file of files) {
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
