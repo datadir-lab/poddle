@@ -16,11 +16,11 @@ import (
 
 // Policy is a set of egress/access rules referenced by a pod.
 type Policy struct {
-	Name           string              `toml:"-"`
-	AllowUpstreams []string            `toml:"allow_upstreams"` // default-deny when non-empty; ".x" = any subdomain
-	DenyUpstreams  []string            `toml:"deny_upstreams"`  // always denied (wins over allow)
-	Methods        map[string][]string `toml:"methods"`         // per-host allowed HTTP methods
-	Egress         string              `toml:"egress"`          // redact (default) | block | off
+	Name           string              `toml:"-" json:"name"`
+	AllowUpstreams []string            `toml:"allow_upstreams" json:"allow_upstreams"` // default-deny when non-empty; ".x" = any subdomain
+	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`   // always denied (wins over allow)
+	Methods        map[string][]string `toml:"methods" json:"methods"`                 // per-host allowed HTTP methods
+	Egress         string              `toml:"egress" json:"egress"`                   // redact (default) | block | off
 }
 
 // Decide evaluates one request against the policy. Order: the deny-list wins,
