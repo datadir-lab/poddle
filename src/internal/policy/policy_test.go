@@ -68,7 +68,7 @@ func TestStore_LoadsPolicy(t *testing.T) {
 			"egress = \"block\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p, err := NewStore(dir).Get("ro")
+	p, err := NewFileStore(dir).Get("ro")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,56 @@ func TestStore_LoadsPolicy(t *testing.T) {
 	if allow, _ := p.Decide("git.x", "POST"); allow {
 		t.Error("git.x is GET-only per the policy")
 	}
-	if _, err := NewStore(dir).Get("missing"); err == nil {
+	if _, err := NewFileStore(dir).Get("missing"); err == nil {
 		t.Error("Get of a missing policy should error")
+	}
+}
+
+func TestFileStore_PutListDelete(t *testing.T) {
+	s := NewFileStore(filepath.Join(t.TempDir(), "policies"))
+	if err := s.Put(&Policy{Name: "ro", AllowUpstreams: []string{"api.x"}, Egress: "block"}); err != nil {
+		t.Fatal(err)
+	}
+	// Round-trips.
+	got, err := s.Get("ro")
+	if err != nil || got.Egress != "block" || len(got.AllowUpstreams) != 1 {
+		t.Fatalf("round-trip = %+v, err=%v", got, err)
+	}
+	if names, _ := s.List(); len(names) != 1 || names[0] != "ro" {
+		t.Fatalf("List = %v", names)
+	}
+	if err := s.Delete("ro"); err != nil {
+		t.Fatal(err)
+	}
+	if names, _ := s.List(); len(names) != 0 {
+		t.Errorf("List after delete = %v", names)
+	}
+}
+
+func TestLayered_ProjectShadowsGlobal(t *testing.T) {
+	proj := NewFileStore(t.TempDir())
+	global := NewFileStore(t.TempDir())
+	_ = global.Put(&Policy{Name: "prod", AllowUpstreams: []string{"global.only"}})
+	_ = global.Put(&Policy{Name: "shared", AllowUpstreams: []string{"global.shared"}})
+	_ = proj.Put(&Policy{Name: "shared", AllowUpstreams: []string{"project.shared"}}) // shadows global
+
+	l := Layered{Sources: []Store{proj, global}, Writer: global}
+
+	shared, err := l.Get("shared")
+	if err != nil || shared.AllowUpstreams[0] != "project.shared" {
+		t.Fatalf("project should shadow global; got %+v err=%v", shared, err)
+	}
+	if p, _ := l.Get("prod"); p == nil || p.AllowUpstreams[0] != "global.only" {
+		t.Errorf("global-only policy should resolve; got %+v", p)
+	}
+	if names, _ := l.List(); len(names) != 2 { // shared + prod, deduped
+		t.Errorf("List should dedupe by name: %v", names)
+	}
+	// Writes go to the writer (global).
+	if err := l.Put(&Policy{Name: "new"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := global.Get("new"); err != nil {
+		t.Errorf("Put should write through to the global (writer) store: %v", err)
 	}
 }

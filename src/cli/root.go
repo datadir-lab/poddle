@@ -96,8 +96,13 @@ func NewRootCmd() *cobra.Command {
 	a.Connections = connector.NewStore(connector.DefaultBase())
 	a.ConnectorsDir = filepath.Join(userCfg, "poddle", "connectors")
 
-	// Governance policies (~/.config/poddle/policies).
-	a.Policies = policy.NewStore(policy.DefaultDir())
+	// Governance policies: the repo's versioned poddle/policies/ shadows the
+	// global ~/.config/poddle/policies/; writes (UI edits) go to global. The
+	// cloud tier swaps in a Postgres-backed Store behind the same interface.
+	a.Policies = policy.Layered{
+		Sources: []policy.Store{policy.NewFileStore(policy.ProjectDir(cwd)), policy.NewFileStore(policy.DefaultDir())},
+		Writer:  policy.NewFileStore(policy.DefaultDir()),
+	}
 
 	root.AddCommand(ls.NewCmd(a))
 	root.AddCommand(stats.NewCmd(a))

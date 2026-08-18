@@ -29,5 +29,5 @@ type App struct {
 	Templates     config.Resolver   // template resolver; nil = no templates
 	Connections   *connector.Store  // client-side service connections
 	ConnectorsDir string            // dir with user connector definitions (overrides built-ins)
-	Policies      *policy.Store     // governance policies (~/.config/poddle/policies); nil = none
+	Policies      policy.Store      // governance policies (project poddle/ + global); nil = none
 }
