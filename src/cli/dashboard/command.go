@@ -6,11 +6,13 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -18,13 +20,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/datadir-lab/poddle/src/internal/poddled"
+	"github.com/datadir-lab/poddle/src/internal/policy"
 )
 
-// Handler serves the embedded dashboard bundle at / and proxies the versioned
-// audit contract (/v1/audit, /v1/audit/stream, /v1/audit/verify) to the daemon
-// listening on the Unix socket at sock. The /v1 prefix is the stable, reusable
-// contract; locally it maps to the daemon's /audit* routes.
-func Handler(sock string) http.Handler {
+// Handler serves the embedded dashboard bundle at / and the versioned /v1
+// contract: /v1/audit* is proxied to the daemon on the Unix socket at sock, and
+// /v1/policies* is served from the policy store (so the UI can view + edit
+// policies). The same contract is reused by the cloud collector — only the
+// backends differ.
+func Handler(sock string, policies policy.Store) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Scheme = "http"
@@ -46,9 +50,66 @@ func Handler(sock string) http.Handler {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/v1/", proxy)
+	// /v1/policies* is served locally from the policy store; more specific
+	// patterns win over the /v1/ proxy in Go 1.22's mux.
+	if policies != nil {
+		registerPolicyAPI(mux, policies)
+	}
+	mux.Handle("/v1/", proxy) // /v1/audit* -> daemon
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	return mux
+}
+
+// registerPolicyAPI wires the /v1/policies CRUD contract onto mux, backed by the
+// policy store. The cloud collector serves the same routes over Postgres.
+func registerPolicyAPI(mux *http.ServeMux, policies policy.Store) {
+	mux.HandleFunc("GET /v1/policies", func(w http.ResponseWriter, r *http.Request) {
+		names, err := policies.List()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		out := make([]*policy.Policy, 0, len(names))
+		for _, n := range names {
+			if p, err := policies.Get(n); err == nil {
+				out = append(out, p)
+			}
+		}
+		writeJSON(w, out)
+	})
+	mux.HandleFunc("GET /v1/policies/{name}", func(w http.ResponseWriter, r *http.Request) {
+		p, err := policies.Get(r.PathValue("name"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, p)
+	})
+	mux.HandleFunc("PUT /v1/policies/{name}", func(w http.ResponseWriter, r *http.Request) {
+		var p policy.Policy
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		p.Name = r.PathValue("name") // the URL is authoritative
+		if err := policies.Put(&p); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("DELETE /v1/policies/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if err := policies.Delete(r.PathValue("name")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // NewCmd builds `poddle dashboard`.
@@ -73,12 +134,22 @@ func NewCmd() *cobra.Command {
 			if open {
 				_ = openBrowser(url) // best-effort
 			}
-			return http.Serve(ln, Handler(poddled.SocketPath()))
+			return http.Serve(ln, Handler(poddled.SocketPath(), policyStore()))
 		},
 	}
 	c.Flags().IntVar(&port, "port", 7333, "local port to bind (127.0.0.1)")
 	c.Flags().BoolVar(&open, "open", false, "open the dashboard in your browser")
 	return c
+}
+
+// policyStore is the same layered policy store the CLI uses: the repo's
+// poddle/policies/ shadows the global dir; writes (UI edits) go to global.
+func policyStore() policy.Store {
+	cwd, _ := os.Getwd()
+	return policy.Layered{
+		Sources: []policy.Store{policy.NewFileStore(policy.ProjectDir(cwd)), policy.NewFileStore(policy.DefaultDir())},
+		Writer:  policy.NewFileStore(policy.DefaultDir()),
+	}
 }
 
 // openBrowser best-effort opens url in the platform browser.
