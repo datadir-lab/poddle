@@ -143,13 +143,28 @@ function usePods(): { pods: Pod[]; hist: Hist } {
   return { pods, hist };
 }
 
-function Spark({ data, tone }: { data: number[]; tone: string }) {
-  if (data.length < 2) return <span class="faint">—</span>;
-  const w = 64, h = 18, last = data.length - 1;
-  const pts = data.map((v, i) => `${(i / last) * w},${h - (Math.min(Math.max(v, 0), 100) / 100) * h}`).join(" ");
+// threshTone maps a live % (of the pod's limit) to a severity tone so the
+// sparkline carries state, not just shape (Grafana's threshold-colored cells).
+const threshTone = (v: number) => (v >= 85 ? "hot" : v >= 60 ? "warm" : "cool");
+
+// Spark is a word-sized, fixed-scale (0–100% of limit) micro-chart: a faint
+// area fill for magnitude, the line banked into the cell, and a threshold-
+// colored end-dot anchoring the current reading next to its number (Tufte/Few).
+function Spark({ data }: { data: number[] }) {
+  const w = 80, h = 20, pad = 2.5;
+  if (data.length < 2) return <span class="spark spark--empty faint">╌</span>;
+  const last = data.length - 1;
+  const clamp = (v: number) => Math.min(Math.max(v, 0), 100);
+  const x = (i: number) => pad + (i / last) * (w - pad * 2);
+  const y = (v: number) => h - pad - (clamp(v) / 100) * (h - pad * 2);
+  const line = data.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const cur = data[last];
   return (
-    <svg class={"spark spark--" + tone} width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-      <polyline points={pts} fill="none" />
+    <svg class={"spark spark--" + threshTone(cur)} width={w} height={h} viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none" aria-hidden="true">
+      <polygon class="spark__area" points={`${x(0).toFixed(1)},${h - pad} ${line} ${x(last).toFixed(1)},${h - pad}`} />
+      <polyline class="spark__line" points={line} fill="none" />
+      <circle class="spark__dot" cx={x(last).toFixed(1)} cy={y(cur).toFixed(1)} r="1.9" />
     </svg>
   );
 }
@@ -305,7 +320,7 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th scope="col">pod</th><th scope="col">state</th><th scope="col">size</th><th scope="col">mode</th><th scope="col">policy</th><th scope="col">cpu</th><th scope="col">memory</th></tr>
+          <tr><th scope="col">pod</th><th scope="col">state</th><th scope="col">size</th><th scope="col">mode</th><th scope="col">policy</th><th scope="col" class="num">cpu</th><th scope="col" class="num">memory</th></tr>
         </thead>
         <tbody>
           {pods.length === 0 && <tr><td colSpan={7} class="empty">no pods running</td></tr>}
@@ -318,8 +333,8 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
                 <td class="c-mono">{p.size}</td>
                 <td class="c-mono">{p.mode || <span class="faint">—</span>}</td>
                 <td class="c-mono">{p.policy || <span class="faint">—</span>}</td>
-                <td class="perf"><Spark data={h.cpu} tone="cpu" /><span class="c-mono">{p.cpu || "—"}</span></td>
-                <td class="perf"><Spark data={h.mem} tone="mem" /><span class="c-mono">{p.memPerc || "—"}</span></td>
+                <td class="perf"><Spark data={h.cpu} /><span class="c-mono">{p.cpu || "—"}</span></td>
+                <td class="perf"><Spark data={h.mem} /><span class="c-mono">{p.memPerc || "—"}</span></td>
               </tr>
             );
           })}

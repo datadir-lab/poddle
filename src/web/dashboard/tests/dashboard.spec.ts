@@ -67,7 +67,9 @@ test("pods view lists the fleet with state, policy, and performance sparklines",
   await expect(page.locator("table")).toContainText("prod");
   await expect(page.locator(".tag")).toContainText("auto");
   // a second poll (3s) gives the sparkline >=2 points, so it renders as an svg
-  await expect(page.locator(".spark--cpu").first()).toBeVisible({ timeout: 5000 });
+  // with a line + threshold-colored end dot (agent1 CPU 12.5% -> "cool" tone)
+  await expect(page.locator("svg.spark").first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator("svg.spark .spark__dot").first()).toBeVisible();
   await expect(page.locator("table")).toContainText("12.5%");
 });
 
