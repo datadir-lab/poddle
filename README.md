@@ -166,3 +166,19 @@ task e2e-*    # end-to-end suites (need podman): e2e-up, e2e-connector, e2e-l4, 
 ```
 
 Module `git.dev.datadir.co/datadir/poddle` — imports carry the `src/` segment.
+
+## License
+
+poddle's core (this repository) is open source under the
+**[GNU AGPL-3.0](./LICENSE)**. The hosted **poddle cloud** and **poddle
+enterprise** editions are commercial and live in a separate, private repository.
+
+- **[LICENSING.md](./LICENSING.md)** — what's licensed how, and how the
+  proprietary editions coexist with an AGPL core.
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — how to contribute (DCO sign-off).
+- **[TRADEMARKS.md](./TRADEMARKS.md)** — the "poddle" name.
+- **[docs/design/open-core.md](./docs/design/open-core.md)** — the engineering
+  boundary between core and cloud.
+
+A commercial license is available if AGPL-3.0 doesn't fit —
+[hello@datadir.co](mailto:hello@datadir.co).

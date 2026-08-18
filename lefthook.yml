@@ -1,0 +1,26 @@
+# Git hooks for the poddle core, managed by lefthook (https://lefthook.dev).
+#
+# Activate once per clone:
+#   npm install            # installs deps and runs `lefthook install`
+#   # or, without the npm deps: npx lefthook install
+#
+# Skip in an emergency with:  LEFTHOOK=0 git commit ...
+
+pre-commit:
+  parallel: true
+  commands:
+    gofmt:
+      glob: "*.go"
+      run: |
+        unformatted=$(gofmt -l {staged_files})
+        if [ -n "$unformatted" ]; then
+          echo "These Go files need gofmt:"; echo "$unformatted"
+          echo "Fix with: gofmt -w <files>   (or: task fmt)"
+          exit 1
+        fi
+
+commit-msg:
+  commands:
+    # Conventional Commits (feat:, fix:, docs(scope): ...).
+    commitlint:
+      run: npx --no-install commitlint --edit "{1}"
