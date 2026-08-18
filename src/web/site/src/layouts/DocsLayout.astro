@@ -64,7 +64,7 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
 ---
 <Base title={`${title} - poddle docs`} description={description}>
   <div class="container doc-shell">
-    <aside class="doc-nav">
+    <div class="doc-nav">
       <button type="button" class="doc-search-btn" id="docsearch-open" aria-haspopup="dialog">
         <svg class="doc-search-btn__i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
         <span class="doc-search-btn__label">Search docs</span>
@@ -102,8 +102,8 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
           </div>
         ))}
       </nav>
-    </aside>
-    <main class="doc-main" data-pagefind-body>
+    </div>
+    <div class="doc-main" data-pagefind-body>
       <slot />
       {(prevPage || nextPage) && (
         <nav class="doc-pager" aria-label="Pagination">
@@ -121,13 +121,13 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
           )}
         </nav>
       )}
-    </main>
-    <aside class="doc-toc-rail">
+    </div>
+    <div class="doc-toc-rail">
       <nav class="doc-toc" aria-label="On this page">
         <p class="doc-toc__title">On this page</p>
         <ul></ul>
       </nav>
-    </aside>
+    </div>
   </div>
 
   <!-- Command-palette search modal. Pagefind mounts into #docsearch on first open. -->
@@ -224,7 +224,7 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
       headings.forEach((h) => {
         if (!h.id) { let id = slug(h.textContent) || 'section'; if (used[id]) id += '-' + (used[id]++); else used[id] = 1; h.id = id; }
         const anchor = document.createElement('a');
-        anchor.className = 'heading-anchor'; anchor.href = '#' + h.id; anchor.setAttribute('aria-hidden', 'true'); anchor.textContent = '#';
+        anchor.className = 'heading-anchor'; anchor.href = '#' + h.id; anchor.setAttribute('aria-hidden', 'true'); anchor.tabIndex = -1; anchor.textContent = '#';
         h.appendChild(anchor);
         if (tocList) {
           const li = document.createElement('li');

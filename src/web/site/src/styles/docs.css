@@ -95,7 +95,7 @@
 @keyframes doc-target { 0%, 30% { background: rgba(47, 158, 111, 0.14); box-shadow: -0.4rem 0 0 rgba(47, 158, 111, 0.14); } 100% { background: transparent; box-shadow: none; } }
 
 /* Copy-to-clipboard buttons on code/terminal blocks */
-.copy-btn { font: 600 0.68rem/1 var(--font-sans); color: rgba(233, 228, 211, 0.62); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; }
+.copy-btn { font: 600 0.68rem/1 var(--font-sans); color: rgba(233, 228, 211, 0.82); background: rgba(12, 30, 24, 0.92); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; }
 .copy-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.13); }
 .copy-btn.is-done { color: #6fe0a6; border-color: rgba(111, 224, 166, 0.45); }
 .copy-btn--bar { margin-left: auto; }
@@ -145,13 +145,13 @@ pre.has-copy .copy-btn { position: absolute; top: 7px; right: 7px; }
 .term { border-radius: 12px; overflow: hidden; border: 1px solid rgba(21, 20, 15, 0.12); box-shadow: 0 18px 50px -24px rgba(21, 20, 15, 0.5); margin: 0.9rem 0; }
 .term__bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.62rem 0.85rem; background: #0f2a22; }
 .term__glyph { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.06em; color: #5fd39a; }
-.term__title { margin-left: 0.1rem; font: 500 0.72rem/1 var(--font-mono, ui-monospace, monospace); color: rgba(233, 228, 211, 0.42); }
+.term__title { margin-left: 0.1rem; font: 500 0.72rem/1 var(--font-mono, ui-monospace, monospace); color: rgba(233, 228, 211, 0.66); }
 .term__body { margin: 0; background: #14342b; padding: 1rem 1.15rem; overflow-x: auto; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.82rem; line-height: 1.75; color: #cfe2d9; }
 .term__body code { font-family: inherit; background: none; padding: 0; }
 .term__body .cmd { color: #f2eede; }
 .term__body .cmd::before { content: "$ "; color: #5fd39a; }
 .term__body .out { color: #8fb0a4; }
-.term__body .cmt { color: #5f8577; }
+.term__body .cmt { color: #8ab6a2; }
 .term__body .ok { color: #6fe0a6; }
 
 .code { background: #14342b; border-radius: 10px; padding: 0.7rem 1rem; overflow-x: auto; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.84rem; line-height: 1.6; color: #eae4d3; margin: 0.6rem 0; }
