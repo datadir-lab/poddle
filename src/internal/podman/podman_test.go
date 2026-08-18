@@ -355,3 +355,37 @@ func TestMapState(t *testing.T) {
 		}
 	}
 }
+
+// podsRunner returns distinct output for List (ps json), Stats' ps (names), and
+// stats.
+type podsRunner struct{}
+
+func (podsRunner) Run(name string, args ...string) (exec.Result, error) {
+	j := strings.Join(args, " ")
+	switch {
+	case strings.Contains(j, "stats"):
+		return exec.Result{Stdout: "agent1|12.5%|2.7GB / 4GB|68%\n"}, nil
+	case strings.Contains(j, "json"): // List
+		return exec.Result{Stdout: `[{"Id":"abc123def456","State":"running","Labels":{"poddle.name":"agent1","poddle.managed":"true","poddle.size":"weak","poddle.mode":"headless","poddle.policy":"prod","poddle.autoscale":"true"}}]`}, nil
+	default: // Stats' ps names
+		return exec.Result{Stdout: "agent1\n"}, nil
+	}
+}
+func (podsRunner) RunInteractive(string, ...string) error { return nil }
+
+func TestPods_JoinsListAndStats(t *testing.T) {
+	got, err := New(podsRunner{}, "").Pods()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 pod, got %d", len(got))
+	}
+	want := sandbox.PodView{
+		Name: "agent1", State: "running", Size: "weak", Mode: "headless",
+		Policy: "prod", Autoscale: true, CPU: "12.5%", MemPerc: "68%", Mem: "2.7GB / 4GB",
+	}
+	if got[0] != want {
+		t.Errorf("PodView = %+v, want %+v", got[0], want)
+	}
+}

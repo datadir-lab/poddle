@@ -63,6 +63,7 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		"--label", "poddle.image="+s.Image,
 		"--label", "poddle.identity="+s.Identity,
 		"--label", "poddle.harness="+s.Harness,
+		"--label", "poddle.policy="+s.PolicyName,
 	)
 	if s.CPUs > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
@@ -189,6 +190,31 @@ func (p *Provider) Stats() ([]sandbox.Stat, error) {
 	return stats, nil
 }
 
+// Pods returns a fleet + performance snapshot for the dashboard: every managed
+// pod (from List) joined with its live CPU/memory (from Stats — best-effort, so
+// a host without cgroup delegation still shows the fleet, just without numbers).
+func (p *Provider) Pods() ([]sandbox.PodView, error) {
+	list, err := p.List()
+	if err != nil {
+		return nil, err
+	}
+	stats, _ := p.Stats()
+	byName := make(map[string]sandbox.Stat, len(stats))
+	for _, s := range stats {
+		byName[s.Name] = s
+	}
+	out := make([]sandbox.PodView, 0, len(list))
+	for _, sb := range list {
+		st := byName[sb.Name]
+		out = append(out, sandbox.PodView{
+			Name: sb.Name, State: sb.State, Size: sb.Size, Mode: sb.Mode,
+			Policy: sb.Policy, Autoscale: sb.Autoscale,
+			CPU: st.CPU, MemPerc: st.MemPerc, Mem: st.Mem,
+		})
+	}
+	return out, nil
+}
+
 // AutoscaleStats returns live memory pressure for autoscale-opted-in pods (those
 // labelled poddle.autoscale=true), joining each pod's mode/size labels with its
 // current memory percent from `podman stats`. Empty (not an error) when none
@@ -309,13 +335,16 @@ func parseList(stdout string) ([]sandbox.Sandbox, error) {
 	out := make([]sandbox.Sandbox, 0, len(raw))
 	for _, c := range raw {
 		out = append(out, sandbox.Sandbox{
-			ID:       shortID(c.ID),
-			Name:     c.Labels["poddle.name"],
-			Template: c.Labels["poddle.template"],
-			Runtime:  c.Labels["poddle.runtime"],
-			Size:     c.Labels["poddle.size"],
-			Repo:     c.Labels["poddle.repo"],
-			State:    mapState(c.State),
+			ID:        shortID(c.ID),
+			Name:      c.Labels["poddle.name"],
+			Template:  c.Labels["poddle.template"],
+			Runtime:   c.Labels["poddle.runtime"],
+			Size:      c.Labels["poddle.size"],
+			Repo:      c.Labels["poddle.repo"],
+			State:     mapState(c.State),
+			Mode:      c.Labels["poddle.mode"],
+			Autoscale: c.Labels["poddle.autoscale"] == "true",
+			Policy:    c.Labels["poddle.policy"],
 		})
 	}
 	return out, nil

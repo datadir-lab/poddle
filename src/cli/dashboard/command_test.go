@@ -10,10 +10,11 @@ import (
 	"testing"
 
 	"github.com/datadir-lab/poddle/src/internal/policy"
+	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
 
 func TestHandler_ServesEmbeddedBundle(t *testing.T) {
-	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), nil))
+	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), nil, nil))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/")
@@ -47,7 +48,7 @@ func TestHandler_ProxiesV1AuditToDaemon(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	srv := httptest.NewServer(Handler(sock, nil))
+	srv := httptest.NewServer(Handler(sock, nil, nil))
 	defer srv.Close()
 
 	// /v1/audit must map to the daemon's /audit and preserve the query.
@@ -64,7 +65,7 @@ func TestHandler_ProxiesV1AuditToDaemon(t *testing.T) {
 
 func TestHandler_PolicyCRUD(t *testing.T) {
 	store := policy.NewFileStore(filepath.Join(t.TempDir(), "policies"))
-	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), store))
+	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), store, nil))
 	t.Cleanup(srv.Close)
 
 	// PUT creates a policy.
@@ -96,5 +97,27 @@ func TestHandler_PolicyCRUD(t *testing.T) {
 	dr.Body.Close()
 	if names, _ := store.List(); len(names) != 0 {
 		t.Errorf("DELETE should remove the policy; store still has %v", names)
+	}
+}
+
+func TestHandler_PodsAPI(t *testing.T) {
+	pods := func() ([]sandbox.PodView, error) {
+		return []sandbox.PodView{
+			{Name: "agent1", State: "running", Size: "weak", Mode: "headless", Policy: "prod", Autoscale: true, CPU: "12.5%", MemPerc: "68%", Mem: "2.7GB / 4GB"},
+		}, nil
+	}
+	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), nil, pods))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/v1/pods")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	for _, want := range []string{`"name":"agent1"`, `"state":"running"`, `"policy":"prod"`, `"cpu":"12.5%"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("/v1/pods should include %s; got:\n%s", want, body)
+		}
 	}
 }

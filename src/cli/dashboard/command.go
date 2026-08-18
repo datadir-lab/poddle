@@ -19,16 +19,23 @@ import (
 
 	"github.com/spf13/cobra"
 
+	pexec "github.com/datadir-lab/poddle/src/internal/exec"
 	"github.com/datadir-lab/poddle/src/internal/poddled"
+	"github.com/datadir-lab/poddle/src/internal/podman"
 	"github.com/datadir-lab/poddle/src/internal/policy"
+	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
 
+// PodsSource returns the current fleet + performance snapshot. Locally it is the
+// podman engine; the cloud collector supplies a multi-host source.
+type PodsSource func() ([]sandbox.PodView, error)
+
 // Handler serves the embedded dashboard bundle at / and the versioned /v1
-// contract: /v1/audit* is proxied to the daemon on the Unix socket at sock, and
-// /v1/policies* is served from the policy store (so the UI can view + edit
-// policies). The same contract is reused by the cloud collector — only the
-// backends differ.
-func Handler(sock string, policies policy.Store) http.Handler {
+// contract: /v1/audit* is proxied to the daemon on the Unix socket at sock,
+// /v1/policies* is served from the policy store, and /v1/pods from the pods
+// source. The same contract is reused by the cloud collector — only the backends
+// differ.
+func Handler(sock string, policies policy.Store, pods PodsSource) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Scheme = "http"
@@ -54,6 +61,19 @@ func Handler(sock string, policies policy.Store) http.Handler {
 	// patterns win over the /v1/ proxy in Go 1.22's mux.
 	if policies != nil {
 		registerPolicyAPI(mux, policies)
+	}
+	if pods != nil {
+		mux.HandleFunc("GET /v1/pods", func(w http.ResponseWriter, r *http.Request) {
+			list, err := pods()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if list == nil {
+				list = []sandbox.PodView{}
+			}
+			writeJSON(w, list)
+		})
 	}
 	mux.Handle("/v1/", proxy) // /v1/audit* -> daemon
 	mux.Handle("/", http.FileServer(http.FS(sub)))
@@ -134,7 +154,8 @@ func NewCmd() *cobra.Command {
 			if open {
 				_ = openBrowser(url) // best-effort
 			}
-			return http.Serve(ln, Handler(poddled.SocketPath(), policyStore()))
+			eng := podman.New(pexec.OS{}, os.Getenv("PODDLE_HOST"))
+			return http.Serve(ln, Handler(poddled.SocketPath(), policyStore(), eng.Pods))
 		},
 	}
 	c.Flags().IntVar(&port, "port", 7333, "local port to bind (127.0.0.1)")

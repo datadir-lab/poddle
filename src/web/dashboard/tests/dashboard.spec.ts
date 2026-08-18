@@ -9,18 +9,43 @@ const SEED = [
   { seq: 1, time: now(), pod: "agent2", kind: "block", upstream: "evil.example", decision: "block", detail: "egress blocked" },
 ];
 
+const PODS = [
+  { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: true, cpu: "12.5%", memPerc: "68%", mem: "2.7GB / 4GB" },
+  { name: "agent2", state: "paused", size: "strong", mode: "interactive", policy: "", autoscale: false, cpu: "0.0%", memPerc: "3%", mem: "120MB / 8GB" },
+];
+
 async function mockAudit(page: Page) {
   await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
   await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
   await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: SEED }));
 }
 
-test("loads the console with overview, audit, and policies tabs", async ({ page }) => {
+async function mockPods(page: Page) {
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: PODS }));
+}
+
+test("loads the console with overview, pods, audit, and policies tabs", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".brand__name")).toContainText("poddle");
-  for (const t of ["Overview", "Audit", "Policies"]) {
+  for (const t of ["Overview", "Pods", "Audit", "Policies"]) {
     await expect(page.getByRole("button", { name: t })).toBeVisible();
   }
+});
+
+test("pods view lists the fleet with state, policy, and performance sparklines", async ({ page }) => {
+  await mockPods(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pods" }).click();
+  await expect(page.locator("table")).toContainText("agent1");
+  await expect(page.locator("table")).toContainText("agent2");
+  // state badges + policy binding + autoscale tag surface
+  await expect(page.locator(".state--running")).toBeVisible();
+  await expect(page.locator(".state--paused")).toBeVisible();
+  await expect(page.locator("table")).toContainText("prod");
+  await expect(page.locator(".tag")).toContainText("auto");
+  // a second poll (3s) gives the sparkline >=2 points, so it renders as an svg
+  await expect(page.locator(".spark--cpu").first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator("table")).toContainText("12.5%");
 });
 
 test("overview summarises the fleet and lifts attention + secrets", async ({ page }) => {
