@@ -124,6 +124,23 @@ func TestStore_QueryFilters(t *testing.T) {
 	}
 }
 
+func TestStore_SourceRecordedAndChained(t *testing.T) {
+	s := openTmp(t)
+	if _, err := s.Append(NewEvent(Event{Pod: "p", Kind: KindRequest, Source: "host-a"})); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Query(Filter{Pod: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Source != "host-a" {
+		t.Fatalf("Source should round-trip through the store, got %+v", got)
+	}
+	if ok, at, _ := s.Verify(); !ok {
+		t.Errorf("chain should verify with a Source set (broken at %d)", at)
+	}
+}
+
 func TestStore_Subscribe(t *testing.T) {
 	s := openTmp(t)
 	ch, cancel := s.Subscribe()

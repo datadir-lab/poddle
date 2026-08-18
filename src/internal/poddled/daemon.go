@@ -284,6 +284,18 @@ func (d *Daemon) Handler() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, events)
 	})
+	mux.HandleFunc("GET /audit/verify", func(w http.ResponseWriter, r *http.Request) {
+		if d.audit == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "brokenAt": int64(0)})
+			return
+		}
+		ok, at, err := d.audit.Verify()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": ok, "brokenAt": at})
+	})
 	mux.HandleFunc("GET /audit/stream", func(w http.ResponseWriter, r *http.Request) {
 		if d.audit == nil {
 			http.Error(w, "auditing off", http.StatusServiceUnavailable)
