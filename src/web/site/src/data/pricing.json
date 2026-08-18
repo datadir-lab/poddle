@@ -8,7 +8,7 @@
       "period": "free forever",
       "note": "",
       "featured": false,
-      "cta": { "label": "Start free", "href": "/docs", "variant": "ghost" },
+      "cta": { "label": "Start free", "href": "/cloud", "variant": "ghost" },
       "feats": [
         "1 identity",
         "Up to 2 pods at once",
@@ -24,7 +24,7 @@
       "period": "per developer / month",
       "note": "billed annually - or $25 monthly",
       "featured": true,
-      "cta": { "label": "Start a team", "href": "/docs", "variant": "primary" },
+      "cta": { "label": "Start a team", "href": "/cloud", "variant": "primary" },
       "feats": [
         "Everything in Solo",
         "Unlimited identities",
@@ -93,7 +93,7 @@
     },
     {
       "q": "Can I self-host the broker?",
-      "a": "The broker is a managed, hardened control plane we run for you - that is what keeps the raw secret out of every pod and gives you one audited place to govern access."
+      "a": "Yes. poddle is open source - run the broker on your own infrastructure and the raw secret stays in a vault you control. Most teams pick the managed cloud so there is no control plane to operate; the guarantees are identical either way."
     },
     {
       "q": "Is there a trial for Team?",

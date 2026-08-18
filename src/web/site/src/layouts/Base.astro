@@ -5,6 +5,7 @@ import '@fontsource/instrument-serif/400-italic.css';
 import '../styles/global.css';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import site from '../data/site.json';
 
 interface Props {
   title: string;
@@ -33,7 +34,7 @@ const jsonLd = {
       url: site.href,
       logo: new URL('/logo.svg', site).href,
       description: 'Secret-safe dev sandboxes for coding agents.',
-      sameAs: ['https://github.com/datadir-lab/poddle'],
+      sameAs: [`https://github.com/${site.githubRepo}`],
     },
     {
       '@type': 'WebSite',

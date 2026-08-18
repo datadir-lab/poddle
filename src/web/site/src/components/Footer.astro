@@ -1,6 +1,7 @@
 ---
 import legal from '../data/legal.json';
-const repo = 'https://github.com/datadir-lab/poddle';
+import site from '../data/site.json';
+const repo = `https://github.com/${site.githubRepo}`;
 ---
 <footer class="footer">
   <div class="container footer__inner">
@@ -14,6 +15,7 @@ const repo = 'https://github.com/datadir-lab/poddle';
     <div class="footer__cols">
       <div>
         <p class="footer__h">Product</p>
+        <a href="/cloud">Cloud</a>
         <a href="/connectors">Connectors</a>
         <a href="/pricing">Pricing</a>
         <a href="/docs">Docs</a>
@@ -21,6 +23,7 @@ const repo = 'https://github.com/datadir-lab/poddle';
       <div>
         <p class="footer__h">Learn</p>
         <a href="/security">Security</a>
+        <a href="/compare">Compare</a>
         <a href="/#how-it-works">How it works</a>
       </div>
       <div>

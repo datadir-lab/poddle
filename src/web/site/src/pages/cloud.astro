@@ -1,0 +1,164 @@
+---
+import Base from '../layouts/Base.astro';
+import Button from '../components/Button.astro';
+import pricing from '../data/pricing.json';
+import legal from '../data/legal.json';
+
+const managed = pricing.podCompute.managed;
+const early = `mailto:${legal.emails.general}?subject=poddle%20cloud%20early%20access`;
+
+const runFor = [
+  {
+    h: 'A hosted control plane',
+    p: 'The broker and its sealed vault, run and hardened by us. One audited place to govern access - nothing for you to deploy, patch, or babysit.',
+  },
+  {
+    h: 'Managed pods',
+    p: 'Isolated, disposable pods on our cloud, metered per second with scale-to-zero when idle. Burst to a stronger shell for a headless task and drop back after.',
+  },
+  {
+    h: 'Identities, policy & audit',
+    p: 'Per-person identities revocable in one call, egress policy enforced on every request, and a tamper-evident audit trail you can export.',
+  },
+  {
+    h: 'Upgrades & uptime',
+    p: 'Rolling updates, backups, and monitoring on our side. New connectors and providers land without a migration on yours.',
+  },
+];
+---
+<Base
+  title="poddle cloud - the secretless broker, fully managed"
+  description="Open source at the core, fully managed in the cloud: we host the broker, the vault, and your pods, so there is no control plane to run and no capacity to babysit. Start free."
+>
+  <section class="container cl-hero">
+    <p class="eyebrow">poddle cloud</p>
+    <h1 class="cl-title">The secretless broker, fully managed.</h1>
+    <p class="cl-lead">
+      Full access, zero secrets - without running a thing. We host the broker, the sealed vault,
+      and your pods, so there is no control plane to operate and no capacity to babysit. poddle is
+      open source, so you can self-host any time; in the cloud you are productive in minutes.
+    </p>
+    <div class="cl-cta">
+      <Button href={early} variant="primary">Start free</Button>
+      <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">&rarr;</span></Button>
+    </div>
+    <p class="cl-note">poddle cloud is in early access. Free tier at launch, no credit card.</p>
+  </section>
+
+  <section class="container cl-body">
+    <div class="cl-block">
+      <p class="ilabel">What we run for you</p>
+      <div class="cl-grid">
+        {runFor.map((r) => (
+          <div class="cl-card">
+            <h3 class="cl-card__h">{r.h}</h3>
+            <p class="cl-card__p">{r.p}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="cl-block">
+      <p class="ilabel">Cloud or self-host</p>
+      <div class="cl-choice">
+        <div class="cl-opt cl-opt--f">
+          <span class="cl-opt__badge">Recommended</span>
+          <h3 class="cl-opt__h">Managed cloud</h3>
+          <p class="cl-opt__sub">We run everything. You get productive agents in minutes.</p>
+          <ul class="cl-feats">
+            <li>Hosted broker, vault, and pods</li>
+            <li>Per-second pods, scale-to-zero when idle</li>
+            <li>Upgrades, backups, and uptime on us</li>
+            <li>Free tier at launch, no credit card</li>
+          </ul>
+          <div class="cl-opt__cta"><Button href={early} variant="primary">Start free</Button></div>
+        </div>
+        <div class="cl-opt">
+          <h3 class="cl-opt__h">Self-host</h3>
+          <p class="cl-opt__sub">Run the open-source broker on your own infrastructure.</p>
+          <ul class="cl-feats">
+            <li>Your cloud or on-prem, your region</li>
+            <li>Data and keys stay in your account</li>
+            <li>Same broker, identities, and audit trail</li>
+            <li>Open source (AGPL-3.0), full source and community support</li>
+          </ul>
+          <div class="cl-opt__cta"><Button href="/docs" variant="ghost">Read the docs <span aria-hidden="true">&rarr;</span></Button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cl-block">
+      <p class="ilabel">Managed pod pricing</p>
+      <p class="cl-prose">
+        Pods are metered per second at a small margin over raw cloud, so there is no capacity for
+        you to manage. Bring your own compute instead and you pay your provider directly.
+      </p>
+      <ul class="cl-rates">
+        {managed.rates.map((r) => (
+          <li>
+            <span class="cl-rates__size">{r.size} &middot; {r.specs}</span>
+            <span class="cl-rates__price">{r.price}<span>{r.unit}</span></span>
+          </li>
+        ))}
+      </ul>
+      <p class="cl-prose cl-prose--dim">{managed.note}</p>
+      <p class="conn-more"><a href="/pricing">See full pricing &rarr;</a></p>
+    </div>
+
+    <div class="cl-close">
+      <h2 class="cl-close__h">Get your agents a room in the cloud.</h2>
+      <div class="cl-cta">
+        <Button href={early} variant="primary">Start free</Button>
+        <Button href="/compare" variant="ghost">How poddle compares <span aria-hidden="true">&rarr;</span></Button>
+      </div>
+      <p class="cl-note">Early access. We will get you in fast.</p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .cl-hero { padding-block: clamp(2.5rem, 6vw, 4.5rem) 0.5rem; }
+  .cl-title { font-size: var(--fs-hero); max-width: 18ch; margin: 1rem 0 0; }
+  .cl-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 62ch; margin: 1.2rem 0 0; }
+  .cl-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1.8rem; }
+  .cl-note { color: var(--faint); font-size: 0.86rem; margin: 1rem 0 0; }
+  .cl-body { padding-bottom: var(--space-section); }
+
+  .cl-block { margin-top: 3.2rem; }
+  .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 0 0 1.1rem; }
+  .cl-prose { color: var(--muted); max-width: 62ch; line-height: 1.55; margin: 0 0 1rem; }
+  .cl-prose--dim { color: var(--faint); font-size: 0.86rem; }
+
+  .cl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.3rem; }
+  .cl-card { border: 1px solid var(--border); border-radius: 14px; background: #fff; padding: 1.35rem 1.35rem 1.45rem; }
+  .cl-card__h { font-size: 1.05rem; margin: 0 0 0.55rem; color: var(--ink); }
+  .cl-card__p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; margin: 0; }
+
+  .cl-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; align-items: start; }
+  .cl-opt { position: relative; border: 1px solid var(--border); border-radius: 18px; background: #fff; padding: 1.8rem 1.6rem; display: flex; flex-direction: column; }
+  .cl-opt--f { border-color: var(--accent); box-shadow: 0 16px 46px -20px rgba(47, 158, 111, 0.45); }
+  .cl-opt__badge { position: absolute; top: -0.72rem; left: 1.6rem; background: var(--accent); color: #fff; font: 700 0.62rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.38rem 0.62rem; border-radius: 999px; }
+  .cl-opt__h { font-family: var(--font-serif); font-weight: 400; font-size: 1.6rem; margin: 0; color: var(--ink); }
+  .cl-opt__sub { color: var(--muted); font-size: 0.92rem; line-height: 1.4; margin: 0.4rem 0 1.2rem; }
+  .cl-feats { list-style: none; margin: 0 0 1.4rem; padding: 0; display: flex; flex-direction: column; gap: 0.62rem; }
+  .cl-feats li { position: relative; padding-left: 1.65rem; font-size: 0.9rem; color: var(--ink); line-height: 1.35; }
+  .cl-feats li::before { content: ""; position: absolute; left: 0; top: 0.05em; width: 16px; height: 16px; border-radius: 50%; background: #dff0e8 url(/icons/check.svg) center / 9px no-repeat; }
+  .cl-opt__cta { margin-top: auto; }
+  .cl-opt__cta :global(.btn) { display: flex; width: 100%; justify-content: center; }
+
+  .cl-rates { list-style: none; margin: 0 0 1rem; padding: 0; max-width: 34rem; }
+  .cl-rates li { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.62rem 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
+  .cl-rates li:first-child { border-top: none; padding-top: 0; }
+  .cl-rates__size { color: var(--ink); }
+  .cl-rates__price { font-family: var(--font-serif); font-size: 1.18rem; color: var(--ink); white-space: nowrap; }
+  .cl-rates__price span { font-family: var(--font-sans); font-size: 0.72rem; color: var(--faint); }
+  .conn-more { margin-top: 1.4rem; }
+  .conn-more a { font-weight: 600; }
+
+  .cl-close { margin-top: 3.6rem; padding-top: 2.4rem; border-top: 1px solid var(--border); }
+  .cl-close__h { font-size: var(--fs-h2); max-width: 20ch; margin: 0 0 1.3rem; }
+
+  @media (max-width: 760px) {
+    .cl-choice { grid-template-columns: 1fr; }
+  }
+</style>

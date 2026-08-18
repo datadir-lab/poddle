@@ -15,17 +15,18 @@ test('Button renders variant class, href, and label', async () => {
   expect(html).toContain('Read the docs');
 });
 
-test('Nav shows brand, Docs link, and CTA', async () => {
+test('Nav shows brand, Docs link, GitHub badge, and cloud CTA', async () => {
   const container = await AstroContainer.create();
   const html = await container.renderToString(Nav);
   expect(html).toContain('poddle');
   expect(html).toContain('Docs');
-  expect(html).toContain('Get started');
+  expect(html).toContain('GitHub');
+  expect(html).toContain('Start free');
 });
 
-test('Footer shows brand, repo link, and open-source note', async () => {
+test('Footer shows brand, GitHub repo link, and source note', async () => {
   const container = await AstroContainer.create();
   const html = await container.renderToString(Footer);
-  expect(html).toContain('github.com/datadir-lab/poddle');
+  expect(html).toContain('github.com/');
   expect(html).toContain('Source');
 });
