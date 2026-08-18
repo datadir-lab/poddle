@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://poddle.dev/sitemap-index.xml
