@@ -36,7 +36,7 @@ func TestProductionStats_MissingFileIsEmpty(t *testing.T) {
 }
 
 func TestDaemon_EventRingBounded(t *testing.T) {
-	d := New(nil) // broker unused by recordEvent
+	d := New(nil, nil) // broker + audit unused by recordEvent's ring
 	for i := 0; i < maxEvents+10; i++ {
 		d.recordEvent(fmt.Sprintf("e%d", i))
 	}

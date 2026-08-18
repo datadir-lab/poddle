@@ -1,0 +1,22 @@
+# Audit e2e — the governance audit spine records brokered access.
+#
+# On this step's nested podman: a real `poddle task` runs a coding agent
+# (node:22) that reaches a mock Anthropic upstream through the broker; then
+# `poddle daemon audit` shows the recorded security events — a handle.issue, the
+# pod.task lifecycle, and the proxied request(s) — and the tamper-evident log
+# never contains the secret or a handle. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-audit:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-audit

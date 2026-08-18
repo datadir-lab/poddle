@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
+	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
 )
 
@@ -170,6 +172,52 @@ func (c *Client) Status() (Status, error) {
 		return Status{}, err
 	}
 	return s, nil
+}
+
+// Audit submits a client-side audit event (pod lifecycle, mount refusal) to the
+// daemon. Best-effort by convention — callers ignore the error so a missing
+// daemon never fails the underlying action.
+func (c *Client) Audit(e audit.Event) error {
+	b, _ := json.Marshal(e)
+	resp, err := c.http.Post(c.uri("/audit"), "application/json", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("audit: %s", resp.Status)
+	}
+	return nil
+}
+
+// Audits queries the daemon's audit log with the given filter (newest first).
+func (c *Client) Audits(f audit.Filter) ([]audit.Event, error) {
+	q := url.Values{}
+	if f.Pod != "" {
+		q.Set("pod", f.Pod)
+	}
+	if f.Kind != "" {
+		q.Set("kind", f.Kind)
+	}
+	if f.Decision != "" {
+		q.Set("decision", f.Decision)
+	}
+	if f.SinceSeq > 0 {
+		q.Set("since", strconv.FormatInt(f.SinceSeq, 10))
+	}
+	if f.Limit > 0 {
+		q.Set("limit", strconv.Itoa(f.Limit))
+	}
+	resp, err := c.http.Get(c.uri("/audit") + "?" + q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var events []audit.Event
+	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 // RevokePod invalidates every handle the daemon issued for pod.

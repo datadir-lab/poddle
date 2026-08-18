@@ -9,10 +9,25 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/exec"
 	"github.com/datadir-lab/poddle/src/internal/podman"
 )
+
+// AuditDBPath is where the daemon keeps its audit log: under XDG_STATE_HOME when
+// set (the right home for state), else the user config dir, else temp.
+func AuditDBPath() string {
+	dir := os.Getenv("XDG_STATE_HOME")
+	if dir == "" {
+		if cfg, err := os.UserConfigDir(); err == nil {
+			dir = cfg
+		} else {
+			dir = os.TempDir()
+		}
+	}
+	return filepath.Join(dir, "poddle", "audit.db")
+}
 
 // SocketPath is the default control-socket path: under XDG_RUNTIME_DIR when set
 // (the right home for runtime sockets), else the user config dir, else temp.
@@ -33,7 +48,16 @@ func SocketPath() string {
 // control API on an owner-only Unix socket at sockPath. A stale socket is
 // replaced.
 func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4PostgresBind string) error {
-	d := New(broker.NewBroker())
+	dbPath := AuditDBPath()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
+		return err
+	}
+	store, err := audit.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("open audit log: %w", err)
+	}
+
+	d := New(broker.NewBroker(), store)
 	if _, err := d.Start(gatewayBind, egress, l4RedisBind, l4PostgresBind); err != nil {
 		return err
 	}
@@ -65,6 +89,7 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 		<-ctx.Done()
 		_ = srv.Close()
 		_ = d.Stop(context.Background())
+		_ = store.Close()
 		_ = os.Remove(sockPath)
 	}()
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
