@@ -102,32 +102,49 @@ import Button from '../components/Button.astro';
     </div>
   </Section>
 
-  <Section eyebrow="Why poddle" title="A truly secure way to run your agentic workflows.">
-    <div class="features">
-      <Feature title="Reproducible lab templates">
-        Pick a lab and go - podman, toolchains, and services preinstalled, interactive or headless. Spin the same environment every time, or publish your own blueprint.
-      </Feature>
-      <Feature title="Isolated, disposable pods">
-        Podman-backed sandboxes, isolated per project - clean on every spin-up, gone on teardown.
-      </Feature>
-      <Feature title="Secretless by construction">
-        A broker issues revocable handles; the real secret never enters the pod.
-      </Feature>
-      <Feature title="Performance on demand">
-        Start small and let poddled auto-grow a pod when it nears its memory limit; burst to a stronger shell for a headless task and drop back after. Size for the common case, not the peak.
-      </Feature>
-      <Feature title="Auditable">
-        The broker keeps a tamper-evident, hash-chained record of every request, redaction, and handle - verifiable end to end and secret-free by construction (no bodies, no keys). Prove exactly what your agents did.
-      </Feature>
-      <Feature title="Governable">
-        Pin each pod to a named egress policy - allowlist the hosts it may reach, deny the rest, down to the HTTP method - and the broker enforces it on every request. SSO/SCIM and DORA / AI-Act controls are on the roadmap.
-      </Feature>
-      <Feature title="Per-person, revocable access">
-        Every pod runs under a real identity, so what an agent did ties back to a person - and its credentials revoke at the broker in one call. Offboard a teammate or rotate a key and the pod is locked out instantly.
-      </Feature>
-      <Feature title="Bring your own agent">
-        A harness registry - claude-code today; codex, aider, pi, and local planned.
-      </Feature>
+  <Section eyebrow="Why poddle" title="Secretless, governed, and provably audited.">
+    <div class="fgroups">
+      <div class="fgroup">
+        <p class="fgroup__label">Secretless &amp; isolated</p>
+        <div class="fgrid">
+          <Feature icon="shield" title="Secretless by construction">
+            A broker issues revocable handles; the real secret never enters the pod.
+          </Feature>
+          <Feature icon="cube" title="Isolated, disposable pods">
+            Podman-backed sandboxes, isolated per project - clean on every spin-up, gone on teardown.
+          </Feature>
+        </div>
+      </div>
+
+      <div class="fgroup">
+        <p class="fgroup__label">Governed &amp; audited</p>
+        <div class="fgrid">
+          <Feature icon="funnel" title="Governable">
+            Pin each pod to a named egress policy - allowlist the hosts it may reach, deny the rest, down to the HTTP method - and the broker enforces it on every request. SSO/SCIM and DORA / AI-Act controls are on the roadmap.
+          </Feature>
+          <Feature icon="file" title="Auditable">
+            The broker keeps a tamper-evident, hash-chained record of every request, redaction, and handle - verifiable end to end and secret-free by construction (no bodies, no keys). Prove exactly what your agents did.
+          </Feature>
+          <Feature icon="user" title="Per-person, revocable access">
+            Every pod runs under a real identity, so what an agent did ties back to a person - and its credentials revoke at the broker in one call. Offboard a teammate or rotate a key and the pod is locked out instantly.
+          </Feature>
+        </div>
+      </div>
+
+      <div class="fgroup">
+        <p class="fgroup__label">Built for real work</p>
+        <div class="fgrid">
+          <Feature icon="layers" title="Reproducible lab templates">
+            Pick a lab and go - podman, toolchains, and services preinstalled, interactive or headless. Spin the same environment every time, or publish your own blueprint.
+          </Feature>
+          <Feature icon="gauge" title="Performance on demand">
+            Start small and let poddled auto-grow a pod when it nears its memory limit; burst to a stronger shell for a headless task and drop back after. Size for the common case, not the peak.
+          </Feature>
+          <Feature icon="plug" title="Bring your own agent">
+            A harness registry - claude-code today; codex, aider, pi, and local planned.
+          </Feature>
+        </div>
+      </div>
     </div>
   </Section>
 
@@ -208,7 +225,9 @@ import Button from '../components/Button.astro';
 </Base>
 
 <style>
-  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem 3rem; }
+  .fgroups { display: flex; flex-direction: column; gap: 2.8rem; margin-top: 0.5rem; }
+  .fgroup__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--faint); font-weight: 700; margin: 0 0 1.3rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
+  .fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1.7rem 2.6rem; }
   .steps { margin: 0; padding: 0; }
   .closing { display: flex; flex-wrap: wrap; gap: 0.85rem; }
   .prose { color: var(--muted); max-width: 60ch; }
