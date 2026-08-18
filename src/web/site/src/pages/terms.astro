@@ -4,35 +4,39 @@ import legal from '../data/legal.json';
 ---
 <Legal
   title="Terms of Service"
-  updated="17 August 2026"
+  updated="18 August 2026"
   description="The terms under which datadir provides the poddle service."
 >
-  <p class="lead">These terms govern your use of poddle. By using the service, you agree to them.</p>
+  <p class="lead">These terms govern your use of poddle. By creating an account or using the service, you agree to them.</p>
 
   <p>
     {legal.productName} is provided by <strong>{legal.entity}</strong> ("datadir", "we", "us"), a
     {legal.legalForm} with its registered seat at {legal.registeredOffice} (IČO {legal.ico}),
-    registered in the {legal.registration}. "You" means the individual or organisation using the service.
+    registered in the {legal.registration}. "You" means the individual or organisation using the
+    service; if you use it for an organisation, you confirm you are authorised to bind it.
   </p>
 
   <h2>The service</h2>
   <p>
     poddle is a credential broker and control plane for coding-agent sandboxes ("pods"). We provide the
-    broker, identities, connectors, and - optionally - managed pod compute. You are responsible for the
-    pods you run and the workloads inside them.
+    broker, identities, connectors, governance and audit, and - optionally - managed pod compute. You
+    are responsible for the pods you run and the workloads inside them.
   </p>
 
   <h2>Accounts</h2>
   <p>
-    You must provide accurate information, keep your credentials secure, and are responsible for activity
-    under your account. You must be able to form a binding contract to use poddle.
+    You must provide accurate information, keep your credentials secure, and are responsible for all
+    activity under your account. You must be at least 16 and able to form a binding contract to use
+    poddle. Tell us promptly at <a href={`mailto:${legal.emails.security}`}>{legal.emails.security}</a>
+    if you suspect unauthorised use.
   </p>
 
   <h2>Acceptable use</h2>
   <ul>
     <li>Don't break the law, infringe others' rights, or violate a provider's or connector's terms.</li>
-    <li>Don't attempt to defeat the isolation or security of the service or other tenants.</li>
-    <li>Don't resell or misrepresent the service.</li>
+    <li>Don't attempt to defeat the isolation, governance, or security of the service or other tenants.</li>
+    <li>Don't use the service to build a competing product, or resell or misrepresent it.</li>
+    <li>Don't run workloads that harm the service or third parties (malware, spam, unlawful scraping, or the like).</li>
   </ul>
 
   <h2>Your content &amp; infrastructure</h2>
@@ -43,55 +47,99 @@ import legal from '../data/legal.json';
     you bring your own compute, your relationship with that infrastructure provider is yours.
   </p>
 
+  <h2>Third-party providers &amp; connectors</h2>
+  <p>
+    poddle brokers access to third-party services (model providers, forges, pipelines, clouds,
+    databases). Those services are governed by their own terms and are not operated by us; we are not
+    responsible for their availability, content, or acts. Your use of them through poddle does not
+    change your agreement with them.
+  </p>
+
   <h2>Fees &amp; billing</h2>
   <p>
     Paid plans are billed per developer as described on our <a href="/pricing">pricing page</a>. Managed
-    pod compute, if used, is metered and billed in arrears. Fees are exclusive of taxes. Except where
-    required by law, fees are non-refundable. We may change pricing with reasonable notice.
+    pod compute, if used, is metered and billed in arrears. Fees are exclusive of taxes, which we add
+    where required. Except where the law requires otherwise, fees are non-refundable. We may change
+    pricing with at least 30 days' notice, effective at your next renewal.
   </p>
 
-  <h2>Trials</h2>
-  <p>Trials are provided as-is and may be changed or ended at any time.</p>
-
-  <h2>Cancellation &amp; termination</h2>
+  <h2>Trials, beta &amp; early access</h2>
   <p>
-    You may cancel at any time; access continues to the end of the paid period. We may suspend or
-    terminate for material breach, non-payment, or to comply with the law, and will give notice where
-    reasonable.
+    Trials and features labelled beta, preview, or early access are provided "as is", may change or be
+    withdrawn at any time, and may have limits or defects. Don't rely on them for production-critical
+    work.
+  </p>
+
+  <h2>Feedback</h2>
+  <p>
+    If you send us ideas or suggestions, you grant us a perpetual, worldwide, royalty-free licence to
+    use them to improve the service, with no obligation to you.
+  </p>
+
+  <h2>Service availability &amp; support</h2>
+  <p>
+    We work to keep poddle available and provide support appropriate to your plan, but we do not
+    guarantee uninterrupted service unless a separate service-level agreement says so. We may perform
+    maintenance and will give reasonable notice of planned downtime where practical.
+  </p>
+
+  <h2>Confidentiality</h2>
+  <p>
+    Each party may receive non-public information from the other. The recipient will protect it with
+    reasonable care and use it only to provide or use the service, except where disclosure is required
+    by law. This does not apply to information that is or becomes public through no fault of the
+    recipient.
   </p>
 
   <h2>Warranties &amp; disclaimers</h2>
   <p>
-    We work hard to keep poddle secure and available, but the service is provided "as is" without
-    warranties of any kind to the extent permitted by law. poddle reduces the blast radius of leaked
-    secrets; it is not a guarantee against every possible compromise.
+    We work hard to keep poddle secure and available, but to the extent permitted by law the service is
+    provided "as is" without warranties of any kind, express or implied, including fitness for a
+    particular purpose. poddle reduces the blast radius of leaked secrets; it is not a guarantee against
+    every possible compromise.
   </p>
 
   <h2>Limitation of liability</h2>
   <p>
-    To the maximum extent permitted by law, neither party is liable for indirect or consequential
-    damages, and our total liability is limited to the fees you paid in the twelve months before the
-    claim.
+    To the maximum extent permitted by law, neither party is liable for indirect, incidental, or
+    consequential damages or lost profits, and our total aggregate liability is limited to the fees you
+    paid in the twelve months before the event giving rise to the claim. Nothing here limits liability
+    that cannot be limited by law.
   </p>
 
   <h2>Indemnity</h2>
-  <p>You will defend and indemnify datadir against claims arising from your use of the service in breach of these terms.</p>
+  <p>You will defend and indemnify datadir against third-party claims arising from your content, your workloads, or your use of the service in breach of these terms.</p>
 
-  <h2>Governing law</h2>
+  <h2>Suspension &amp; termination</h2>
   <p>
-    These terms are governed by the laws of <strong>{legal.jurisdiction}</strong>, and disputes are
-    subject to the exclusive jurisdiction of its courts, without prejudice to any mandatory consumer
-    protections.
+    You may cancel at any time; access continues to the end of the paid period. We may suspend or
+    terminate for material breach, non-payment, a security risk, or to comply with the law, giving
+    notice and an opportunity to cure where reasonable. On termination we revoke your handles and, on
+    request, help you export your data before deletion.
   </p>
+
+  <h2>Governing law &amp; disputes</h2>
+  <p>
+    These terms are governed by the laws of <strong>{legal.jurisdiction}</strong>, excluding its
+    conflict-of-laws rules and the UN Convention on Contracts for the International Sale of Goods.
+    Disputes are subject to the exclusive jurisdiction of the competent courts of the Slovak Republic,
+    without prejudice to any mandatory consumer protections available to you where you live.
+  </p>
+
+  <h2>General</h2>
+  <ul>
+    <li><strong>Assignment</strong> - you may not assign these terms without our consent; we may assign them to an affiliate or successor.</li>
+    <li><strong>Severability</strong> - if a provision is unenforceable, the rest stays in effect.</li>
+    <li><strong>Entire agreement</strong> - these terms, the pricing page, and any order form are the whole agreement between us on this subject.</li>
+    <li><strong>Waiver</strong> - not enforcing a term is not a waiver of it.</li>
+    <li><strong>Force majeure</strong> - neither party is liable for delays caused by events beyond its reasonable control.</li>
+    <li><strong>Notices</strong> - we notify you by email or in-product; you reach us at <a href={`mailto:${legal.emails.general}`}>{legal.emails.general}</a>.</li>
+    <li><strong>Export &amp; sanctions</strong> - you will comply with applicable export-control and sanctions laws and will not use the service where prohibited.</li>
+  </ul>
 
   <h2>Changes</h2>
-  <p>We may update these terms; material changes will be notified and the date above updated.</p>
+  <p>We may update these terms; we notify account holders of material changes and update the date above. Continued use after a change means you accept it.</p>
 
   <h2>Contact</h2>
-  <p><a href="mailto:hello@datadir.co">hello@datadir.co</a>.</p>
-
-  <p class="note">
-    Company and registration details are verified from the Slovak Business Register. These terms are a
-    working draft and should be reviewed by counsel before launch.
-  </p>
+  <p><a href={`mailto:${legal.emails.general}`}>{legal.emails.general}</a>.</p>
 </Legal>
