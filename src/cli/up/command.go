@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
+	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/connector"
@@ -48,6 +49,7 @@ type podBroker interface {
 	PostgresAddr() (string, error)
 	IssueHandle(pod, scope string, cred broker.Credential) (string, error)
 	RevokePod(pod string) error
+	Audit(e audit.Event) error
 }
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
@@ -88,6 +90,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
+			_ = b.Audit(audit.Event{Pod: name, Kind: audit.KindPodUp, Detail: "size=" + spec.Size + " image=" + spec.Image, Decision: audit.DecisionAllow})
 
 			if execCmd != "" {
 				return a.Engine.Exec(id, execCmd)
@@ -191,6 +194,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		spec.Mounts = append(spec.Mounts, sandbox.Mount{Host: m.Host, Container: m.Container, ReadOnly: m.ReadOnly})
 	}
 	if err := secure.CheckMounts(spec.Mounts, tpl.BlockPaths); err != nil {
+		_ = b.Audit(audit.Event{Pod: o.name, Kind: audit.KindMountRefuse, Detail: err.Error(), Decision: audit.DecisionDeny})
 		return fail(err)
 	}
 	if findings := secure.ScanMounts(spec.Mounts); len(findings) > 0 {

@@ -109,6 +109,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Task ./tests/e2e/...
 
+  e2e-audit:
+    desc: Audit e2e (needs podman) — brokered access is recorded, secret-free, in `poddle daemon audit`
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Audit ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:

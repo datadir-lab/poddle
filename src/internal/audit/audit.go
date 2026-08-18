@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "modernc.org/sqlite" // registers the pure-Go "sqlite" driver
 )
 
 // Kind classifies an audit event.

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
+	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/connector"
@@ -112,6 +113,10 @@ func (s *spyBroker) IssueHandle(pod, scope string, _ broker.Credential) (string,
 	*s.log = append(*s.log, "issue")
 	return "poddle_spy", nil
 }
+func (s *spyBroker) Audit(e audit.Event) error {
+	*s.log = append(*s.log, "audit:"+string(e.Kind))
+	return nil
+}
 
 // stubBroker is a no-op podBroker for tests that don't exercise brokered creds.
 type stubBroker struct{}
@@ -124,6 +129,7 @@ func (stubBroker) RevokePod(string) error        { return nil }
 func (stubBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	return "poddle_stub", nil
 }
+func (stubBroker) Audit(audit.Event) error { return nil }
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
@@ -468,7 +474,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// exec replaces attach; the handle persists (poddled outlives up — no revoke).
-	want := []string{"ensure", "gateway", "issue", "create", "exec"}
+	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up", "exec"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -499,7 +505,7 @@ func TestUp_DetachWithIdentity_Works(t *testing.T) {
 		t.Errorf("detached pod should be created, got %q", f.spec.Name)
 	}
 	// Detached: handle issued + pod created, but NOT attached and NOT revoked.
-	want := []string{"ensure", "gateway", "issue", "create"}
+	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -526,7 +532,7 @@ func TestUp_Identity_IssuesHandleAndAttaches(t *testing.T) {
 	}
 	// Handles are issued before create/attach and persist (poddled outlives up).
 	// once the (instant, faked) attached session ends.
-	want := []string{"ensure", "gateway", "issue", "create", "attach"}
+	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up", "attach"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}

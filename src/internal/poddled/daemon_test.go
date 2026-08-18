@@ -6,14 +6,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
 )
 
@@ -46,10 +49,63 @@ func (f *fakeBroker) Addr() string               { return f.addr }
 func (f *fakeBroker) SetEgressMode(m string)     { f.egress = m }
 func (f *fakeBroker) Stop(context.Context) error { return nil }
 
+func TestDaemon_AuditsHandleIssueAndPostedEvents(t *testing.T) {
+	store, err := audit.Open(filepath.Join(t.TempDir(), "audit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	d := New(&fakeBroker{}, store)
+	if _, err := d.Start("0.0.0.0:0", "redact", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(d.Handler())
+	t.Cleanup(srv.Close)
+
+	// Issuing a handle records a handle.issue event (never the secret).
+	issue := `{"scope":"proj/svc","credential":{"mode":"subscription","vendor":"anthropic","secret":"SENTINEL","baseURL":"http://up"}}`
+	if r, err := http.Post(srv.URL+"/pods/proj/handles", "application/json", strings.NewReader(issue)); err != nil {
+		t.Fatal(err)
+	} else {
+		_ = r.Body.Close()
+	}
+	// A client-posted lifecycle event lands too.
+	ev, _ := json.Marshal(audit.Event{Pod: "proj", Kind: audit.KindPodUp, Detail: "size=weak"})
+	if r, err := http.Post(srv.URL+"/audit", "application/json", bytes.NewReader(ev)); err != nil {
+		t.Fatal(err)
+	} else {
+		_ = r.Body.Close()
+	}
+
+	resp, err := http.Get(srv.URL + "/audit?pod=proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var events []audit.Event
+	if err := json.Unmarshal(body, &events); err != nil {
+		t.Fatalf("decode: %v (%s)", err, body)
+	}
+	kinds := map[audit.Kind]bool{}
+	for _, e := range events {
+		kinds[e.Kind] = true
+	}
+	if !kinds[audit.KindHandleIssue] {
+		t.Errorf("expected a handle.issue event; got %+v", events)
+	}
+	if !kinds[audit.KindPodUp] {
+		t.Errorf("expected the posted pod.up event; got %+v", events)
+	}
+	if strings.Contains(string(body), "SENTINEL") {
+		t.Error("the audit log must never contain the secret")
+	}
+}
+
 func testServer(t *testing.T) (*httptest.Server, *fakeBroker) {
 	t.Helper()
 	fb := &fakeBroker{}
-	d := New(fb)
+	d := New(fb, nil)
 	if _, err := d.Start("0.0.0.0:0", "redact", "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +204,7 @@ func TestDaemon_L4Redis_SwapsHandle(t *testing.T) {
 	var sawReal bool
 	upAddr := fakeUpstreamRedis(t, &sawReal, &mu)
 
-	d := New(broker.NewBroker())
+	d := New(broker.NewBroker(), nil)
 	if _, err := d.Start("0.0.0.0:0", "redact", "127.0.0.1:0", ""); err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
+	"github.com/datadir-lab/poddle/src/internal/audit"
 )
 
 // NewMoveCmd builds `poddle move <name>`: re-home a pod's session onto a fresh
@@ -58,6 +59,7 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
+			_ = b.Audit(audit.Event{Pod: name, Kind: audit.KindPodMove, Detail: "size=" + spec.Size, Decision: audit.DecisionAllow})
 
 			// Auto-resume the agent's conversation in the same mode (the state
 			// volume carried over the history). Resume is harness-specific.
