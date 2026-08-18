@@ -14,8 +14,10 @@ import (
 // NewCmd builds the run command.
 func NewCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
-		Use:                "run <name|id> <command>...",
-		Short:              "Run a command in a running sandbox",
+		Use:   "run <name|id> <command>...",
+		Short: "Run a command in a running sandbox",
+		Example: `  # run a command in a pod without attaching
+  poddle run my-sandbox go test ./...`,
 		Args:               cobra.MinimumNArgs(2),
 		DisableFlagParsing: true, // pass the command through verbatim
 		RunE: func(cmd *cobra.Command, args []string) error {

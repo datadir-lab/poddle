@@ -24,6 +24,14 @@ const rest = cmd.use.split(' ').slice(1).join(' ');
 const usage = rest ? `${cmd.path} ${rest}` : cmd.path;
 const parentPath = cmd.path.split(' ').slice(0, -1).join(' ');
 const parent = parentPath !== 'poddle' && parentPath !== '' ? parentPath : null;
+
+// The cobra Example string is authored two-space-indented; dedent it and split
+// so each line renders as a terminal comment (#…) or command in the docs.
+const exampleLines = (cmd.example ?? '')
+  .replace(/^\n+|\n+$/g, '')
+  .split('\n')
+  .map((l) => l.replace(/^ {2}/, ''))
+  .filter((l) => l.length > 0);
 ---
 <DocsLayout title={cmd.path} description={cmd.short}>
   <p class="doc-nav__label" style="margin:0 0 0.6rem">
@@ -38,6 +46,18 @@ const parent = parentPath !== 'poddle' && parentPath !== '' ? parentPath : null;
   <pre class="code code--usage"><code><span class="prompt">$ </span>{usage}</code></pre>
 
   {cmd.long && <p class="cmd-head__long">{cmd.long}</p>}
+
+  {exampleLines.length > 0 && (
+    <>
+      <p class="cmd-sec">Examples</p>
+      <div class="term">
+        <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+        <pre class="term__body"><code>{exampleLines.map((l, i) => (
+          <Fragment>{i > 0 && '\n'}<span class={l.trimStart().startsWith('#') ? 'cmt' : 'cmd'}>{l}</span></Fragment>
+        ))}</code></pre>
+      </div>
+    </>
+  )}
 
   {cmd.flags && cmd.flags.length > 0 && (
     <>

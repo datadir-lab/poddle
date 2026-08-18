@@ -17,7 +17,10 @@ func NewResizeCmd(a *app.App) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "resize <name|id> [size]",
 		Short: "Change a running pod's CPU/memory live (no restart)",
-		Args:  cobra.RangeArgs(1, 2),
+		Example: `  # jump to a named size, or set CPU/memory directly
+  poddle resize my-sandbox strong
+  poddle resize my-sandbox --cpus 8 --memory 16g`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, m := 0.0, ""
 			if len(args) == 2 {

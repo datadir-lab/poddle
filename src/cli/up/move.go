@@ -21,7 +21,9 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "move <name>",
 		Short: "Re-home a pod's session onto a fresh, re-sized shell (keeps workspace + state)",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # move onto a bigger shell without losing workspace or agent state
+  poddle move my-sandbox --size strong`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 

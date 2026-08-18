@@ -14,7 +14,9 @@ func NewCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "attach <name|id>",
 		Short: "Reconnect to a running sandbox",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # reconnect to a detached pod's shell
+  poddle attach my-sandbox`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.Engine.Attach(args[0])
 		},

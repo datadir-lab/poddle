@@ -59,7 +59,11 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "up [name]",
 		Short: "Create a sandbox and connect to it",
-		Args:  cobra.MaximumNArgs(1),
+		Example: `  # a shell wired to your work identity
+  poddle up my-sandbox --identity work --harness claude-code
+  # from a template, in the background
+  poddle up api --template api --identity work --detach`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := "poddle"
 			if len(args) > 0 {
