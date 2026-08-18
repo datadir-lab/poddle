@@ -52,6 +52,7 @@ type podBroker interface {
 	RevokePod(pod string) error
 	Audit(e audit.Event) error
 	SetPolicy(pod string, p *policy.Policy) error
+	Egress(pod string) (token, addr string, err error)
 }
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
@@ -299,6 +300,23 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 			}
 			if err := b.SetPolicy(o.name, pol); err != nil {
 				return fail(err)
+			}
+			// Route the pod's arbitrary (non-brokered) egress through the broker's
+			// forward proxy so the policy's destination rules govern it too. The
+			// broker's own host is excluded (NO_PROXY) so brokered traffic goes
+			// direct to the gateway.
+			if token, addr, err := b.Egress(o.name); err == nil {
+				if _, port, err := net.SplitHostPort(addr); err == nil {
+					proxy := "http://" + token + ":x@" + net.JoinHostPort(podBrokerHost(), port)
+					if spec.Env == nil {
+						spec.Env = map[string]string{}
+					}
+					for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+						spec.Env[k] = proxy
+					}
+					spec.Env["NO_PROXY"] = podBrokerHost()
+					spec.Env["no_proxy"] = podBrokerHost()
+				}
 			}
 		}
 	}

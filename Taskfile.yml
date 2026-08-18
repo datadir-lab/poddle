@@ -121,6 +121,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Policy ./tests/e2e/...
 
+  e2e-forward:
+    desc: Forward-proxy e2e (needs podman) — forced egress; policy governs the pod's arbitrary egress
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_ForwardProxy ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
