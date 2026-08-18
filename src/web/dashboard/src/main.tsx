@@ -290,7 +290,7 @@ function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string)
 
       <h2 class="section-title">Attention</h2>
       {attention.length === 0
-        ? <div class="panel empty">no policy denials or blocks — agents are inside their guardrails</div>
+        ? <div class="panel empty">No policy denials or blocks — agents are inside their guardrails.</div>
         : <div class="panel">
             {attention.map((a) => (
               <button class="attn" onClick={() => onPod(a.pod)}>
@@ -305,7 +305,7 @@ function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string)
 
       <h2 class="section-title">Secrets redacted</h2>
       {redactions.length === 0
-        ? <div class="panel empty">no secrets redacted yet — redact-mode policies strip credentials the agent tries to send</div>
+        ? <div class="panel empty">No secrets redacted yet — redact-mode policies strip credentials the agent tries to send.</div>
         : <div class="table-wrap">
             <table>
               <thead><tr><th>pod</th><th>destination</th><th>secrets</th><th>times</th></tr></thead>
@@ -371,7 +371,7 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
   return (
     <div>
       <div class="toolbar">
-        <input class="grow" placeholder="filter pod / kind / upstream…" value={q}
+        <input class="grow" placeholder="Filter by pod, kind, or upstream…" value={q}
           onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
         <Segmented value={decision} options={DECISION_FILTER} onChange={setDecision} ariaLabel="filter by decision" />
         <span class="count">{shown.length} events</span>
@@ -480,13 +480,13 @@ function PolicyView({ selected }: { selected?: string }) {
           <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
             class={selected === p.name ? "on" : ""}>{p.name}</a>
         ))}
-        <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ new policy</a>
+        <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
       </div>
       {sel
         ? <PolicyEditor policy={sel}
             onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
             onDeleted={() => { load(); navigate("/policies"); }} />
-        : <div class="editor empty">select a policy, or create one</div>}
+        : <div class="editor empty">Select a policy, or create one.</div>}
     </div>
   );
 }
@@ -548,7 +548,6 @@ function App() {
       <header>
         <a class="brand" href="/overview" onClick={linkTo("/overview")}>
           <span class="brand__name">poddle</span>
-          <span class="brand__sub">governance</span>
         </a>
         <nav>
           <NavLink to="/overview" active={active === "overview"}>Overview</NavLink>
