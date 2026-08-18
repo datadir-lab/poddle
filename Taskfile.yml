@@ -187,6 +187,7 @@ tasks:
     dir: src/web/dashboard
     cmds:
       - npm ci
+      - npx playwright install chromium # matches the installed @playwright/test, image-version-independent
       - npx playwright test
 
   web-docs:
