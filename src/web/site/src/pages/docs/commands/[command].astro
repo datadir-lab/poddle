@@ -10,7 +10,7 @@ type CommandDoc = {
 
 const cmdSlug = (p: string) => p.replace(/^poddle\s+/, '').replace(/\s+/g, '-');
 
-// One statically-generated page per command, straight from cli.json — the same
+// One statically-generated page per command, straight from cli.json - the same
 // tree the binary ships (src/cli/docgen → task web-docs).
 export function getStaticPaths() {
   const slug = (p: string) => p.replace(/^poddle\s+/, '').replace(/\s+/g, '-');
@@ -70,7 +70,7 @@ const exampleLines = (cmd.example ?? '')
             <tr>
               <td><code>--{f.name}{f.shorthand ? `, -${f.shorthand}` : ''}</code></td>
               <td class="flags__type" data-label="Type">{f.type}</td>
-              <td data-label="Default">{f.default ? <code>{f.default}</code> : <span class="dim">—</span>}</td>
+              <td data-label="Default">{f.default ? <code>{f.default}</code> : <span class="dim">-</span>}</td>
               <td data-label="Info">{f.usage}</td>
             </tr>
           ))}

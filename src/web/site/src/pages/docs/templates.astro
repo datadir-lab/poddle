@@ -9,7 +9,7 @@ import nightlyToml from '../../data/templates/nightly.toml?raw';
 
 // The examples are rendered straight from the linted .toml files
 // (src/web/site/src/data/templates), validated against the real parser by
-// TestDocExampleTemplates — so a shown example can never be invalid.
+// TestDocExampleTemplates - so a shown example can never be invalid.
 const hl = (src: string) => src.trimEnd()
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/("(?:[^"\\]|\\.)*")/g, '<span class="ok">$1</span>')
@@ -19,7 +19,7 @@ const examples = [
   {
     file: '.poddle/base.toml',
     title: 'The foundation',
-    blurb: 'Shared defaults every other template extends — image, size, harness, and safe egress. Put the common bits here and override per project.',
+    blurb: 'Shared defaults every other template extends - image, size, harness, and safe egress. Put the common bits here and override per project.',
     html: hl(baseToml),
   },
   {
@@ -31,13 +31,13 @@ const examples = [
   {
     file: '.poddle/python-ml.toml',
     title: 'Data work, locked down',
-    blurb: 'Strong compute, a read-only dataset mount, and egress blocked — the agent can work with your data but cannot send it anywhere.',
+    blurb: 'Strong compute, a read-only dataset mount, and egress blocked - the agent can work with your data but cannot send it anywhere.',
     html: hl(mlToml),
   },
   {
     file: '.poddle/regulated.toml',
     title: 'For sensitive repositories',
-    blurb: 'Refuses to start if a mount carries a credential file, keeps host secrets out entirely, and blocks outbound leaks — the settings auditors ask about.',
+    blurb: 'Refuses to start if a mount carries a credential file, keeps host secrets out entirely, and blocks outbound leaks - the settings auditors ask about.',
     html: hl(regToml),
   },
   {
@@ -50,14 +50,14 @@ const examples = [
 
 // Fields mirror the Template struct in src/internal/config/config.go.
 const fields: [string, string][] = [
-  ['extends', 'Inherit from another template — a name or a list. Later values win.'],
+  ['extends', 'Inherit from another template - a name or a list. Later values win.'],
   ['image', 'Base container image.'],
   ['size', 'weak (2 vCPU / 4 GB) or strong (8 vCPU / 16 GB).'],
   ['harness', 'Coding-agent runtime (default claude-code).'],
   ['identity', 'Identity to authenticate the harness with.'],
   ['repo', 'Repository to clone into the pod (through a brokered connector).'],
   ['env', 'Environment variables (table).'],
-  ['mounts', 'Host paths to mount — each { host, container, ro }.'],
+  ['mounts', 'Host paths to mount - each { host, container, ro }.'],
   ['setup', 'Inline commands run once on spin-up.'],
   ['scripts', 'Script files run on spin-up.'],
   ['connectors', 'Connection names to broker into the pod.'],
@@ -67,12 +67,12 @@ const fields: [string, string][] = [
   ['before_task / after_task', 'Resize to this size before / after a poddle task run.'],
 ];
 ---
-<DocsLayout title="Templates" description="Reproducible pod blueprints — image, tools, repo, connectors, and secret-safety, in one TOML file.">
+<DocsLayout title="Templates" description="Reproducible pod blueprints - image, tools, repo, connectors, and secret-safety, in one TOML file.">
   <div class="doc-intro">
     <p class="eyebrow">Docs · Templates</p>
     <h1 class="doc-title">Reproducible pods, one file.</h1>
     <p class="doc-lead">
-      A template is a blueprint for a pod — image, tools, repo, connectors, and secret-safety rules —
+      A template is a blueprint for a pod - image, tools, repo, connectors, and secret-safety rules -
       so <code>poddle up</code> gives everyone the exact same environment.
     </p>
   </div>
@@ -80,8 +80,8 @@ const fields: [string, string][] = [
   <section class="doc-block" style="margin-top:1.8rem">
     <h2>Where they live</h2>
     <ul class="doc-list">
-      <li><strong>Project</strong> — <code>.poddle/</code> in your repo (checked in, shared with the team).</li>
-      <li><strong>User</strong> — <code>~/.config/poddle/templates</code> (your personal blueprints).</li>
+      <li><strong>Project</strong> - <code>.poddle/</code> in your repo (checked in, shared with the team).</li>
+      <li><strong>User</strong> - <code>~/.config/poddle/templates</code> (your personal blueprints).</li>
     </ul>
 
     <h2 style="margin-top:2rem">Use one</h2>
@@ -92,7 +92,7 @@ const fields: [string, string][] = [
     </div>
 
     <h2 style="margin-top:2rem">Examples</h2>
-    <p class="doc-p">Compose from a shared <code>base</code> and specialize per project. These are the exact files the docs load — <a href="#lint">linted against the real parser</a> on every build, so they're always valid.</p>
+    <p class="doc-p">Compose from a shared <code>base</code> and specialize per project. These are the exact files the docs load - <a href="#lint">linted against the real parser</a> on every build, so they're always valid.</p>
 
     {examples.map((ex) => (
       <div class="tmpl-ex">
@@ -106,7 +106,7 @@ const fields: [string, string][] = [
     ))}
 
     <Callout type="note" title="Linted in CI">
-      <p id="lint">Every example on this page is parsed and resolved by poddle's own template loader in CI (<code>TestDocExampleTemplates</code>) — rejected if a key is misspelled or an <code>extends</code> chain is broken. What you copy is what the binary accepts.</p>
+      <p id="lint">Every example on this page is parsed and resolved by poddle's own template loader in CI (<code>TestDocExampleTemplates</code>) - rejected if a key is misspelled or an <code>extends</code> chain is broken. What you copy is what the binary accepts.</p>
     </Callout>
 
     <h2 style="margin-top:2rem">Fields</h2>

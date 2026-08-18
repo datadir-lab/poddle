@@ -14,7 +14,7 @@ import Button from '../components/Button.astro';
       <div class="fmap__row">
         <div class="fmap__h">
           <span class="fmap__tag fmap__tag--bad">Without poddle</span>
-          <span class="fmap__note">Your agent runs on your machine with your real key in reach — and any secret already in the prompt travels raw, straight to the provider.</span>
+          <span class="fmap__note">Your agent runs on your machine with your real key in reach - and any secret already in the prompt travels raw, straight to the provider.</span>
         </div>
         <div class="fmap__track">
           <div class="fnode">
@@ -34,7 +34,7 @@ import Button from '../components/Button.astro';
       <div class="fmap__row">
         <div class="fmap__h">
           <span class="fmap__tag fmap__tag--good">With poddle</span>
-          <span class="fmap__note">Work fans out to isolated pods that hold only a revocable handle. At the broker the real key is injected on the wire and stray secrets are scrubbed from the body — so nothing sensitive ever leaves the pod.</span>
+          <span class="fmap__note">Work fans out to isolated pods that hold only a revocable handle. At the broker the real key is injected on the wire and stray secrets are scrubbed from the body - so nothing sensitive ever leaves the pod.</span>
         </div>
         <div class="fmap__track">
           <div class="fnode">
@@ -96,7 +96,7 @@ import Button from '../components/Button.astro';
           <li class="ok">Pods run in a self-hosted or cloud sandbox and hold only a revocable handle</li>
           <li class="ok">The broker injects the provider key and each connector credential</li>
           <li class="ok">Secrets in the request body are scrubbed to «redacted:poddle»</li>
-          <li class="ok">The provider gets valid auth and a clean body — your key never leaves the broker</li>
+          <li class="ok">The provider gets valid auth and a clean body - your key never leaves the broker</li>
         </ul>
       </div>
     </div>
@@ -105,10 +105,10 @@ import Button from '../components/Button.astro';
   <Section eyebrow="Why poddle" title="A truly secure way to run your agentic workflows.">
     <div class="features">
       <Feature title="Reproducible lab templates">
-        Pick a lab and go — podman, toolchains, and services preinstalled, interactive or headless. Spin the same environment every time, or publish your own blueprint.
+        Pick a lab and go - podman, toolchains, and services preinstalled, interactive or headless. Spin the same environment every time, or publish your own blueprint.
       </Feature>
       <Feature title="Isolated, disposable pods">
-        Podman-backed sandboxes, isolated per project — clean on every spin-up, gone on teardown.
+        Podman-backed sandboxes, isolated per project - clean on every spin-up, gone on teardown.
       </Feature>
       <Feature title="Secretless by construction">
         A broker issues revocable handles; the real secret never enters the pod.
@@ -117,23 +117,23 @@ import Button from '../components/Button.astro';
         Start small and let poddled auto-grow a pod when it nears its memory limit; burst to a stronger shell for a headless task and drop back after. Size for the common case, not the peak.
       </Feature>
       <Feature title="Auditable">
-        The broker keeps a tamper-evident, hash-chained record of every request, redaction, and handle — verifiable end to end and secret-free by construction (no bodies, no keys). Prove exactly what your agents did.
+        The broker keeps a tamper-evident, hash-chained record of every request, redaction, and handle - verifiable end to end and secret-free by construction (no bodies, no keys). Prove exactly what your agents did.
       </Feature>
       <Feature title="Governable">
-        Pin each pod to a named egress policy — allowlist the hosts it may reach, deny the rest, down to the HTTP method — and the broker enforces it on every request. SSO/SCIM and DORA / AI-Act controls are on the roadmap.
+        Pin each pod to a named egress policy - allowlist the hosts it may reach, deny the rest, down to the HTTP method - and the broker enforces it on every request. SSO/SCIM and DORA / AI-Act controls are on the roadmap.
       </Feature>
       <Feature title="Per-person, revocable access">
-        Every pod runs under a real identity, so what an agent did ties back to a person — and its credentials revoke at the broker in one call. Offboard a teammate or rotate a key and the pod is locked out instantly.
+        Every pod runs under a real identity, so what an agent did ties back to a person - and its credentials revoke at the broker in one call. Offboard a teammate or rotate a key and the pod is locked out instantly.
       </Feature>
       <Feature title="Bring your own agent">
-        A harness registry — claude-code today; codex, aider, pi, and local planned.
+        A harness registry - claude-code today; codex, aider, pi, and local planned.
       </Feature>
     </div>
   </Section>
 
   <Section eyebrow="Providers &amp; harnesses" title="Bring your provider. Bring your harness.">
     <p class="prose">
-      poddle wires your coding agent to your model provider through the broker — the harness
+      poddle wires your coding agent to your model provider through the broker - the harness
       installs itself in the pod, and authentication syncs to your identity. No keys to copy,
       nothing to configure: a remote dev environment that just works.
     </p>
@@ -176,9 +176,9 @@ import Button from '../components/Button.astro';
     </div>
   </Section>
 
-  <Section eyebrow="Connectors" title="Connect your world — without handing over a key.">
+  <Section eyebrow="Connectors" title="Connect your world - without handing over a key.">
     <p class="prose">
-      Connect forges, pipelines, secrets, cloud, databases, and more — wired into a pod through
+      Connect forges, pipelines, secrets, cloud, databases, and more - wired into a pod through
       the broker and authed on the wire, so the pod never sees a token.
     </p>
     <div class="conns">
@@ -196,7 +196,7 @@ import Button from '../components/Button.astro';
     <ol class="steps">
       <Step n={1} title="Add an identity" code="poddle identity add work" />
       <Step n={2} title="Spin up" code="poddle up my-sandbox --identity work" />
-      <Step n={3} title="Work — then tear down" code="poddle down my-sandbox" />
+      <Step n={3} title="Work - then tear down" code="poddle down my-sandbox" />
     </ol>
   </Section>
 
@@ -239,11 +239,11 @@ import Button from '../components/Button.astro';
   .conn-more { margin-top: 1.6rem; }
   .conn-more a { font-weight: 600; }
   .fmap { margin-top: 1.6rem; display: flex; flex-direction: column; gap: 2rem; }
-  .fmap__h { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.15rem; }
-  .fmap__tag { flex: none; font: 700 0.64rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.34rem 0.64rem; border-radius: 999px; }
+  .fmap__h { display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; margin-bottom: 1.15rem; }
+  .fmap__tag { align-self: flex-start; font: 700 0.64rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.34rem 0.64rem; border-radius: 999px; }
   .fmap__tag--bad { color: #8a3a19; background: #f6dcd2; }
   .fmap__tag--good { color: var(--accent); background: #dff0e8; }
-  .fmap__note { flex: 1 1 16rem; max-width: 70ch; font: 500 0.95rem/1.5 var(--font-sans); color: var(--muted); }
+  .fmap__note { max-width: 70ch; font: 500 0.95rem/1.5 var(--font-sans); color: var(--muted); }
   .fmap__track { display: flex; align-items: center; flex-wrap: nowrap; gap: 0.4rem; padding: 1.5rem 0 6px; }
   .fmap__row:last-child .fmap__track { padding-bottom: 92px; }
   .fnode { flex: none; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; padding: 0.65rem 0.85rem; border-radius: 12px; background: #fff; border: 1px solid var(--border); font: 600 0.82rem/1.2 var(--font-sans); color: var(--ink); white-space: nowrap; box-shadow: 0 1px 3px rgba(21, 20, 15, 0.05); }

@@ -5,7 +5,7 @@ import Button from '../components/Button.astro';
 const mechanisms = [
   {
     h: 'Isolation',
-    p: 'Every task runs in a disposable, Podman-backed pod — its own filesystem, process space, and network egress. Pods are created on demand and destroyed on teardown; nothing persists between runs unless you mount it.',
+    p: 'Every task runs in a disposable, Podman-backed pod - its own filesystem, process space, and network egress. Pods are created on demand and destroyed on teardown; nothing persists between runs unless you mount it.',
   },
   {
     h: 'Injection',
@@ -13,26 +13,26 @@ const mechanisms = [
   },
   {
     h: 'Redaction',
-    p: 'On the same egress path the broker scans outbound request bodies and replaces stray secrets — cloud keys, tokens, private keys — with «redacted:poddle». An agent can’t exfiltrate a secret it read from your repo into a prompt.',
+    p: 'On the same egress path the broker scans outbound request bodies and replaces stray secrets - cloud keys, tokens, private keys - with «redacted:poddle». An agent can’t exfiltrate a secret it read from your repo into a prompt.',
   },
 ];
 
 const attacker = [
   { ok: true, t: 'An opaque handle', d: 'revocable in one call and worthless anywhere but your broker.' },
   { ok: true, t: 'A scoped, disposable pod', d: 'no long-lived vendor keys on disk, in env, or in memory.' },
-  { ok: false, t: 'Your real provider key', d: 'it is never materialized inside the pod — only injected at the egress boundary.' },
+  { ok: false, t: 'Your real provider key', d: 'it is never materialized inside the pod - only injected at the egress boundary.' },
   { ok: false, t: 'Secrets in the prompt body', d: 'scrubbed to «redacted:poddle» before they leave the broker.' },
 ];
 
 const compliance = [
-  ['SOC 2 & ISO 27001', 'On our roadmap — the broker is built as a single, hardened, audited control plane to make certification a matter of evidence, not re-architecture.'],
+  ['SOC 2 & ISO 27001', 'On our roadmap - the broker is built as a single, hardened, audited control plane to make certification a matter of evidence, not re-architecture.'],
   ['DORA & EU AI Act', 'Per-user policy, revocable credentials, and a complete action trail map to the operational-resilience and traceability controls these frameworks require.'],
   ['Data residency', 'Pods run on your own cloud or self-hosted compute, in the region you choose. The broker holds credentials in a sealed vault; your prompts and code stay on infrastructure you control.'],
 ];
 ---
 <Base
   title="Security - poddle"
-  description="How poddle keeps vendor secrets out of every pod: isolation, credential injection at the egress boundary, and outbound secret redaction — with a full audit trail."
+  description="How poddle keeps vendor secrets out of every pod: isolation, credential injection at the egress boundary, and outbound secret redaction - with a full audit trail."
 >
   <section class="container sec-hero">
     <p class="eyebrow">Security</p>
@@ -64,17 +64,17 @@ const compliance = [
     <div class="sec-block">
       <h2>What a request actually does</h2>
       <ol class="flow">
-        <li>The agent calls its provider as usual — <code>ANTHROPIC_BASE_URL</code> points at the broker, and <code>ANTHROPIC_AUTH_TOKEN</code> is a <code>poddle_…</code> handle, not a key.</li>
+        <li>The agent calls its provider as usual - <code>ANTHROPIC_BASE_URL</code> points at the broker, and <code>ANTHROPIC_AUTH_TOKEN</code> is a <code>poddle_…</code> handle, not a key.</li>
         <li>The broker gateway resolves the handle to the real credential in its sealed vault, strips the handle, and sets the real authorization header.</li>
         <li>It scans the request body and redacts any stray secrets to <code>«redacted:poddle»</code>.</li>
         <li>It reverse-proxies to the true upstream. The provider sees valid auth and a clean body; the pod never saw the key.</li>
       </ol>
-      <p class="sec-note">The real secret is present on the broker→provider hop only — that is unavoidable, since the provider must authenticate you. What poddle guarantees is that it is never materialized inside the pod and never rides in a body it shouldn’t.</p>
+      <p class="sec-note">The real secret is present on the broker→provider hop only - that is unavoidable, since the provider must authenticate you. What poddle guarantees is that it is never materialized inside the pod and never rides in a body it shouldn’t.</p>
     </div>
 
     <div class="sec-block">
       <h2>If a pod is compromised</h2>
-      <p class="sec-sub">A malicious dependency, a prompt-injected agent, a leaked pod — here is exactly what it gets:</p>
+      <p class="sec-sub">A malicious dependency, a prompt-injected agent, a leaked pod - here is exactly what it gets:</p>
       <ul class="attacker">
         {attacker.map((a) => (
           <li class:list={['att', a.ok ? 'att--ok' : 'att--no']}>
@@ -88,8 +88,8 @@ const compliance = [
     <div class="sec-block">
       <h2>Identity &amp; audit</h2>
       <p class="sec-sub">
-        Every pod is created under a real identity, and every action — who spun up what, which
-        credential was used, and when — ties back to a person, not a shared token. Credentials are
+        Every pod is created under a real identity, and every action - who spun up what, which
+        credential was used, and when - ties back to a person, not a shared token. Credentials are
         revocable at the broker in one call, so offboarding a teammate or rotating a key is immediate.
         Share a live pod and each driver still works through their own identity, keeping attribution
         per-person.
@@ -147,7 +147,7 @@ const compliance = [
   .att--no::before { background-color: #f6dcd2; background-image: url(/icons/x.svg); }
   .att__t { font-weight: 600; color: var(--ink); }
   .att__d { color: var(--muted); }
-  .att__t::after { content: " — "; color: var(--faint); }
+  .att__t::after { content: " - "; color: var(--faint); }
 
   .compliance__row { display: grid; grid-template-columns: 12rem 1fr; gap: 0.4rem 1.4rem; padding: 1rem 0; border-top: 1px solid var(--border); }
   .compliance__row:first-child { border-top: none; padding-top: 0; }

@@ -4,7 +4,7 @@ import Button from '../components/Button.astro';
 
 const principles = [
   ['Secretless by construction', 'The safest place for a secret is not in the pod. The broker holds it; the pod gets a revocable handle. Security you don\'t have to remember to turn on.'],
-  ['Your infra, your data', 'Pods run on your own cloud or self-hosted compute, in your region. We broker credentials — we\'re not in the path of your code or your prompts.'],
+  ['Your infra, your data', 'Pods run on your own cloud or self-hosted compute, in your region. We broker credentials - we\'re not in the path of your code or your prompts.'],
   ['Accountable by default', 'Every pod runs under a real identity and every action is on the record, so teams can move fast and still answer to auditors.'],
   ['Open to your stack', 'Bring your provider, your harness, and your connectors. A registry you can extend, not a walled garden.'],
 ];
@@ -17,7 +17,7 @@ const principles = [
     <p class="eyebrow">About</p>
     <h1 class="ab-title">Coding agents shouldn’t hold your keys.</h1>
     <p class="ab-lead">
-      Agentic tools are astonishingly capable — and they run with your credentials, in your environment,
+      Agentic tools are astonishingly capable - and they run with your credentials, in your environment,
       with access to everything you can reach. poddle exists so you can hand an agent real work without
       handing it real secrets.
     </p>
@@ -28,7 +28,7 @@ const principles = [
       <h2>Why we built it</h2>
       <p>
         Every coding agent asks for your keys: a provider token here, a cloud credential there, a
-        long-lived secret pasted into an environment variable. It works — until an agent reads a secret
+        long-lived secret pasted into an environment variable. It works - until an agent reads a secret
         from your repo and pastes it into a prompt, or a compromised dependency walks off with a token
         that never expires.
       </p>
@@ -36,7 +36,7 @@ const principles = [
         We thought the fix shouldn't be "trust the agent more." It should be to make sure the agent
         never holds the secret in the first place. So we built a broker: the raw credential stays in a
         sealed vault, the pod carries a handle you can revoke in one call, and the real key is injected
-        only at the egress boundary — while stray secrets in outbound requests are scrubbed on the way
+        only at the egress boundary - while stray secrets in outbound requests are scrubbed on the way
         out. The provider still authenticates you; the pod is never the place your secret lives.
       </p>
     </div>
@@ -68,7 +68,7 @@ const principles = [
     </div>
 
     <div class="ab-cta">
-      <h2>Hand your agent real work — not real secrets.</h2>
+      <h2>Hand your agent real work - not real secrets.</h2>
       <div class="ab-cta__row">
         <Button href="/docs" variant="primary">Get started</Button>
         <Button href="/security" variant="ghost">Read the security model</Button>
