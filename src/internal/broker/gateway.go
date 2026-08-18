@@ -3,6 +3,7 @@ package broker
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -14,14 +15,32 @@ import (
 // maxScanBytes bounds egress redaction; larger bodies are forwarded unscanned.
 const maxScanBytes = 25 << 20
 
+// ProxyRecord is what the gateway reports to an Auditor for each request it
+// handles. It is secret-free: Path has no query-string and no body is included.
+// Pod resolution (handle → pod) is the Auditor's job (the daemon owns it).
+type ProxyRecord struct {
+	Handle   string // the pod-presented handle; the auditor maps it to a pod
+	Upstream string // destination host
+	Method   string
+	Path     string // no query-string
+	Decision string // allow | redact | block
+	Detail   string // e.g. "redacted 2 secrets"; never a secret
+	Status   int
+}
+
+// Auditor receives one record per proxied request. The daemon implements it.
+type Auditor interface{ Proxy(ProxyRecord) }
+
 // Gateway is the secretless egress proxy. A pod's harness points at it
 // (BASE_URL) and presents a handle (in Authorization); the gateway resolves the
 // handle to a Credential, injects the REAL secret per the credential's mode, and
 // reverse-proxies to the vendor. The real secret never leaves the broker. It
-// also redacts secrets from outbound bodies (egress DLP).
+// also redacts secrets from outbound bodies (egress DLP) and reports every
+// request to an Auditor.
 type Gateway struct {
 	handles  *Handles
 	redactor *Redactor
+	auditor  Auditor
 }
 
 // NewGateway returns a gateway backed by the handle registry, redacting egress
@@ -30,6 +49,23 @@ func NewGateway(h *Handles) *Gateway { return &Gateway{handles: h, redactor: New
 
 // SetEgressMode configures egress redaction: "redact" (default), "block", "off".
 func (g *Gateway) SetEgressMode(mode string) { g.redactor = NewRedactor(mode) }
+
+// SetAuditor sets the sink that receives one record per proxied request.
+func (g *Gateway) SetAuditor(a Auditor) { g.auditor = a }
+
+// statusCapture wraps a ResponseWriter to remember the upstream status code for
+// the audit record, passing Flush through so SSE (LLM streaming) still flushes.
+type statusCapture struct {
+	http.ResponseWriter
+	code int
+}
+
+func (s *statusCapture) WriteHeader(c int) { s.code = c; s.ResponseWriter.WriteHeader(c) }
+func (s *statusCapture) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cred, err := g.handles.Resolve(handleFromAuth(r.Header.Get("Authorization")))
@@ -46,10 +82,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture before the proxy mutates r.
+	handle := handleFromAuth(r.Header.Get("Authorization"))
+	method, path := r.Method, r.URL.Path
+
 	// Egress redaction: scrub secrets from textual bodies (LLM/API JSON). Git
 	// and other binary payloads are skipped so packfiles aren't buffered/mangled.
-	if !g.redactBody(w, r, cred) {
-		return // blocked
+	proceed, hits := g.redactBody(w, r, cred)
+	if !proceed {
+		g.audit(handle, up.Host, method, path, "block", "egress blocked — secret detected", http.StatusForbidden)
+		return // blocked (403 already written)
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(up)
@@ -59,7 +101,25 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req.Host = up.Host // match the upstream Host header
 		applyAuth(req.Header, cred)
 	}
-	proxy.ServeHTTP(w, r)
+	sc := &statusCapture{ResponseWriter: w, code: http.StatusOK}
+	proxy.ServeHTTP(sc, r)
+
+	decision, detail := "allow", ""
+	if hits > 0 {
+		decision, detail = "redact", fmt.Sprintf("redacted %d secret(s)", hits)
+	}
+	g.audit(handle, up.Host, method, path, decision, detail, sc.code)
+}
+
+// audit reports a proxied request to the Auditor, if one is set.
+func (g *Gateway) audit(handle, upstream, method, path, decision, detail string, status int) {
+	if g.auditor == nil {
+		return
+	}
+	g.auditor.Proxy(ProxyRecord{
+		Handle: handle, Upstream: upstream, Method: method, Path: path,
+		Decision: decision, Detail: detail, Status: status,
+	})
 }
 
 // applyAuth clears the incoming handle and injects the real secret in the header
@@ -83,31 +143,32 @@ func applyAuth(h http.Header, cred Credential) {
 }
 
 // redactBody scrubs secrets from a textual outbound body, rewriting r in place.
-// It returns false (after writing a 403) when redaction is set to block and a
-// secret is found; true otherwise, including when nothing is scanned.
-func (g *Gateway) redactBody(w http.ResponseWriter, r *http.Request, cred Credential) bool {
+// It returns proceed=false (after writing a 403) when redaction is set to block
+// and a secret is found; otherwise proceed=true and the number of secrets
+// redacted (0 when nothing was scanned or found).
+func (g *Gateway) redactBody(w http.ResponseWriter, r *http.Request, cred Credential) (proceed bool, hits int) {
 	if g.redactor == nil || r.Body == nil || !isTextual(r.Header.Get("Content-Type")) || r.ContentLength > maxScanBytes {
-		return true
+		return true, 0
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxScanBytes))
 	_ = r.Body.Close()
 	if err != nil {
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		return true
+		return true, 0
 	}
 	managed := []string{cred.Secret}
 	if _, tok, ok := strings.Cut(cred.Secret, ":"); ok {
 		managed = append(managed, tok) // basic: also scrub the token half of user:token
 	}
-	red, _, block := g.redactor.Scan(body, managed...)
+	red, n, block := g.redactor.Scan(body, managed...)
 	if block {
 		http.Error(w, "poddle: outbound request blocked — secret detected", http.StatusForbidden)
-		return false
+		return false, n
 	}
 	r.Body = io.NopCloser(bytes.NewReader(red))
 	r.ContentLength = int64(len(red))
 	r.Header.Set("Content-Length", strconv.Itoa(len(red)))
-	return true
+	return true, n
 }
 
 // isTextual reports whether a Content-Type carries scannable text (LLM/API

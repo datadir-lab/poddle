@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"git.dev.datadir.co/datadir/poddle/src/internal/audit"
 	"git.dev.datadir.co/datadir/poddle/src/internal/poddled"
 )
 
@@ -36,7 +38,54 @@ func NewCmd() *cobra.Command {
 	c.Flags().StringVar(&l4RedisBind, "l4-redis-bind", "0.0.0.0:0", "L4 Redis listener bind address pods reach")
 	c.Flags().StringVar(&l4PostgresBind, "l4-postgres-bind", "0.0.0.0:0", "L4 Postgres listener bind address pods reach")
 	c.AddCommand(statusCmd())
+	c.AddCommand(auditCmd())
 	return c
+}
+
+// auditCmd builds `poddle daemon audit`: show recent audit events from the
+// daemon's tamper-evident log (proxied requests, redactions/blocks, handle +
+// pod lifecycle, autoscale actions).
+func auditCmd() *cobra.Command {
+	var pod, kind, decision string
+	var limit int
+	c := &cobra.Command{
+		Use:   "audit",
+		Short: "Show recent audit events (requests, redactions, blocks, handle + pod lifecycle)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out := cmd.OutOrStdout()
+			events, err := poddled.NewClient("").Audits(audit.Filter{
+				Pod: pod, Kind: kind, Decision: decision, Limit: limit,
+			})
+			if err != nil {
+				fmt.Fprintln(out, "poddled: not running")
+				return nil
+			}
+			if len(events) == 0 {
+				fmt.Fprintln(out, "no audit events")
+				return nil
+			}
+			w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
+			fmt.Fprintln(w, "TIME\tPOD\tKIND\tDECISION\tUPSTREAM\tDETAIL")
+			for _, e := range events {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+					e.Time.Format("15:04:05"), dash(e.Pod), e.Kind, dash(string(e.Decision)), dash(e.Upstream), e.Detail)
+			}
+			return w.Flush()
+		},
+	}
+	c.Flags().StringVar(&pod, "pod", "", "filter by pod")
+	c.Flags().StringVar(&kind, "kind", "", "filter by kind (request|redact|block|handle.issue|pod.up|...)")
+	c.Flags().StringVar(&decision, "decision", "", "filter by decision (allow|redact|block|deny)")
+	c.Flags().IntVar(&limit, "limit", 50, "maximum events to show")
+	return c
+}
+
+func dash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 // statusCmd builds `poddle daemon status`: report whether poddled is running and

@@ -54,6 +54,9 @@ func (b *Broker) Resolve(handleValue string) (Credential, error) {
 // "block", or "off". Call before Serve.
 func (b *Broker) SetEgressMode(mode string) { b.server.gw.SetEgressMode(mode) }
 
+// SetAuditor wires the sink that receives one record per proxied request.
+func (b *Broker) SetAuditor(a Auditor) { b.server.gw.SetAuditor(a) }
+
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/app"
+	"git.dev.datadir.co/datadir/poddle/src/internal/audit"
 )
 
 // TaskLogPath is where a detached task's output is written inside the pod;
@@ -62,6 +63,7 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			_ = b.Audit(audit.Event{Pod: name, Kind: audit.KindPodTask, Detail: "size=" + spec.Size, Decision: audit.DecisionAllow})
 
 			// before_task hook: burst the pod's CPU up for the run. CPU only —
 			// shrinking memory below live usage would OOM the pod; the memory
