@@ -577,6 +577,41 @@ func TestUp_Identity_PodUsesHostAlias(t *testing.T) {
 	}
 }
 
+func TestUp_Policy_BindsWithoutConnectors(t *testing.T) {
+	store := policy.NewFileStore(t.TempDir())
+	if err := store.Put(&policy.Policy{Name: "lockdown", AllowUpstreams: []string{"api.anthropic.com"}, Egress: "block"}); err != nil {
+		t.Fatal(err)
+	}
+	var log []string
+	f := &fakeCreator{}
+	spy := &spyBroker{log: &log}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Policies: store}, spy)
+	c.SetArgs([]string{"box", "--policy", "lockdown", "--detach"}) // no identity, no connectors
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// The policy label must bind even with no brokered credential, so the
+	// dashboard's pod view shows the pod is governed.
+	if f.spec.PolicyName != "lockdown" {
+		t.Errorf("spec.PolicyName = %q, want lockdown (policy must bind without connectors)", f.spec.PolicyName)
+	}
+	// Enforcement must be applied: SetPolicy + forced egress, so the pod's
+	// arbitrary outbound traffic is governed (that traffic exists regardless of
+	// whether the pod has a connector).
+	joined := strings.Join(log, ",")
+	if !strings.Contains(joined, "policy:lockdown") {
+		t.Errorf("SetPolicy(lockdown) should be called; broker log = %v", log)
+	}
+	if !strings.Contains(joined, "egress") {
+		t.Errorf("forced egress should be wired; broker log = %v", log)
+	}
+	// The pod's arbitrary egress is routed through the broker's forward proxy.
+	if f.spec.Env["HTTP_PROXY"] == "" {
+		t.Errorf("HTTP_PROXY should point the pod at the broker's forward proxy; env = %v", f.spec.Env)
+	}
+}
+
 func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
