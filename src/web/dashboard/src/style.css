@@ -84,6 +84,34 @@ main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 
 .toolbar .grow { flex: 1; }
 .toolbar .count { color: var(--faint); font-size: 0.82rem; white-space: nowrap; }
 
+/* ---- overview ---- */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 0.9rem; margin-bottom: 0.5rem; }
+.card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; padding: 1rem 1.15rem; }
+.card__num { font-family: var(--font-serif); font-size: 2.1rem; line-height: 1; color: var(--ink); }
+.card__label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); margin-top: 0.45rem; }
+.card--flag .card__num, .card--flag .card__label { color: var(--deny); }
+.card--warn .card__num { color: var(--redact); }
+.card--ok .card__num { color: var(--accent); }
+
+.section-title { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 400; letter-spacing: -0.01em; margin: 1.75rem 0 0.75rem; color: var(--ink); }
+
+.panel { border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; overflow: hidden; }
+.panel.empty { color: var(--faint); padding: 1.25rem 1.1rem; text-align: left; }
+
+.attn {
+  display: flex; align-items: center; gap: 0.7rem; width: 100%; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border);
+  padding: 0.65rem 1rem; cursor: pointer; color: var(--ink); font: inherit;
+  transition: background 0.12s;
+}
+.attn:last-child { border-bottom: 0; }
+.attn:hover { background: var(--surface); }
+.attn__pod { font-weight: 600; min-width: 8rem; }
+.attn__desc { color: var(--muted); font-family: var(--mono); font-size: 0.84rem; }
+.attn__count { margin-left: auto; font: 600 0.8rem/1 var(--font-sans); color: var(--deny); }
+
+tr.clickable { cursor: pointer; }
+
 /* ---- audit table ---- */
 .table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: #fff; }
 table { width: 100%; border-collapse: collapse; }
