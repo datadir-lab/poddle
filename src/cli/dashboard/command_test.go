@@ -25,9 +25,9 @@ func TestHandler_ServesEmbeddedBundle(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "poddle") {
 		t.Fatalf("expected the embedded dashboard page, got %d:\n%s", resp.StatusCode, body)
 	}
-	// The page speaks the versioned contract, so the same bundle works for cloud.
-	if !strings.Contains(string(body), "/v1") {
-		t.Error("the page should call the /v1 audit contract")
+	// The page loads the built SPA bundle (which speaks the /v1 contract).
+	if !strings.Contains(string(body), "assets/") {
+		t.Errorf("the page should load the built app bundle:\n%s", body)
 	}
 }
 

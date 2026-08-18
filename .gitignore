@@ -22,5 +22,8 @@ src/web/site/node_modules/
 src/web/site/dist/
 src/web/site/.astro/
 
+# Dashboard SPA deps (the built bundle IS committed at src/cli/dashboard/dist)
+src/web/dashboard/node_modules/
+
 # Agent scratch / parallel git worktrees
 .claude/worktrees/
