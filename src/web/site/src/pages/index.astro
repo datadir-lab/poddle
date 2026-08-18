@@ -38,9 +38,9 @@ import Button from '../components/Button.astro';
           <div class="podbox">
             <span class="podbox__cap">self-hosted / cloud</span>
             <div class="fpods">
-              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:9s"><span>small</span><span>medium</span><span>high</span></span><span class="meter"><span class="meter__bar"></span></span></div>
-              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:13s"><span>small</span><span>medium</span><span>high</span></span><span class="meter"><span class="meter__bar meter__bar--b"></span></span></div>
-              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:17s"><span>small</span><span>medium</span><span>high</span></span><span class="meter"><span class="meter__bar meter__bar--c"></span></span></div>
+              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:9s"><span>weak</span><span>strong</span></span><span class="meter"><span class="meter__bar"></span></span></div>
+              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:13s"><span>weak</span><span>strong</span></span><span class="meter"><span class="meter__bar meter__bar--b"></span></span></div>
+              <div class="fpod"><img class="fpod__i" src="/favicon.svg" alt="" width="18" height="18" /><span class="fpod__t">Pod</span><span class="size" style="--d:17s"><span>weak</span><span>strong</span></span><span class="meter"><span class="meter__bar meter__bar--c"></span></span></div>
             </div>
           </div>
           <div class="hop">
@@ -99,35 +99,35 @@ import Button from '../components/Button.astro';
   <Section eyebrow="Why poddle" title="A truly secure way to run your agentic workflows.">
     <div class="features">
       <Feature title="Reproducible lab templates">
-        Pick a lab and go - podman, toolchains, and services preinstalled, with a full desktop or headless. Spin the same environment every time, or publish your own blueprint.
+        Pick a lab and go — podman, toolchains, and services preinstalled, with a full desktop or headless. Spin the same environment every time, or publish your own blueprint.
       </Feature>
       <Feature title="Isolated, disposable pods">
-        Podman-backed sandboxes, isolated per project - clean on every spin-up, gone on teardown.
+        Podman-backed sandboxes, isolated per project — clean on every spin-up, gone on teardown.
       </Feature>
       <Feature title="Secretless by construction">
         A broker issues revocable handles; the real secret never enters the pod.
       </Feature>
       <Feature title="Performance on demand">
-        Spin up the horsepower when you need it and suspend when you don't - pods burst to a ceiling, and you pay for what you actually use.
+        Spin up the horsepower when you need it and suspend when you don't — pods burst to a ceiling, and scale back when idle.
       </Feature>
       <Feature title="Auditable">
-        Every action ties back to a real identity - who spun up what, which credential was used, and when. A complete trail for review.
+        Every action ties back to a real identity — who spun up what, which credential was used, and when. A complete trail for review.
       </Feature>
       <Feature title="Governable">
-        Set the rules centrally - per-user policy, SSO/SCIM, and compliance-ready controls (DORA, AI-Act) for teams that answer to auditors.
+        Per-user identity and revocable credentials today; SSO/SCIM and DORA / AI-Act controls on the roadmap — for teams that answer to auditors.
       </Feature>
       <Feature title="Share without spilling secrets">
         Hand a live pod to a teammate; each driver works through their own identity, so credentials and attribution stay per-person.
       </Feature>
       <Feature title="Bring your own agent">
-        A harness registry - claude-code today; codex, aider, pi, and local planned.
+        A harness registry — claude-code today; codex, aider, pi, and local planned.
       </Feature>
     </div>
   </Section>
 
   <Section eyebrow="Providers &amp; harnesses" title="Bring your provider. Bring your harness.">
     <p class="prose">
-      poddle wires your coding agent to your model provider through the broker - the harness
+      poddle wires your coding agent to your model provider through the broker — the harness
       installs itself in the pod, and authentication syncs to your identity. No keys to copy,
       nothing to configure: a remote dev environment that just works.
     </p>
@@ -137,17 +137,23 @@ import Button from '../components/Button.astro';
       <a class="chip" href="https://www.anthropic.com" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/anthropic.svg" alt="" width="18" height="18" />Anthropic<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
+    </div>
+    <p class="glabel">Planned</p>
+    <div class="chips chips--planned">
       <span class="chip"><img class="chip__logo" src="/icons/local.svg" alt="" width="18" height="18" />Local</span>
       <span class="chip chip--soon">more coming</span>
     </div>
 
     <p class="ilabel">Harnesses</p>
     <div class="chips">
-      <a class="chip" href="https://pi.dev" target="_blank" rel="noopener">
-        <img class="chip__logo" src="/icons/pi.svg" alt="" width="18" height="18" />Pi<span class="chip__ext" aria-hidden="true">↗</span>
-      </a>
       <a class="chip" href="https://github.com/anthropics/claude-code" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/claude.svg" alt="" width="18" height="18" />Claude Code<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+    </div>
+    <p class="glabel">Planned</p>
+    <div class="chips chips--planned">
+      <a class="chip" href="https://pi.dev" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/pi.svg" alt="" width="18" height="18" />Pi<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
       <a class="chip" href="https://github.com/openai/codex" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/openai.svg" alt="" width="18" height="18" />Codex<span class="chip__ext" aria-hidden="true">↗</span>
@@ -164,9 +170,9 @@ import Button from '../components/Button.astro';
     </div>
   </Section>
 
-  <Section eyebrow="Connectors" title="Connect your world - without handing over a key.">
+  <Section eyebrow="Connectors" title="Connect your world — without handing over a key.">
     <p class="prose">
-      Connect forges, pipelines, secrets, cloud, databases, and more - wired into a pod through
+      Connect forges, pipelines, secrets, cloud, databases, and more — wired into a pod through
       the broker and authed on the wire, so the pod never sees a token.
     </p>
     <div class="conns">
@@ -184,7 +190,7 @@ import Button from '../components/Button.astro';
     <ol class="steps">
       <Step n={1} title="Add an identity" code="poddle identity add work" />
       <Step n={2} title="Spin up" code="poddle up my-sandbox --identity work" />
-      <Step n={3} title="Work - then tear down" code="poddle down my-sandbox" />
+      <Step n={3} title="Work — then tear down" code="poddle down my-sandbox" />
     </ol>
   </Section>
 
@@ -207,6 +213,9 @@ import Button from '../components/Button.astro';
   .chip__mark { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 999px; background: var(--surface); color: var(--accent); font-family: var(--font-serif); font-size: 0.85rem; line-height: 1; }
   .chip__ext { color: var(--faint); font-size: 0.8rem; }
   .chip--soon { color: var(--faint); font-style: italic; background: transparent; padding: 0.4rem 0.85rem; }
+  .chips--planned { margin-top: 0.1rem; }
+  .chips--planned .chip { opacity: 0.62; }
+  .chips--planned a.chip:hover { opacity: 1; }
   .conns { display: flex; flex-wrap: wrap; gap: 1.4rem 1.6rem; margin: 0.3rem 0 0.4rem; }
   .conn { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; width: 78px; text-align: center; text-decoration: none; color: var(--muted); font-size: 0.82rem; font-weight: 500; }
   .conn__i { width: 30px; height: 30px; object-fit: contain; opacity: 0.82; }
@@ -251,9 +260,8 @@ import Button from '../components/Button.astro';
   @keyframes crunch { 0%, 100% { width: 15%; } 20% { width: 92%; } 46% { width: 92%; } 64% { width: 22%; } }
   .size { position: relative; display: inline-block; min-width: 3.9em; height: 1.15em; }
   .size > span { position: absolute; left: 0; top: 0; opacity: 0; font: 600 0.6rem/1 var(--font-sans); padding: 0.14rem 0.42rem; border-radius: 999px; background: var(--surface); color: var(--accent); animation: sizecycle var(--d, 12s) linear infinite; }
-  .size > span:nth-child(2) { animation-delay: calc(var(--d, 12s) / 3); }
-  .size > span:nth-child(3) { animation-delay: calc(var(--d, 12s) * 2 / 3); }
-  @keyframes sizecycle { 0%, 33% { opacity: 1; } 34%, 100% { opacity: 0; } }
+  .size > span:nth-child(2) { animation-delay: calc(var(--d, 12s) / 2); }
+  @keyframes sizecycle { 0%, 50% { opacity: 1; } 55%, 100% { opacity: 0; } }
   .fcluster { flex: none; position: relative; align-self: center; display: flex; flex-direction: column; align-items: center; }
   .fcirc { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; }
   .fcirc img { width: 14px; height: 14px; object-fit: contain; }
