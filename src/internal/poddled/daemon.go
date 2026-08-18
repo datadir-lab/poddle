@@ -10,6 +10,8 @@ package poddled
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -51,6 +53,8 @@ type Daemon struct {
 	l4RedisAddr    string
 	l4Postgres     net.Listener
 	l4PostgresAddr string
+	forward        net.Listener // egress forward proxy (arbitrary HTTP(S) egress)
+	forwardAddr    string
 }
 
 // maxEvents bounds the autoscale event ring surfaced in `daemon status`.
@@ -114,7 +118,7 @@ func (d *Daemon) Proxy(r broker.ProxyRecord) {
 // Start sets the (daemon-global) egress mode, binds the injecting HTTP gateway
 // (returning its address), and — when their bind addresses are non-empty — the
 // L4 Redis and Postgres listeners pods reach for datastore access.
-func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind string) (string, error) {
+func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind string) (string, error) {
 	d.broker.SetEgressMode(egress)
 	if a, ok := d.broker.(interface{ SetAuditor(broker.Auditor) }); ok {
 		a.SetAuditor(d) // audit every proxied request
@@ -143,6 +147,16 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind string) 
 		d.l4Postgres = ln
 		d.l4PostgresAddr = ln.Addr().String()
 		go d.accept(ln, l4.ServePostgres)
+	}
+	if forwardBind != "" {
+		ln, err := net.Listen("tcp", forwardBind)
+		if err != nil {
+			return "", err
+		}
+		d.forward = ln
+		d.forwardAddr = ln.Addr().String()
+		fp := broker.NewForwardProxy(d, d) // d is PolicyChecker + Auditor
+		go func() { _ = http.Serve(ln, fp) }()
 	}
 	return addr, nil
 }
@@ -175,7 +189,7 @@ func (d *Daemon) Resolve(handle string) (l4.Target, error) {
 	return t, err
 }
 
-// Stop shuts the gateway and L4 listeners down.
+// Stop shuts the gateway, L4, and forward-proxy listeners down.
 func (d *Daemon) Stop(ctx context.Context) error {
 	if d.l4Redis != nil {
 		_ = d.l4Redis.Close()
@@ -183,7 +197,17 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	if d.l4Postgres != nil {
 		_ = d.l4Postgres.Close()
 	}
+	if d.forward != nil {
+		_ = d.forward.Close()
+	}
 	return d.broker.Stop(ctx)
+}
+
+// randHex returns n random bytes as a hex string, for opaque egress tokens.
+func randHex(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // issueReq is the body of POST /pods/{pod}/handles.
@@ -214,7 +238,10 @@ func (d *Daemon) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("GET /gateway", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"addr": d.broker.Addr(), "redis": d.l4RedisAddr, "postgres": d.l4PostgresAddr})
+		writeJSON(w, http.StatusOK, map[string]string{
+			"addr": d.broker.Addr(), "redis": d.l4RedisAddr,
+			"postgres": d.l4PostgresAddr, "forward": d.forwardAddr,
+		})
 	})
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		d.mu.Lock()
@@ -270,6 +297,16 @@ func (d *Daemon) Handler() http.Handler {
 			d.rec(audit.Event{Pod: pod, Kind: audit.KindHandleRevoke, Detail: fmt.Sprintf("%d handle(s)", len(handles)), Decision: audit.DecisionAllow})
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("POST /pods/{pod}/egress", func(w http.ResponseWriter, r *http.Request) {
+		pod := r.PathValue("pod")
+		tok := "poddle_egr_" + randHex(16)
+		d.mu.Lock()
+		d.pods[pod] = append(d.pods[pod], tok) // tracked so `down` clears it
+		d.handlePod[tok] = pod                 // so the forward proxy resolves pod->policy
+		d.mu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]string{"token": tok, "addr": d.forwardAddr})
 	})
 
 	mux.HandleFunc("POST /pods/{pod}/policy", func(w http.ResponseWriter, r *http.Request) {

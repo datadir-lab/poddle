@@ -35,7 +35,9 @@ func (p *Policy) Decide(host, method string) (allow bool, reason string) {
 	if len(p.AllowUpstreams) > 0 && !matchHost(host, p.AllowUpstreams) {
 		return false, "upstream not allow-listed: " + host
 	}
-	if allowed, ok := p.methodsFor(host); ok && !containsFold(allowed, method) {
+	// Method rules apply to plain HTTP only; a CONNECT tunnel's real method is
+	// encrypted, so it is governed by the destination rules alone.
+	if allowed, ok := p.methodsFor(host); ok && method != "CONNECT" && !containsFold(allowed, method) {
 		return false, "method " + method + " not allowed for " + host
 	}
 	return true, ""

@@ -41,6 +41,18 @@ func TestPolicy_EmptyAndNilAllowAll(t *testing.T) {
 	}
 }
 
+func TestPolicy_ConnectSkipsMethodRules(t *testing.T) {
+	// A GET-only host: a CONNECT tunnel to it is governed by destination rules,
+	// not the (encrypted) method, so it is allowed.
+	p := &Policy{AllowUpstreams: []string{"api.x"}, Methods: map[string][]string{"api.x": {"GET"}}}
+	if allow, reason := p.Decide("api.x", "CONNECT"); !allow {
+		t.Errorf("CONNECT to an allow-listed host must not be denied by method rules (%q)", reason)
+	}
+	if allow, _ := p.Decide("evil.x", "CONNECT"); allow {
+		t.Error("CONNECT to a non-allow-listed host must still be denied")
+	}
+}
+
 func TestPolicy_MethodCaseInsensitive(t *testing.T) {
 	p := &Policy{Methods: map[string][]string{"h": {"get"}}}
 	if allow, _ := p.Decide("h", "GET"); !allow {

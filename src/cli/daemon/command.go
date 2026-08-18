@@ -17,7 +17,7 @@ import (
 
 // NewCmd builds the (hidden) daemon command.
 func NewCmd() *cobra.Command {
-	var gatewayBind, egress, socket, l4RedisBind, l4PostgresBind string
+	var gatewayBind, egress, socket, l4RedisBind, l4PostgresBind, forwardBind string
 	c := &cobra.Command{
 		Use:    "daemon",
 		Short:  "Run the persistent poddled broker (usually auto-started)",
@@ -29,7 +29,7 @@ func NewCmd() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return poddled.Serve(ctx, socket, gatewayBind, egress, l4RedisBind, l4PostgresBind)
+			return poddled.Serve(ctx, socket, gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind)
 		},
 	}
 	c.Flags().StringVar(&gatewayBind, "gateway-bind", "0.0.0.0:0", "HTTP gateway bind address pods reach")
@@ -37,6 +37,7 @@ func NewCmd() *cobra.Command {
 	c.Flags().StringVar(&socket, "socket", "", "control socket path (default: XDG_RUNTIME_DIR/poddle/poddled.sock)")
 	c.Flags().StringVar(&l4RedisBind, "l4-redis-bind", "0.0.0.0:0", "L4 Redis listener bind address pods reach")
 	c.Flags().StringVar(&l4PostgresBind, "l4-postgres-bind", "0.0.0.0:0", "L4 Postgres listener bind address pods reach")
+	c.Flags().StringVar(&forwardBind, "forward-bind", "0.0.0.0:0", "egress forward-proxy bind address pods reach (HTTP_PROXY)")
 	c.AddCommand(statusCmd())
 	c.AddCommand(auditCmd())
 	return c
