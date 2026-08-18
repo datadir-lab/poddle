@@ -1,8 +1,10 @@
 # Dashboard UI e2e — Playwright drives the real `poddle dashboard` in a browser.
 #
-# Uses the official Playwright image (browsers + system deps preinstalled,
-# matched to @playwright/test), installs Go to build the poddle binary, then runs
-# the Playwright suite: the dashboard loads, the audit feed renders + filters +
+# Uses the official Playwright image for its chromium system deps; `task e2e-ui`
+# then `npx playwright install chromium` fetches the browser matching the pinned
+# @playwright/test (image-version-independent). Installs Go to build the poddle
+# binary, then runs the Playwright suite: the dashboard loads, the audit feed
+# renders + filters +
 # shows the chain-verify badge, and the policy editor creates/lists/deletes a
 # policy through the real /v1/policies. No podman needed. Manual.
 

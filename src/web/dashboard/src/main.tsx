@@ -1,5 +1,7 @@
 import { render } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
+import "@fontsource-variable/inter";
+import "@fontsource/instrument-serif";
 import "./style.css";
 
 // Runtime data-source config: the SAME bundle serves local (defaults) and the
@@ -78,26 +80,28 @@ function AuditView() {
           <option value="block">block</option>
           <option value="deny">deny</option>
         </select>
-        <span class="dim">{shown.length} events</span>
+        <span class="count">{shown.length} events</span>
       </div>
-      <table>
-        <thead>
-          <tr><th>time</th><th>pod</th><th>kind</th><th>decision</th><th>upstream</th><th>detail</th></tr>
-        </thead>
-        <tbody>
-          {shown.length === 0 && <tr><td colSpan={6} class="empty">no events</td></tr>}
-          {shown.slice(0, 800).map((e) => (
-            <tr key={e.seq}>
-              <td class="dim">{new Date(e.time).toLocaleTimeString()}</td>
-              <td>{e.pod || <span class="dim">-</span>}</td>
-              <td>{e.kind}</td>
-              <td class={"d-" + (e.decision || "")}>{e.decision || <span class="dim">-</span>}</td>
-              <td>{e.upstream || <span class="dim">-</span>}</td>
-              <td class="detail">{e.detail}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>time</th><th>pod</th><th>kind</th><th>decision</th><th>upstream</th><th>detail</th></tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 && <tr><td colSpan={6} class="empty">no events</td></tr>}
+            {shown.slice(0, 800).map((e) => (
+              <tr key={e.seq}>
+                <td class="c-time">{new Date(e.time).toLocaleTimeString()}</td>
+                <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
+                <td class="c-mono">{e.kind}</td>
+                <td><span class={"decision d-" + (e.decision || "")}>{e.decision || <span class="faint">—</span>}</span></td>
+                <td class="c-mono">{e.upstream || <span class="faint">—</span>}</td>
+                <td class="c-detail">{e.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -135,11 +139,11 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
   return (
     <div class="editor">
       <div class="row">
-        <div style="flex:1">
-          <label>name</label>
-          <input style="width:100%" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-        </div>
         <div>
+          <label>name</label>
+          <input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+        </div>
+        <div class="narrow">
           <label>egress</label>
           <select value={egress} onChange={(e) => setEgress((e.target as HTMLSelectElement).value)}>
             <option value="redact">redact</option>
@@ -154,10 +158,10 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
       <textarea value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} />
       <label>methods — per-host allowed HTTP methods (JSON)</label>
       <textarea value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} />
-      {err && <div class="hint" style="color:var(--block)">{err}</div>}
+      {err && <div class="err">{err}</div>}
       <div class="actions">
-        <button class="btn" onClick={save}>Save</button>
-        {policy.name && <button class="btn danger" onClick={del}>Delete</button>}
+        <button class="btn btn--primary" onClick={save}>Save</button>
+        {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
       </div>
       <div class="hint">Reference from a pod: <code>poddle up --policy {name || "&lt;name&gt;"}</code>, or <code>policy = "{name || "&lt;name&gt;"}"</code> in a template.</div>
     </div>
@@ -191,7 +195,10 @@ function App() {
   return (
     <div>
       <header>
-        <h1>poddle · governance</h1>
+        <span class="brand">
+          <span class="brand__name">poddle</span>
+          <span class="brand__sub">governance</span>
+        </span>
         <nav>
           <button class={tab === "audit" ? "on" : ""} onClick={() => setTab("audit")}>Audit</button>
           <button class={tab === "policies" ? "on" : ""} onClick={() => setTab("policies")}>Policies</button>
