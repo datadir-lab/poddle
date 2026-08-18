@@ -29,6 +29,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/identity/anthropic"
 	"github.com/datadir-lab/poddle/src/internal/poddled"
 	"github.com/datadir-lab/poddle/src/internal/podman"
+	"github.com/datadir-lab/poddle/src/internal/policy"
 	"github.com/datadir-lab/poddle/src/internal/prompt"
 )
 
@@ -94,6 +95,9 @@ func NewRootCmd() *cobra.Command {
 	// Service connections (git/CI/…) + user connector definitions.
 	a.Connections = connector.NewStore(connector.DefaultBase())
 	a.ConnectorsDir = filepath.Join(userCfg, "poddle", "connectors")
+
+	// Governance policies (~/.config/poddle/policies).
+	a.Policies = policy.NewStore(policy.DefaultDir())
 
 	root.AddCommand(ls.NewCmd(a))
 	root.AddCommand(stats.NewCmd(a))

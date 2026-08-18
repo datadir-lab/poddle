@@ -15,6 +15,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
+	"github.com/datadir-lab/poddle/src/internal/policy"
 	"github.com/datadir-lab/poddle/src/internal/prompt"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
@@ -117,6 +118,10 @@ func (s *spyBroker) Audit(e audit.Event) error {
 	*s.log = append(*s.log, "audit:"+string(e.Kind))
 	return nil
 }
+func (s *spyBroker) SetPolicy(pod string, p *policy.Policy) error {
+	*s.log = append(*s.log, "policy:"+p.Name)
+	return nil
+}
 
 // stubBroker is a no-op podBroker for tests that don't exercise brokered creds.
 type stubBroker struct{}
@@ -129,7 +134,8 @@ func (stubBroker) RevokePod(string) error        { return nil }
 func (stubBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, error) {
 	return "poddle_stub", nil
 }
-func (stubBroker) Audit(audit.Event) error { return nil }
+func (stubBroker) Audit(audit.Event) error                { return nil }
+func (stubBroker) SetPolicy(string, *policy.Policy) error { return nil }
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}

@@ -57,6 +57,9 @@ func (b *Broker) SetEgressMode(mode string) { b.server.gw.SetEgressMode(mode) }
 // SetAuditor wires the sink that receives one record per proxied request.
 func (b *Broker) SetAuditor(a Auditor) { b.server.gw.SetAuditor(a) }
 
+// SetPolicyChecker wires the governance policy checker consulted per request.
+func (b *Broker) SetPolicyChecker(pc PolicyChecker) { b.server.gw.SetPolicyChecker(pc) }
+
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }
 

@@ -1,0 +1,21 @@
+# Policy e2e — governance policy enforcement at the broker.
+#
+# On this step's nested podman: a pod created with a lockdown policy (allow only
+# a bogus host) tries to reach its connector through the broker; the gateway
+# denies it with 403, the mock upstream is never reached, and the denial shows in
+# `poddle daemon audit --decision deny`. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-policy:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-policy

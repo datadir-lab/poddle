@@ -41,6 +41,7 @@ type Template struct {
 	BeforeTask string            `toml:"before_task"` // resize to this size before a `poddle task` run
 	AfterTask  string            `toml:"after_task"`  // resize to this size after a kept task run
 	Autoscale  bool              `toml:"autoscale"`   // opt in to the daemon's reactive memory-grow autoscaler
+	Policy     string            `toml:"policy"`      // governance policy name to enforce on the pod's egress
 }
 
 // extendsList normalizes the string-or-list `extends` into a slice.
@@ -163,6 +164,7 @@ func merge(base, over Template) Template {
 		BeforeTask: pick(over.BeforeTask, base.BeforeTask),
 		AfterTask:  pick(over.AfterTask, base.AfterTask),
 		Autoscale:  over.Autoscale || base.Autoscale,
+		Policy:     pick(over.Policy, base.Policy),
 		Setup:      concat(base.Setup, over.Setup),
 		Scripts:    concat(base.Scripts, over.Scripts),
 		Connectors: concat(base.Connectors, over.Connectors),
