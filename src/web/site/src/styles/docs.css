@@ -55,7 +55,16 @@
 .doc-search .pagefind-ui__search-input::placeholder { color: var(--faint) !important; opacity: 1 !important; }
 .doc-search .pagefind-ui__form::before { width: 17px !important; height: 17px !important; top: 19px !important; left: 18px !important; opacity: 0.5 !important; }
 .doc-search .pagefind-ui__search-clear { top: 10px !important; right: 10px !important; height: 34px !important; padding: 0 0.7rem !important; font-size: 0.75rem !important; background: #fff !important; }
-.doc-search .pagefind-ui__drawer { flex: 1; min-height: 0; overflow-y: auto; padding: 0.2rem 0.9rem 0.8rem !important; }
+.doc-search .pagefind-ui__drawer { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0.9rem 0.6rem !important; }
+/* Denser, scannable result list. */
+.doc-search .pagefind-ui__message { padding: 0.75rem 0 0.35rem !important; margin: 0 !important; font-size: 0.68rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint) !important; }
+.doc-search .pagefind-ui__results { display: block !important; }
+.doc-search .pagefind-ui__result { padding: 0.7rem 0 !important; margin: 0 !important; border-top: 1px solid var(--border) !important; }
+.doc-search .pagefind-ui__result:first-of-type { border-top: none !important; }
+.doc-search .pagefind-ui__result-title { font-size: 0.95rem !important; line-height: 1.3 !important; margin: 0 !important; }
+.doc-search .pagefind-ui__result-link { color: var(--ink) !important; font-weight: 600 !important; }
+.doc-search .pagefind-ui__result-excerpt { font-size: 0.82rem !important; line-height: 1.45 !important; color: var(--muted) !important; margin: 0.2rem 0 0 !important; }
+.doc-search .pagefind-ui__result mark { background: rgba(47, 158, 111, 0.18) !important; color: inherit !important; border-radius: 2px; padding: 0 1px; }
 
 .doc-main { min-width: 0; max-width: 66ch; }
 
