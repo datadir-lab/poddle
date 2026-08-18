@@ -144,14 +144,21 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
     </div>
   </div>
 
-  <!-- Pagefind static search. Generated into /pagefind at build; served during `astro dev` too. -->
-  <link rel="stylesheet" href="/pagefind/pagefind-ui.css" />
+  <!-- Pagefind static search. Generated into /pagefind at build; served during `astro dev` too.
+       Load its CSS non-render-blocking — the search UI is lazy (mounts on first open), and
+       docs.css already styles the modal shell, so nothing needs it during first paint. -->
+  <link rel="stylesheet" href="/pagefind/pagefind-ui.css" media="print" data-pagefind-css />
+  <noscript><link rel="stylesheet" href="/pagefind/pagefind-ui.css" /></noscript>
   <script src="/pagefind/pagefind-ui.js" is:inline></script>
   <script is:inline>
     (function () {
       const openBtn = document.getElementById('docsearch-open');
       const modal = document.getElementById('docsearch-modal');
       if (!openBtn || !modal) return;
+
+      // Apply the (non-render-blocking) Pagefind stylesheet after first paint.
+      const pfCss = document.querySelector('link[data-pagefind-css]');
+      if (pfCss) requestAnimationFrame(() => { pfCss.media = 'all'; });
 
       // Keyboard-navigable result selection.
       let activeIdx = -1;
