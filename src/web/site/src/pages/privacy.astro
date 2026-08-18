@@ -4,18 +4,19 @@ import legal from '../data/legal.json';
 ---
 <Legal
   title="Privacy Policy"
-  updated="17 August 2026"
+  updated="18 August 2026"
   description="How datadir handles data for poddle - and why the product is built to hold as little of yours as possible."
 >
   <p class="lead">
     poddle is built to hold as little of your data as possible. The broker keeps credentials in a
     sealed vault; your code and prompts run in pods on infrastructure you control. This policy explains
-    what we do collect, and why.
+    what we do collect, why, and the rights you have over it.
   </p>
 
   <p>
     This Privacy Policy describes how <strong>{legal.entity}</strong> ("datadir", "we", "us"),
-    operator of {legal.productName}, processes personal data. It applies to {legal.domain} and the
+    operator of {legal.productName}, processes personal data under the EU General Data Protection
+    Regulation (GDPR) and Slovak data-protection law. It applies to {legal.domain} and the
     {legal.productName} service. We are the controller for that data. Registered office:
     <strong>{legal.registeredOffice}</strong>; IČO {legal.ico}; registered in the {legal.registration}.
   </p>
@@ -23,9 +24,9 @@ import legal from '../data/legal.json';
   <h2>What we collect</h2>
   <ul>
     <li><strong>Account data</strong> - your name, email, and organisation, so you can sign in and we can contact you.</li>
-    <li><strong>Billing data</strong> - handled by our payment processor; we store a customer reference and invoices, not full card details.</li>
+    <li><strong>Billing data</strong> - handled by our payment processor; we store a customer reference and invoices, not full card numbers.</li>
     <li><strong>Usage &amp; telemetry</strong> - coarse product events and error diagnostics to keep the service reliable and secure.</li>
-    <li><strong>Audit records</strong> - which identity performed which action and when, so your team has an accountable trail.</li>
+    <li><strong>Audit records</strong> - which identity performed which action and when, so your team has an accountable trail. These records are secret-free by construction: no request bodies, no credentials.</li>
     <li><strong>Support communications</strong> - anything you send us when you ask for help.</li>
   </ul>
 
@@ -33,66 +34,79 @@ import legal from '../data/legal.json';
   <p>
     We do not want your vendor secrets or your source code. Credentials are sealed in the broker vault
     and injected on the wire; pods run on your own cloud or self-hosted compute. We are not in the path
-    of your repositories or your prompts, and we do not train models on your data.
+    of your repositories or your prompts, and we do not use your data to train models.
   </p>
 
-  <h2>How we use it</h2>
+  <h2>How we use it, and our legal basis</h2>
   <ul>
-    <li>To provide, secure, and improve the service.</li>
-    <li>To bill you and prevent fraud.</li>
-    <li>To respond to support requests and send essential service notices.</li>
-    <li>To meet legal and security obligations.</li>
+    <li>To provide and operate the service, and to bill you - to <strong>perform our contract</strong> with you (GDPR Art. 6(1)(b)).</li>
+    <li>To secure the service, prevent fraud and abuse, and improve reliability - our <strong>legitimate interests</strong> in running a safe, dependable product (Art. 6(1)(f)).</li>
+    <li>To meet accounting, tax, and other legal duties - to comply with a <strong>legal obligation</strong> (Art. 6(1)(c)).</li>
+    <li>For anything optional, such as non-essential analytics - only with your <strong>consent</strong> (Art. 6(1)(a)), which you may withdraw at any time.</li>
   </ul>
 
-  <h2>Legal bases (GDPR)</h2>
+  <h2>How we protect it</h2>
   <p>
-    We process personal data to perform our contract with you, on the basis of our legitimate interests
-    in running a secure and reliable service, to comply with legal obligations, and - where required -
-    with your consent, which you may withdraw at any time.
+    Credentials are held in a sealed vault and injected only on the broker-to-provider hop; they are
+    never materialised inside a pod. Data in transit is encrypted with TLS and data at rest is
+    encrypted. Access is least-privilege and logged, and our audit log is hash-chained and
+    tamper-evident. No system is perfectly secure, but the product is designed so a compromised pod has
+    no vendor key to steal.
   </p>
 
-  <h2>Sharing &amp; processors</h2>
+  <h2>Sharing &amp; sub-processors</h2>
   <p>
-    We share data only with vetted sub-processors that help us run poddle - cloud hosting, payment
-    processing, error monitoring, and email delivery - each under a data-processing agreement. We do
-    not sell personal data. A current list of sub-processors is available on request.
-  </p>
-
-  <h2>Retention</h2>
-  <p>
-    We keep account and audit data for the life of your account and as long as needed for legal,
-    accounting, or security purposes, then delete or anonymise it. You can ask us to delete your
-    account data at any time.
-  </p>
-
-  <h2>Your rights</h2>
-  <p>
-    Under the GDPR you may request access, rectification, erasure, restriction, portability, and object
-    to certain processing. To exercise any of these, email
-    <a href="mailto:privacy@datadir.co">privacy@datadir.co</a>. You also have the right to lodge a
-    complaint with your local supervisory authority.
+    We share personal data only with vetted sub-processors that help us run poddle - cloud hosting,
+    payment processing, error monitoring, and email delivery - each under a GDPR-compliant
+    data-processing agreement and only for the purposes above. We do not sell personal data or share it
+    for advertising. A current list of sub-processors is available on request, and we give advance
+    notice of material changes.
   </p>
 
   <h2>International transfers</h2>
   <p>
-    Where data is transferred outside the EEA, we rely on appropriate safeguards such as the European
-    Commission's Standard Contractual Clauses.
+    We prefer to keep data in the EU/EEA. Where a sub-processor transfers data outside the EEA, we rely
+    on an adequacy decision or appropriate safeguards - typically the European Commission's Standard
+    Contractual Clauses, with additional measures where needed.
+  </p>
+
+  <h2>Retention</h2>
+  <ul>
+    <li><strong>Account data</strong> - kept for the life of your account and deleted or anonymised within 90 days of closure, unless we must keep it longer.</li>
+    <li><strong>Invoices &amp; accounting records</strong> - retained for as long as Slovak accounting and tax law requires (generally up to 10 years).</li>
+    <li><strong>Audit records</strong> - retained per your account's retention settings; you control them and can export or delete them.</li>
+    <li><strong>Telemetry &amp; diagnostics</strong> - short-lived and aggregated where possible.</li>
+  </ul>
+
+  <h2>Automated decisions &amp; children</h2>
+  <p>
+    We do not make decisions producing legal or similarly significant effects about you based solely on
+    automated processing. poddle is a tool for professional developers; it is not directed at children,
+    and we do not knowingly collect data from anyone under 16.
+  </p>
+
+  <h2>Your rights</h2>
+  <p>
+    Under the GDPR you may request access, rectification, erasure, restriction, and portability, and you
+    may object to processing based on legitimate interests. To exercise any of these, email
+    <a href={`mailto:${legal.emails.privacy}`}>{legal.emails.privacy}</a>; we respond within one month.
+    You also have the right to lodge a complaint with your supervisory authority - in Slovakia, the
+    Office for Personal Data Protection of the Slovak Republic (Úrad na ochranu osobných údajov
+    Slovenskej republiky, <a href="https://dataprotection.gov.sk" target="_blank" rel="noopener">dataprotection.gov.sk</a>).
   </p>
 
   <h2>Cookies</h2>
   <p>
-    poddle.dev uses only what's necessary to serve the site and, where enabled, privacy-friendly,
-    cookieless analytics. We do not use advertising trackers.
+    {legal.domain} uses only what's necessary to serve the site and, where enabled, privacy-friendly,
+    cookieless analytics. We do not use advertising or cross-site tracking cookies.
   </p>
 
   <h2>Changes</h2>
-  <p>We'll post any changes here and update the date above; material changes will be notified to account holders.</p>
+  <p>We post any changes here and update the date above; we notify account holders of material changes before they take effect.</p>
 
   <h2>Contact</h2>
-  <p>Questions or requests: <a href="mailto:privacy@datadir.co">privacy@datadir.co</a>.</p>
-
-  <p class="note">
-    Company details are verified from the Slovak Business Register. This policy is a working draft and
-    should be reviewed by counsel before launch; the current sub-processor list is available on request.
+  <p>
+    Privacy questions or requests: <a href={`mailto:${legal.emails.privacy}`}>{legal.emails.privacy}</a>.
+    For anything else, <a href={`mailto:${legal.emails.general}`}>{legal.emails.general}</a>.
   </p>
 </Legal>
