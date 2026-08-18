@@ -1,5 +1,6 @@
 ---
 import Legal from '../layouts/Legal.astro';
+import legal from '../data/legal.json';
 ---
 <Legal
   title="Terms of Service"
@@ -9,8 +10,9 @@ import Legal from '../layouts/Legal.astro';
   <p class="lead">These terms govern your use of poddle. By using the service, you agree to them.</p>
 
   <p>
-    poddle is provided by <strong>datadir s. r. o.</strong> ("datadir", "we", "us"). "You" means the
-    individual or organisation using the service.
+    {legal.productName} is provided by <strong>{legal.entity}</strong> ("datadir", "we", "us"), a
+    {legal.legalForm} with its registered seat at {legal.registeredOffice} (IČO {legal.ico}),
+    registered in the {legal.registration}. "You" means the individual or organisation using the service.
   </p>
 
   <h2>The service</h2>
@@ -77,8 +79,9 @@ import Legal from '../layouts/Legal.astro';
 
   <h2>Governing law</h2>
   <p>
-    These terms are governed by the laws of <strong>[jurisdiction]</strong>, and disputes are subject to
-    the exclusive jurisdiction of its courts, without prejudice to any mandatory consumer protections.
+    These terms are governed by the laws of <strong>{legal.jurisdiction}</strong>, and disputes are
+    subject to the exclusive jurisdiction of its courts, without prejudice to any mandatory consumer
+    protections.
   </p>
 
   <h2>Changes</h2>
@@ -88,8 +91,7 @@ import Legal from '../layouts/Legal.astro';
   <p><a href="mailto:hello@datadir.co">hello@datadir.co</a>.</p>
 
   <p class="note">
-    This is a working draft intended as a starting point and should be reviewed by counsel before
-    launch. Bracketed items (jurisdiction, registered details) need to be completed with datadir's
-    specifics.
+    Company and registration details are verified from the Slovak Business Register. These terms are a
+    working draft and should be reviewed by counsel before launch.
   </p>
 </Legal>

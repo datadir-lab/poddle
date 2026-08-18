@@ -1,5 +1,6 @@
 ---
 import Legal from '../layouts/Legal.astro';
+import legal from '../data/legal.json';
 ---
 <Legal
   title="Privacy Policy"
@@ -13,9 +14,10 @@ import Legal from '../layouts/Legal.astro';
   </p>
 
   <p>
-    This Privacy Policy describes how <strong>datadir s. r. o.</strong> ("datadir", "we", "us"),
-    operator of poddle, processes personal data. It applies to poddle.dev and the poddle service.
-    We are the controller for that data. Registered office: <strong>[registered address]</strong>.
+    This Privacy Policy describes how <strong>{legal.entity}</strong> ("datadir", "we", "us"),
+    operator of {legal.productName}, processes personal data. It applies to {legal.domain} and the
+    {legal.productName} service. We are the controller for that data. Registered office:
+    <strong>{legal.registeredOffice}</strong>; IČO {legal.ico}; registered in the {legal.registration}.
   </p>
 
   <h2>What we collect</h2>
@@ -90,7 +92,7 @@ import Legal from '../layouts/Legal.astro';
   <p>Questions or requests: <a href="mailto:privacy@datadir.co">privacy@datadir.co</a>.</p>
 
   <p class="note">
-    This is a working draft intended as a starting point and should be reviewed by counsel before
-    launch. Bracketed items and processor lists need to be completed with datadir's specifics.
+    Company details are verified from the Slovak Business Register. This policy is a working draft and
+    should be reviewed by counsel before launch; the current sub-processor list is available on request.
   </p>
 </Legal>
