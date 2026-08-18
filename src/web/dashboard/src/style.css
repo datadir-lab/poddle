@@ -217,6 +217,18 @@ td.perf { text-align: right; white-space: nowrap; }
 .back:hover { color: var(--ink); border-color: var(--faint); }
 .detail-title { font-family: var(--mono); font-size: 1.5rem; font-weight: 600; color: var(--ink); margin: 0; }
 
+.facts {
+  display: flex; flex-wrap: wrap; gap: 1.25rem 2.5rem; margin: 0 0 1.75rem;
+  padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff;
+}
+.facts > div { display: flex; flex-direction: column; gap: 0.35rem; }
+.facts dt { font: 600 0.66rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
+.facts dd { margin: 0; font-size: 0.92rem; color: var(--ink); }
+.perf-inline { display: inline-flex; align-items: center; gap: 0.5rem; }
+.perf-inline .c-mono { color: var(--muted); }
+.fact-link { color: var(--accent); text-decoration: none; }
+.fact-link:hover { text-decoration: underline; }
+
 .editor { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem 1.6rem; background: #fff; }
 .editor.empty { color: var(--faint); display: flex; align-items: center; justify-content: center; min-height: 180px; }
 .editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); margin: 1.15rem 0 0.4rem; }
