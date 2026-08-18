@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>poddle · audit</title>
+<style>
+  :root { color-scheme: light dark; --bg:#0b0d10; --fg:#e6e9ef; --dim:#8b93a1; --line:#20262e;
+          --allow:#3fb950; --redact:#d29922; --block:#f85149; --deny:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+         background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.02em; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:10px; border:1px solid var(--line); color:var(--dim); }
+  .badge.ok { color:var(--allow); border-color:var(--allow); }
+  .badge.bad { color:var(--block); border-color:var(--block); }
+  input { background:transparent; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font:inherit; }
+  main { padding:0 16px 24px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--dim); font-weight:500; position:sticky; top:0; background:var(--bg); }
+  td.detail { white-space:normal; color:var(--dim); }
+  .d-allow{color:var(--allow)} .d-redact{color:var(--redact)} .d-block,.d-deny{color:var(--block)}
+  .dim { color:var(--dim); }
+  .empty { color:var(--dim); padding:24px 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>poddle · audit</h1>
+  <span id="verify" class="badge">chain …</span>
+  <input id="filter" placeholder="filter pod or kind…" autocomplete="off">
+  <span id="count" class="badge">0</span>
+</header>
+<main>
+  <table>
+    <thead><tr><th>time</th><th>pod</th><th>kind</th><th>decision</th><th>upstream</th><th>detail</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="6" class="empty">waiting for events…</td></tr></tbody>
+  </table>
+</main>
+<script>
+  // Runtime data-source config: the SAME bundle serves local (default) and the
+  // enterprise cloud collector, which injects { apiBase, auth, multiHost }.
+  const CFG = Object.assign({ apiBase: "/v1", auth: null }, window.__PODDLE__ || {});
+  const headers = CFG.auth ? { Authorization: "Bearer " + CFG.auth } : {};
+  const events = [];
+  const rows = document.getElementById("rows");
+  const countEl = document.getElementById("count");
+  const filterEl = document.getElementById("filter");
+  const esc = s => (s ?? "").toString().replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
+  const time = t => { try { return new Date(t).toLocaleTimeString(); } catch { return ""; } };
+
+  function render() {
+    const q = filterEl.value.trim().toLowerCase();
+    const shown = events.filter(e => !q || (e.pod||"").toLowerCase().includes(q) || (e.kind||"").toLowerCase().includes(q));
+    countEl.textContent = shown.length;
+    if (!shown.length) { rows.innerHTML = '<tr><td colspan="6" class="empty">no events</td></tr>'; return; }
+    rows.innerHTML = shown.slice(0, 500).map(e => `<tr>
+      <td class="dim">${time(e.time)}</td>
+      <td>${esc(e.pod) || '<span class="dim">-</span>'}</td>
+      <td>${esc(e.kind)}</td>
+      <td class="d-${esc(e.decision)}">${esc(e.decision) || '<span class="dim">-</span>'}</td>
+      <td>${esc(e.upstream) || '<span class="dim">-</span>'}</td>
+      <td class="detail">${esc(e.detail)}</td></tr>`).join("");
+  }
+
+  function add(e, front) { front ? events.unshift(e) : events.push(e); }
+
+  async function load() {
+    try {
+      const r = await fetch(CFG.apiBase + "/audit?limit=500", { headers });
+      const initial = await r.json();
+      (initial || []).forEach(e => add(e, false)); // already newest-first
+      render();
+    } catch (e) { rows.innerHTML = '<tr><td colspan="6" class="empty">daemon not reachable</td></tr>'; }
+    try {
+      const es = new EventSource(CFG.apiBase + "/audit/stream");
+      es.onmessage = ev => { try { add(JSON.parse(ev.data), true); render(); } catch {} };
+    } catch {}
+  }
+
+  async function verify() {
+    const el = document.getElementById("verify");
+    try {
+      const v = await (await fetch(CFG.apiBase + "/audit/verify", { headers })).json();
+      el.textContent = v.ok ? "chain intact ✓" : ("chain BROKEN @" + v.brokenAt + " ✗");
+      el.className = "badge " + (v.ok ? "ok" : "bad");
+    } catch { el.textContent = "chain ?"; }
+  }
+
+  filterEl.addEventListener("input", render);
+  load(); verify(); setInterval(verify, 15000);
+</script>
+</body>
+</html>
