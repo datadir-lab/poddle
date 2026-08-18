@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Button from '../components/Button.astro';
+import legal from '../data/legal.json';
 
 const mechanisms = [
   {
@@ -111,7 +112,7 @@ const compliance = [
     <div class="sec-block sec-disclosure">
       <h2>Responsible disclosure</h2>
       <p>
-        Found something? Email <a href="mailto:security@datadir.co">security@datadir.co</a>. We
+        Found something? Email <a href={`mailto:${legal.emails.security}`}>{legal.emails.security}</a>. We
         acknowledge reports within two business days, credit reporters who want it, and will not take
         legal action against good-faith research. Please give us a reasonable window to ship a fix
         before public disclosure.
