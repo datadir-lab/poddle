@@ -100,6 +100,22 @@ func TestDaemon_AuditsHandleIssueAndPostedEvents(t *testing.T) {
 	if strings.Contains(string(body), "SENTINEL") {
 		t.Error("the audit log must never contain the secret")
 	}
+
+	// The tamper-evident chain verifies through the control API.
+	vr, err := http.Get(srv.URL + "/audit/verify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer vr.Body.Close()
+	var v struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.NewDecoder(vr.Body).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	if !v.OK {
+		t.Error("audit chain should verify intact")
+	}
 }
 
 func testServer(t *testing.T) (*httptest.Server, *fakeBroker) {

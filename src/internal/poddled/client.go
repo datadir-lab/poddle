@@ -220,6 +220,24 @@ func (c *Client) Audits(f audit.Filter) ([]audit.Event, error) {
 	return events, nil
 }
 
+// VerifyAudit checks the audit log's hash chain. ok is false and brokenAt names
+// the seq of the first tampered/deleted row.
+func (c *Client) VerifyAudit() (ok bool, brokenAt int64, err error) {
+	resp, err := c.http.Get(c.uri("/audit/verify"))
+	if err != nil {
+		return false, 0, err
+	}
+	defer resp.Body.Close()
+	var v struct {
+		OK       bool  `json:"ok"`
+		BrokenAt int64 `json:"brokenAt"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return false, 0, err
+	}
+	return v.OK, v.BrokenAt, nil
+}
+
 // RevokePod invalidates every handle the daemon issued for pod.
 func (c *Client) RevokePod(pod string) error {
 	req, _ := http.NewRequest(http.MethodDelete, c.uri("/pods/"+url.PathEscape(pod)), nil)
