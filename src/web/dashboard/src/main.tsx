@@ -202,14 +202,15 @@ function Card({ n, label, tone }: { n: number | string; label: string; tone?: st
 }
 
 function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod: (pod: string) => void }) {
+  const { pods: livePods } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
   const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
-  const caught = useMemo(() => group(events, ["redact", "block"]).slice(0, 12), [events]);
+  const redactions = useMemo(() => group(events, ["redact"]).slice(0, 12), [events]);
 
   return (
     <div>
       <div class="cards">
-        <Card n={s.pods} label="pods active" />
+        <Card n={livePods.length} label="pods active" />
         <Card n={s.requests} label="requests" />
         <Card n={s.secrets} label="secrets redacted" tone={s.secrets ? "warn" : undefined} />
         <Card n={s.blocked + s.denied} label="blocked / denied" tone={s.blocked + s.denied ? "flag" : undefined} />
@@ -231,19 +232,18 @@ function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod:
             ))}
           </div>}
 
-      <h2 class="section-title">Egress &amp; secrets</h2>
-      {caught.length === 0
-        ? <div class="panel empty">nothing caught yet — no secrets redacted, no egress blocked</div>
+      <h2 class="section-title">Secrets redacted</h2>
+      {redactions.length === 0
+        ? <div class="panel empty">no secrets redacted yet — redact-mode policies strip credentials the agent tries to send</div>
         : <div class="table-wrap">
             <table>
-              <thead><tr><th>pod</th><th>action</th><th>destination</th><th>secrets</th><th>count</th></tr></thead>
+              <thead><tr><th>pod</th><th>destination</th><th>secrets</th><th>times</th></tr></thead>
               <tbody>
-                {caught.map((c) => (
+                {redactions.map((c) => (
                   <tr onClick={() => onPod(c.pod)} class="clickable">
                     <td class="c-pod">{c.pod}</td>
-                    <td><span class={"decision d-" + c.decision}>{c.decision}</span></td>
                     <td class="c-mono">{c.upstream}</td>
-                    <td class="c-mono">{c.decision === "redact" ? c.secrets : <span class="faint">—</span>}</td>
+                    <td class="c-mono">{c.secrets}</td>
                     <td class="c-mono">×{c.count}</td>
                   </tr>
                 ))}
