@@ -1,0 +1,13 @@
+{
+  "name": "poddle",
+  "private": true,
+  "description": "Dev tooling for the poddle core repo: git hooks and commit linting.",
+  "scripts": {
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
+    "lefthook": "^1.10.0"
+  }
+}

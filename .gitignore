@@ -30,3 +30,10 @@ src/web/dashboard/.last-run.json
 
 # Agent scratch / parallel git worktrees
 .claude/worktrees/
+
+# Root dev tooling (git hooks / commit linting)
+/node_modules/
+lefthook-local.yml
+
+# MCP browser artifacts (Playwright)
+/.playwright-mcp/
