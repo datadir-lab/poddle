@@ -12,7 +12,10 @@ import Button from '../components/Button.astro';
   <Section eyebrow="The problem" title="Coding agents want your keys. Don’t give them any.">
     <div class="fmap">
       <div class="fmap__row">
-        <div class="fmap__h">Without poddle <span class="fmap__note">One machine, serial — your real key and any secrets in the prompt travel raw, straight to the provider</span></div>
+        <div class="fmap__h">
+          <span class="fmap__tag fmap__tag--bad">Without poddle</span>
+          <span class="fmap__note">Your agent runs on your machine with your real key in reach — and any secret already in the prompt travels raw, straight to the provider.</span>
+        </div>
         <div class="fmap__track">
           <div class="fnode">
             <span class="fnode__top"><img class="fnode__i" src="/icons/laptop.svg" alt="" width="18" height="18" />Your computer</span>
@@ -29,7 +32,10 @@ import Button from '../components/Button.astro';
       </div>
 
       <div class="fmap__row">
-        <div class="fmap__h">With poddle <span class="fmap__note">Prompts fan out to parallel pods that burst and scale. The pod only ever holds a revocable handle — at the broker the real key is injected into the header while stray secrets in the body are scrubbed to «redacted:poddle»</span></div>
+        <div class="fmap__h">
+          <span class="fmap__tag fmap__tag--good">With poddle</span>
+          <span class="fmap__note">Work fans out to isolated pods that hold only a revocable handle. At the broker the real key is injected on the wire and stray secrets are scrubbed from the body — so nothing sensitive ever leaves the pod.</span>
+        </div>
         <div class="fmap__track">
           <div class="fnode">
             <span class="fnode__top"><img class="fnode__i" src="/icons/user.svg" alt="" width="18" height="18" />You</span>
@@ -233,8 +239,11 @@ import Button from '../components/Button.astro';
   .conn-more { margin-top: 1.6rem; }
   .conn-more a { font-weight: 600; }
   .fmap { margin-top: 1.6rem; display: flex; flex-direction: column; gap: 2rem; }
-  .fmap__h { font: 600 0.78rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink); margin-bottom: 0.9rem; }
-  .fmap__note { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--faint); }
+  .fmap__h { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.15rem; }
+  .fmap__tag { flex: none; font: 700 0.64rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.34rem 0.64rem; border-radius: 999px; }
+  .fmap__tag--bad { color: #8a3a19; background: #f6dcd2; }
+  .fmap__tag--good { color: var(--accent); background: #dff0e8; }
+  .fmap__note { flex: 1 1 16rem; max-width: 70ch; font: 500 0.95rem/1.5 var(--font-sans); color: var(--muted); }
   .fmap__track { display: flex; align-items: center; flex-wrap: nowrap; gap: 0.4rem; padding: 1.5rem 0 6px; }
   .fmap__row:last-child .fmap__track { padding-bottom: 92px; }
   .fnode { flex: none; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; padding: 0.65rem 0.85rem; border-radius: 12px; background: #fff; border: 1px solid var(--border); font: 600 0.82rem/1.2 var(--font-sans); color: var(--ink); white-space: nowrap; box-shadow: 0 1px 3px rgba(21, 20, 15, 0.05); }
