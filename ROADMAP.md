@@ -35,6 +35,7 @@ The credential model, done right, from day one.
   - **Burstable by default**: `size` = a CPU *ceiling*; CPU is work-conserving, so idle pods float to ~0 and busy pods burst to the ceiling for free — no monitoring needed. Memory gets a generous safety cap.
   - **`poddle resize <pod> <size>`** — deterministic live resize (`podman/docker update`); the workload scales *itself* via **task hooks** (`before_task: resize strong` / `after_task: resize weak`) or an agent-callable command. Fits bursty work (e.g. a `docker compose` test) with **no detection lag**.
   - **Reactive VPA in poddled** (opt-in): watch cgroup stats, auto-resize CPU within `min`/`max`, and **grow** memory on pressure. Honest caveats — reactive scaling lags bursts (prefer hooks for those), and memory can't safely shrink below live usage (grow-only).
+  - **Idle scale-down / suspend** *(not shipped — the site must not imply "suspend when idle" until it is)*: reactive VPA is **grow-only** today. Add CPU scale-down when a pod goes idle, and an idle-**suspend** (freeze / scale-to-zero to storage) for local pods so an unused pod costs nothing. Managed pods get auto-suspend in Phase 4.
 
 ## Phase 3 — Collaboration
 
@@ -52,6 +53,9 @@ The credential model, done right, from day one.
 
 - **Templates** (env blueprints) + a **harness registry** (`claude-code`, `codex`, `aider`, `pi`, `local`).
 - **MITM-egress** fallback for harnesses that don't honor base-url.
+- **Alternative pod runtimes** *(not shipped — the site must not imply a "full desktop" until it is)*: the `sandbox.Runtime` label already stubs `container-desktop` (GUI / VNC), `microvm`, and `vm`, but only `container` is wired today. Ship a full-desktop runtime (for GUI tools / browser automation) and stronger isolation tiers (microvm/vm).
+
+> **Marketing ↔ code gaps to keep honest** (surfaced 2026-08, home-page audit): (1) *full desktop* pod runtime → Cross-cutting above; (2) *hand a live pod to a teammate, per-driver identity* → Phase 3 Collaboration; (3) *suspend when idle / scale-to-zero* on local pods → Phase 2 "Idle scale-down / suspend". The home page has been corrected to describe only what ships today.
 
 ---
 
