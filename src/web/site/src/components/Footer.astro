@@ -1,4 +1,5 @@
 ---
+import legal from '../data/legal.json';
 const repo = 'https://git.dev.datadir.co/datadir/poddle';
 ---
 <footer class="footer">
@@ -33,7 +34,7 @@ const repo = 'https://git.dev.datadir.co/datadir/poddle';
   <div class="container footer__base">
     <span>Secret-safe pods for coding agents.</span>
     <span class="footer__legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></span>
-    <span>© 2026 datadir s. r. o. · <a href="https://datadir.co">datadir.co</a></span>
+    <span>© {legal.copyrightYear} {legal.entity} · <a href="https://datadir.co">datadir.co</a></span>
   </div>
 </footer>
 <style>

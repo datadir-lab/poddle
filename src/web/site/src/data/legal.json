@@ -1,0 +1,18 @@
+{
+  "productName": "poddle",
+  "entity": "datadir s. r. o.",
+  "shortName": "datadir",
+  "legalForm": "private limited liability company",
+  "ico": "57 582 904",
+  "registeredOffice": "Bauerova 1205/7, 040 23 Košice, Slovakia",
+  "registration": "Commercial Register of the City Court Košice, Section Sro, Insert No. 65729/V",
+  "jurisdiction": "the Slovak Republic",
+  "domain": "poddle.dev",
+  "emails": {
+    "general": "hello@datadir.co",
+    "privacy": "privacy@datadir.co",
+    "security": "security@datadir.co"
+  },
+  "copyrightYear": 2026,
+  "source": "Company details from the Slovak Business Register (orsr.sk), extract ID 757937."
+}
