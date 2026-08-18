@@ -65,7 +65,7 @@ test("pod drill-down shows live facts + the pod's audit trail", async ({ page })
   await expect(page.locator(".detail-head .tag")).toHaveText("auto"); // agent1 autoscales
 
   // live facts: bound policy (links to /policies/:name), mode
-  await expect(page.locator(".facts")).toContainText("headless");
+  await expect(page.locator(".facts")).toContainText("Headless"); // mode display-capitalized
   await expect(page.locator(".facts a.fact-link")).toHaveText("prod");
   await page.locator(".facts a.fact-link").click();
   await expect(page).toHaveURL(/\/policies\/prod$/); // policy fact deep-links
@@ -133,12 +133,12 @@ test("audit feed: text filter + segmented decision filter (no native select)", a
   await page.getByPlaceholder("filter").fill("");
 
   // segmented decision filter: show only denials
-  await page.getByRole("radio", { name: "deny", exact: true }).click();
+  await page.getByRole("radio", { name: "Deny", exact: true }).click();
   await expect(page.locator("table")).toContainText("metadata.google.internal");
   await expect(page.locator("table")).not.toContainText("evil.example"); // a block, not a deny
 
   // filtered-empty state is distinguished from no-data-yet
-  await page.getByRole("radio", { name: "all", exact: true }).click();
+  await page.getByRole("radio", { name: "All", exact: true }).click();
   await page.getByPlaceholder("filter").fill("zzz-no-such-host");
   await expect(page.locator("table")).toContainText("No events match your filter.");
 });
@@ -153,7 +153,7 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
 
   await page.locator(".editor input").first().fill("e2e-pol");
   await page.locator(".editor textarea").first().fill("api.anthropic.com\ngit.internal");
-  await page.getByRole("radio", { name: "block", exact: true }).click(); // egress = block
+  await page.getByRole("radio", { name: "Block", exact: true }).click(); // egress = block
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page.locator(".list")).toContainText("e2e-pol");
@@ -161,7 +161,7 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
 
   await page.locator(".list a", { hasText: "e2e-pol" }).click();
   // the egress mode round-tripped through the file store and shows as active
-  await expect(page.getByRole("radio", { name: "block", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Block", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
 });

@@ -199,6 +199,11 @@ function group(events: Event[], decisions: string[]): Grouped[] {
   return [...m.values()].sort((a, b) => b.count - a.count);
 }
 
+// cap1 upper-cases only the first letter (leaves identifiers/values intact).
+const cap1 = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+// humanKind turns a dotted event kind into a readable label: "pod.up" -> "Pod up".
+const humanKind = (k: string) => cap1((k || "").replace(/\./g, " "));
+
 // relTime renders an event's age compactly (the absolute time goes in a tooltip).
 function relTime(iso: string): string {
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -261,16 +266,16 @@ function Segmented({ value, options, onChange, ariaLabel }: {
 }
 
 const DECISION_FILTER: SegOption[] = [
-  { value: "", label: "all" },
-  { value: "allow", label: "allow", tone: "allow" },
-  { value: "redact", label: "redact", tone: "redact" },
-  { value: "block", label: "block", tone: "deny" },
-  { value: "deny", label: "deny", tone: "deny" },
+  { value: "", label: "All" },
+  { value: "allow", label: "Allow", tone: "allow" },
+  { value: "redact", label: "Redact", tone: "redact" },
+  { value: "block", label: "Block", tone: "deny" },
+  { value: "deny", label: "Deny", tone: "deny" },
 ];
 const EGRESS_MODES: SegOption[] = [
-  { value: "redact", label: "redact", tone: "redact" },
-  { value: "block", label: "block", tone: "deny" },
-  { value: "off", label: "off", tone: "faint" },
+  { value: "redact", label: "Redact", tone: "redact" },
+  { value: "block", label: "Block", tone: "deny" },
+  { value: "off", label: "Off", tone: "faint" },
 ];
 
 function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string) => void }) {
@@ -341,8 +346,8 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
               <tr key={p.name} class="clickable" onClick={() => onPod(p.name)}>
                 <td class="c-pod">{p.name}{p.autoscale && <span class="tag">auto</span>}</td>
                 <td><span class={"state state--" + p.state}>{p.state}</span></td>
-                <td class="c-mono">{p.size}</td>
-                <td class="c-mono">{p.mode || <span class="faint">—</span>}</td>
+                <td class="c-mono">{cap1(p.size)}</td>
+                <td class="c-mono">{p.mode ? cap1(p.mode) : <span class="faint">—</span>}</td>
                 <td class="c-mono">{p.policy || <span class="faint">—</span>}</td>
                 <td class="perf"><Spark data={h.cpu} /><span class="c-mono">{p.cpu || "—"}</span></td>
                 <td class="perf"><Spark data={h.mem} /><span class="c-mono">{p.memPerc || "—"}</span></td>
@@ -391,10 +396,10 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
               <tr key={e.seq}>
                 <td class="c-time" title={new Date(e.time).toLocaleString()}>{relTime(e.time)}</td>
                 <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
-                <td class="c-mono">{e.kind}</td>
+                <td>{humanKind(e.kind)}</td>
                 <td><span class={"decision d-" + (e.decision || "")}>{e.decision || <span class="faint">—</span>}</span></td>
                 <td class="c-mono">{e.upstream || <span class="faint">—</span>}</td>
-                <td class="c-detail">{e.detail}</td>
+                <td class="c-detail">{cap1(e.detail || "")}</td>
               </tr>
             ))}
           </tbody>
@@ -446,9 +451,9 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
           <Segmented value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
-      <label>Allowed destinations <span class="label-hint">default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
+      <label>Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
       <textarea value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
-      <label>Always blocked <span class="label-hint">wins over allowed · one host per line</span></label>
+      <label>Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
       <textarea value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
       <label>Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
       <textarea value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
@@ -519,8 +524,8 @@ function PodDetailView({ name, events }: { name: string; events: Event[] }) {
 
       {pod && (
         <dl class="facts">
-          <Fact label="size"><span class="c-mono">{pod.size}</span></Fact>
-          <Fact label="mode"><span class="c-mono">{pod.mode || "—"}</span></Fact>
+          <Fact label="size"><span class="c-mono">{cap1(pod.size)}</span></Fact>
+          <Fact label="mode"><span class="c-mono">{pod.mode ? cap1(pod.mode) : "—"}</span></Fact>
           <Fact label="policy">
             {pod.policy
               ? <a class="fact-link c-mono" href={`/policies/${encodeURIComponent(pod.policy)}`} onClick={linkTo(`/policies/${encodeURIComponent(pod.policy)}`)}>{pod.policy}</a>
