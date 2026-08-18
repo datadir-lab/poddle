@@ -18,6 +18,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/connector"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	idn "git.dev.datadir.co/datadir/poddle/src/internal/identity"
+	"git.dev.datadir.co/datadir/poddle/src/internal/policy"
 	"git.dev.datadir.co/datadir/poddle/src/internal/sandbox"
 	"git.dev.datadir.co/datadir/poddle/src/internal/secure"
 )
@@ -50,12 +51,13 @@ type podBroker interface {
 	IssueHandle(pod, scope string, cred broker.Credential) (string, error)
 	RevokePod(pod string) error
 	Audit(e audit.Event) error
+	SetPolicy(pod string, p *policy.Policy) error
 }
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
 // resolves a pod-side runtime. b talks to the persistent poddled broker.
 func NewCmd(a *app.App, b podBroker) *cobra.Command {
-	var image, size, identityName, harnessName, execCmd, templateName string
+	var image, size, identityName, harnessName, execCmd, templateName, policyName string
 	var detach, autoscale bool
 
 	c := &cobra.Command{
@@ -77,6 +79,7 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 				allowSelect: !detach && execCmd == "" && a.Prompter != nil,
 				withVolumes: true, // stateful session (workspace + agent state)
 				autoscale:   autoscale,
+				policyName:  policyName,
 			})
 			if err != nil {
 				return err
@@ -109,17 +112,18 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().StringVar(&execCmd, "exec", "", "run a command in the sandbox instead of attaching, then tear down")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "create without attaching")
 	c.Flags().BoolVar(&autoscale, "autoscale", false, "let poddled warn when this pod nears its memory limit (interactive: warn only)")
+	c.Flags().StringVar(&policyName, "policy", "", "governance policy to enforce on the pod's egress (from ~/.config/poddle/policies)")
 	return c
 }
 
 // buildOpts carries the resolved flag values buildSpec needs.
 type buildOpts struct {
-	name, image, size, identityName, harnessName, templateName string
-	allowSelect                                                bool // interactively select an identity when none is given and a Prompter exists
-	requireIdentity                                            bool // error if no identity is resolved (an autonomous task needs auth)
-	withVolumes                                                bool // mount session state on named volumes (up/move; not ephemeral task pods)
-	skipClone                                                  bool // don't clone the repo (move: the workspace volume already has it)
-	autoscale                                                  bool // opt in to the daemon's reactive memory-grow autoscaler
+	name, image, size, identityName, harnessName, templateName, policyName string
+	allowSelect                                                            bool // interactively select an identity when none is given and a Prompter exists
+	requireIdentity                                                        bool // error if no identity is resolved (an autonomous task needs auth)
+	withVolumes                                                            bool // mount session state on named volumes (up/move; not ephemeral task pods)
+	skipClone                                                              bool // don't clone the repo (move: the workspace volume already has it)
+	autoscale                                                              bool // opt in to the daemon's reactive memory-grow autoscaler
 }
 
 // stateVolName is the deterministic volume name for a pod's harness state dir,
@@ -284,6 +288,17 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, &spec); err != nil {
 					return fail(err)
 				}
+			}
+		}
+		// Bind the pod's governance policy (if any) so the daemon enforces it
+		// on every request the pod makes through the broker.
+		if policyName := flagOr(cmd, "policy", o.policyName, tpl.Policy); policyName != "" && a.Policies != nil {
+			pol, err := a.Policies.Get(policyName)
+			if err != nil {
+				return fail(err)
+			}
+			if err := b.SetPolicy(o.name, pol); err != nil {
+				return fail(err)
 			}
 		}
 	}

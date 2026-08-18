@@ -15,6 +15,7 @@ import (
 
 	"git.dev.datadir.co/datadir/poddle/src/internal/audit"
 	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
+	"git.dev.datadir.co/datadir/poddle/src/internal/policy"
 )
 
 // Client talks to a running poddled over its Unix control socket, and can
@@ -172,6 +173,21 @@ func (c *Client) Status() (Status, error) {
 		return Status{}, err
 	}
 	return s, nil
+}
+
+// SetPolicy binds a governance policy to a pod at the daemon; the gateway then
+// enforces it on every request the pod makes.
+func (c *Client) SetPolicy(pod string, p *policy.Policy) error {
+	b, _ := json.Marshal(p)
+	resp, err := c.http.Post(c.uri("/pods/"+url.PathEscape(pod)+"/policy"), "application/json", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("set policy: %s", resp.Status)
+	}
+	return nil
 }
 
 // Audit submits a client-side audit event (pod lifecycle, mount refusal) to the

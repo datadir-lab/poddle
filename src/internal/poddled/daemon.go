@@ -22,6 +22,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/audit"
 	"git.dev.datadir.co/datadir/poddle/src/internal/broker"
 	"git.dev.datadir.co/datadir/poddle/src/internal/l4"
+	"git.dev.datadir.co/datadir/poddle/src/internal/policy"
 )
 
 // brokerAPI is the broker capability the daemon wraps; *broker.Broker satisfies it.
@@ -43,8 +44,9 @@ type Daemon struct {
 	audit          *audit.Store // tamper-evident audit log (nil = auditing off, e.g. in tests)
 	mu             sync.Mutex
 	pods           map[string][]string
-	handlePod      map[string]string // handle value -> pod, so the gateway's audit records resolve a pod
-	events         []string          // recent autoscale activity (bounded ring), for `daemon status`
+	handlePod      map[string]string         // handle value -> pod, so the gateway resolves a pod
+	podPolicy      map[string]*policy.Policy // pod -> its governance policy (nil = unrestricted)
+	events         []string                  // recent autoscale activity (bounded ring), for `daemon status`
 	l4Redis        net.Listener
 	l4RedisAddr    string
 	l4Postgres     net.Listener
@@ -73,7 +75,20 @@ func (d *Daemon) recordEvent(msg string) {
 
 // New returns a Daemon wrapping b, recording audit events to aud (nil = off).
 func New(b brokerAPI, aud *audit.Store) *Daemon {
-	return &Daemon{broker: b, audit: aud, pods: map[string][]string{}, handlePod: map[string]string{}}
+	return &Daemon{
+		broker: b, audit: aud,
+		pods: map[string][]string{}, handlePod: map[string]string{},
+		podPolicy: map[string]*policy.Policy{},
+	}
+}
+
+// Check implements broker.PolicyChecker: resolve the pod holding handle and
+// evaluate its policy for (host, method). No policy = allow.
+func (d *Daemon) Check(handle, host, method string) (bool, string) {
+	d.mu.Lock()
+	pol := d.podPolicy[d.handlePod[handle]]
+	d.mu.Unlock()
+	return pol.Decide(host, method)
 }
 
 // rec appends a sanitised audit event if auditing is on.
@@ -103,6 +118,9 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind string) 
 	d.broker.SetEgressMode(egress)
 	if a, ok := d.broker.(interface{ SetAuditor(broker.Auditor) }); ok {
 		a.SetAuditor(d) // audit every proxied request
+	}
+	if p, ok := d.broker.(interface{ SetPolicyChecker(broker.PolicyChecker) }); ok {
+		p.SetPolicyChecker(d) // enforce each pod's governance policy
 	}
 	addr, err := d.broker.Serve(gatewayBind)
 	if err != nil {
@@ -240,6 +258,7 @@ func (d *Daemon) Handler() http.Handler {
 		d.mu.Lock()
 		handles := d.pods[pod]
 		delete(d.pods, pod)
+		delete(d.podPolicy, pod)
 		for _, h := range handles {
 			delete(d.handlePod, h)
 		}
@@ -250,6 +269,20 @@ func (d *Daemon) Handler() http.Handler {
 		if len(handles) > 0 {
 			d.rec(audit.Event{Pod: pod, Kind: audit.KindHandleRevoke, Detail: fmt.Sprintf("%d handle(s)", len(handles)), Decision: audit.DecisionAllow})
 		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("POST /pods/{pod}/policy", func(w http.ResponseWriter, r *http.Request) {
+		var p policy.Policy
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		pod := r.PathValue("pod")
+		d.mu.Lock()
+		d.podPolicy[pod] = &p
+		d.mu.Unlock()
+		d.rec(audit.Event{Pod: pod, Kind: audit.KindPolicyAllow, Detail: "policy " + p.Name + " bound", Decision: audit.DecisionAllow})
 		w.WriteHeader(http.StatusNoContent)
 	})
 

@@ -22,7 +22,7 @@ const TaskLogPath = "/tmp/poddle-task.json"
 // logs`/`attach`/`down`. It reuses up's buildSpec, so a task pod gets the same
 // identity/connectors/harness/secret-safety as `up`.
 func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
-	var image, size, identityName, harnessName, templateName, podName string
+	var image, size, identityName, harnessName, templateName, podName, policyName string
 	var maxTurns int
 	var keep, detach, autoscale bool
 
@@ -49,6 +49,7 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				// one-shot task is torn down and stays ephemeral.
 				withVolumes: detach || keep,
 				autoscale:   autoscale,
+				policyName:  policyName,
 			})
 			if err != nil {
 				return err
@@ -111,5 +112,6 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 	c.Flags().BoolVar(&keep, "keep", false, "keep the pod running after the task (attach/inspect later)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "run the agent in the background; leave the pod up (poddle logs/down)")
 	c.Flags().BoolVar(&autoscale, "autoscale", false, "let poddled auto-grow this pod to a bigger shell when it nears its memory limit")
+	c.Flags().StringVar(&policyName, "policy", "", "governance policy to enforce on the pod's egress (from ~/.config/poddle/policies)")
 	return c
 }

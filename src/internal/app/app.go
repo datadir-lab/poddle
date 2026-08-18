@@ -15,6 +15,7 @@ import (
 	"git.dev.datadir.co/datadir/poddle/src/internal/engine"
 	"git.dev.datadir.co/datadir/poddle/src/internal/harness"
 	"git.dev.datadir.co/datadir/poddle/src/internal/identity"
+	"git.dev.datadir.co/datadir/poddle/src/internal/policy"
 	"git.dev.datadir.co/datadir/poddle/src/internal/prompt"
 )
 
@@ -28,4 +29,5 @@ type App struct {
 	Templates     config.Resolver   // template resolver; nil = no templates
 	Connections   *connector.Store  // client-side service connections
 	ConnectorsDir string            // dir with user connector definitions (overrides built-ins)
+	Policies      *policy.Store     // governance policies (~/.config/poddle/policies); nil = none
 }
