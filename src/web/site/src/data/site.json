@@ -1,0 +1,4 @@
+{
+  "_comment": "githubRepo is the public GitHub mirror slug (owner/name). Confirm the exact org before launch - the header star badge and repo links all derive from it.",
+  "githubRepo": "datadir-lab/poddle"
+}

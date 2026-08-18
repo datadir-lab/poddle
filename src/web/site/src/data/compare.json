@@ -1,0 +1,64 @@
+{
+  "intro": "Every approach below solves part of the problem. Only poddle keeps the real secret out of the workload entirely - injected at the egress boundary, scrubbed from outbound traffic, and provable after the fact.",
+  "columns": [
+    { "key": "poddle", "name": "poddle", "sub": "Secretless broker + isolated pods", "featured": true },
+    { "key": "raw", "name": "Raw agent", "sub": "Keys in env / on disk" },
+    { "key": "sandbox", "name": "Dev sandboxes", "sub": "Codespaces, devcontainers, Coder" },
+    { "key": "agentbox", "name": "Agent code sandboxes", "sub": "E2B, Daytona, Modal, Vercel Sandbox" },
+    { "key": "secrets", "name": "Secret managers", "sub": "Vault, Doppler, 1Password" }
+  ],
+  "rows": [
+    {
+      "cap": "Isolated, disposable environment",
+      "cells": { "poddle": "yes", "raw": "no", "sandbox": "yes", "agentbox": "yes", "secrets": "no" }
+    },
+    {
+      "cap": "Real secret never enters the workload",
+      "cells": { "poddle": "yes", "raw": "no", "sandbox": "no", "agentbox": "no", "secrets": "no" }
+    },
+    {
+      "cap": "Credential injected at the egress boundary",
+      "cells": { "poddle": "yes", "raw": "no", "sandbox": "no", "agentbox": "no", "secrets": "no" }
+    },
+    {
+      "cap": "Stray secrets scrubbed from outbound traffic",
+      "cells": { "poddle": "yes", "raw": "no", "sandbox": "no", "agentbox": "no", "secrets": "no" }
+    },
+    {
+      "cap": "Per-request egress policy, enforced on the wire",
+      "cells": { "poddle": "yes", "raw": "no", "sandbox": "partial", "agentbox": "partial", "secrets": "no" }
+    },
+    {
+      "cap": "Tamper-evident, per-person audit trail",
+      "cells": { "poddle": "yes", "raw": "no", "sandbox": "no", "agentbox": "no", "secrets": "partial" }
+    },
+    {
+      "cap": "Open source, with a managed cloud option",
+      "cells": { "poddle": "yes", "raw": "na", "sandbox": "partial", "agentbox": "partial", "secrets": "partial" }
+    }
+  ],
+  "notes": [
+    "Dev sandboxes and agent code sandboxes isolate execution, but your credentials still run inside the box - that is where the agent uses them.",
+    "Secret managers store and rotate secrets, then hand the plaintext credential to the workload; they audit secret access, not what the agent does with it once issued.",
+    "Some sandboxes offer network allowlists, but none broker the credential itself or enforce policy per authenticated request.",
+    "Open source and managed availability vary by product; Daytona moved its core closed-source in 2026. poddle is open source with a managed cloud."
+  ],
+  "summary": [
+    {
+      "h": "Raw agents",
+      "p": "The agent runs with your real key in reach, and any secret already in the prompt travels raw. Fast to start, nothing to stop a leak."
+    },
+    {
+      "h": "Dev sandboxes",
+      "p": "Codespaces and devcontainers isolate the environment - but the credential is injected straight into it, so a compromised pod still holds your key."
+    },
+    {
+      "h": "Agent code sandboxes",
+      "p": "E2B, Daytona and Modal run agent code in a disposable box, yet you still pass the credentials in. Isolation, not secret brokering."
+    },
+    {
+      "h": "Secret managers",
+      "p": "Vault and Doppler store and rotate secrets, then hand the plaintext key to the workload. A great vault, still a key inside the pod."
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 import Button from './Button.astro';
-const repo = 'https://github.com/datadir-lab/poddle';
+import GhStars from './GhStars.astro';
 ---
 <header class="nav" id="site-nav">
   <div class="container nav__inner">
@@ -12,11 +12,12 @@ const repo = 'https://github.com/datadir-lab/poddle';
       <span class="nav__bars"></span>
     </button>
     <nav class="nav__links" id="nav-links" aria-label="Primary">
+      <a href="/cloud">Cloud</a>
       <a href="/connectors">Connectors</a>
       <a href="/pricing">Pricing</a>
       <a href="/docs">Docs</a>
-      <a href={repo}>Source</a>
-      <Button href="/docs" variant="primary">Get started</Button>
+      <GhStars />
+      <Button href="/cloud" variant="primary">Start free</Button>
     </nav>
   </div>
 </header>
