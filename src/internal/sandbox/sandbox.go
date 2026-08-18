@@ -4,13 +4,30 @@ package sandbox
 
 // Sandbox is a poddle instance, as surfaced by `poddle ls`.
 type Sandbox struct {
-	ID       string // short engine id
-	Name     string // poddle.name label
-	Template string // poddle.template label
-	Runtime  string // poddle.runtime label (container | container-desktop | microvm | vm)
-	Size     string // poddle.size label (weak | strong)
-	Repo     string // poddle.repo label
-	State    string // normalized: running | stopped | paused
+	ID        string // short engine id
+	Name      string // poddle.name label
+	Template  string // poddle.template label
+	Runtime   string // poddle.runtime label (container | container-desktop | microvm | vm)
+	Size      string // poddle.size label (weak | strong)
+	Repo      string // poddle.repo label
+	State     string // normalized: running | stopped | paused
+	Mode      string // poddle.mode label (interactive | headless | exec)
+	Autoscale bool   // poddle.autoscale label
+	Policy    string // poddle.policy label (governance policy name)
+}
+
+// PodView is a running pod's fleet + performance snapshot for the dashboard:
+// its labels (state/size/mode/policy/autoscale) joined with live CPU/memory.
+type PodView struct {
+	Name      string `json:"name"`
+	State     string `json:"state"`
+	Size      string `json:"size"`
+	Mode      string `json:"mode"`
+	Policy    string `json:"policy"`
+	Autoscale bool   `json:"autoscale"`
+	CPU       string `json:"cpu"`     // "12.5%" or "" when unavailable (no cgroup)
+	MemPerc   string `json:"memPerc"` // "68%" or ""
+	Mem       string `json:"mem"`     // "512MB / 4GB" or ""
 }
 
 // Mount is a host->container bind mount.
@@ -61,20 +78,21 @@ type Stat struct {
 
 // Spec describes a sandbox to create.
 type Spec struct {
-	Name      string
-	Image     string
-	Template  string            // label
-	Runtime   string            // label (default "container")
-	Size      string            // label
-	CPUs      float64           // 0 = leave unset
-	Memory    string            // e.g. "16g"; "" = leave unset
-	Repo      string            // label
-	Mode      string            // label: how the agent runs (interactive | headless | exec) — drives resume on move
-	Autoscale bool              // label poddle.autoscale: opt in to the daemon's reactive memory-grow autoscaler
-	Identity  string            // label poddle.identity: the coding-agent login, so `move` can re-broker it
-	Harness   string            // label poddle.harness: the agent runtime, so `move` recreates with the same one
-	Mounts    []Mount           // credential/workspace mounts (e.g. an identity)
-	Volumes   []Volume          // named volumes for session state (workspace, agent state)
-	Env       map[string]string // env vars injected into the sandbox
-	Setup     []string          // shell commands run in the pod after create (e.g. harness install)
+	Name       string
+	Image      string
+	Template   string            // label
+	Runtime    string            // label (default "container")
+	Size       string            // label
+	CPUs       float64           // 0 = leave unset
+	Memory     string            // e.g. "16g"; "" = leave unset
+	Repo       string            // label
+	Mode       string            // label: how the agent runs (interactive | headless | exec) — drives resume on move
+	Autoscale  bool              // label poddle.autoscale: opt in to the daemon's reactive memory-grow autoscaler
+	Identity   string            // label poddle.identity: the coding-agent login, so `move` can re-broker it
+	Harness    string            // label poddle.harness: the agent runtime, so `move` recreates with the same one
+	PolicyName string            // label poddle.policy: the governance policy bound to the pod
+	Mounts     []Mount           // credential/workspace mounts (e.g. an identity)
+	Volumes    []Volume          // named volumes for session state (workspace, agent state)
+	Env        map[string]string // env vars injected into the sandbox
+	Setup      []string          // shell commands run in the pod after create (e.g. harness install)
 }

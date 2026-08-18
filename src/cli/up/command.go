@@ -298,6 +298,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 			if err != nil {
 				return fail(err)
 			}
+			spec.PolicyName = policyName // labelled so the dashboard's pod view shows it
 			if err := b.SetPolicy(o.name, pol); err != nil {
 				return fail(err)
 			}
