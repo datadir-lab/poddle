@@ -122,6 +122,10 @@ func (s *spyBroker) SetPolicy(pod string, p *policy.Policy) error {
 	*s.log = append(*s.log, "policy:"+p.Name)
 	return nil
 }
+func (s *spyBroker) Egress(pod string) (string, string, error) {
+	*s.log = append(*s.log, "egress")
+	return "poddle_egr_spy", "127.0.0.1:9", nil
+}
 
 // stubBroker is a no-op podBroker for tests that don't exercise brokered creds.
 type stubBroker struct{}
@@ -136,6 +140,9 @@ func (stubBroker) IssueHandle(pod, scope string, _ broker.Credential) (string, e
 }
 func (stubBroker) Audit(audit.Event) error                { return nil }
 func (stubBroker) SetPolicy(string, *policy.Policy) error { return nil }
+func (stubBroker) Egress(string) (string, string, error) {
+	return "poddle_egr_stub", "127.0.0.1:9", nil
+}
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}

@@ -56,7 +56,7 @@ func TestDaemon_AuditsHandleIssueAndPostedEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	d := New(&fakeBroker{}, store)
-	if _, err := d.Start("0.0.0.0:0", "redact", "", ""); err != nil {
+	if _, err := d.Start("0.0.0.0:0", "redact", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(d.Handler())
@@ -122,7 +122,7 @@ func testServer(t *testing.T) (*httptest.Server, *fakeBroker) {
 	t.Helper()
 	fb := &fakeBroker{}
 	d := New(fb, nil)
-	if _, err := d.Start("0.0.0.0:0", "redact", "", ""); err != nil {
+	if _, err := d.Start("0.0.0.0:0", "redact", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(d.Handler())
@@ -221,7 +221,7 @@ func TestDaemon_L4Redis_SwapsHandle(t *testing.T) {
 	upAddr := fakeUpstreamRedis(t, &sawReal, &mu)
 
 	d := New(broker.NewBroker(), nil)
-	if _, err := d.Start("0.0.0.0:0", "redact", "127.0.0.1:0", ""); err != nil {
+	if _, err := d.Start("0.0.0.0:0", "redact", "127.0.0.1:0", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = d.Stop(context.Background()) })

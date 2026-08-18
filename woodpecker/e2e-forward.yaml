@@ -1,0 +1,21 @@
+# Forward-proxy e2e — forced egress: policy governs a pod's arbitrary egress.
+#
+# On this step's nested podman: a pod with an allow-list policy has its arbitrary
+# egress routed through the broker's forward proxy (HTTP_PROXY). Reaching an
+# allow-listed host (127.0.0.1) succeeds; a disallowed host (127.0.0.2) is blocked
+# with 403 and never reaches the upstream. Manual.
+#
+# Requires the repo to be security-trusted (privileged, for nested podman).
+
+when:
+  - event: [manual]
+
+steps:
+  e2e-forward:
+    image: quay.io/podman/stable
+    privileged: true
+    commands:
+      - dnf install -y golang git procps-ng
+      - export PATH=$PATH:$(go env GOPATH)/bin
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - task e2e-forward

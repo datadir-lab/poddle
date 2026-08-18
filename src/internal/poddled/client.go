@@ -175,6 +175,25 @@ func (c *Client) Status() (Status, error) {
 	return s, nil
 }
 
+// Egress mints a per-pod egress token and returns it plus the forward-proxy
+// address, so the pod's arbitrary (non-brokered) egress can be routed through
+// the broker (HTTP_PROXY) and governed by the pod's policy.
+func (c *Client) Egress(pod string) (token, addr string, err error) {
+	resp, err := c.http.Post(c.uri("/pods/"+url.PathEscape(pod)+"/egress"), "application/json", nil)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Token string `json:"token"`
+		Addr  string `json:"addr"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return "", "", err
+	}
+	return v.Token, v.Addr, nil
+}
+
 // SetPolicy binds a governance policy to a pod at the daemon; the gateway then
 // enforces it on every request the pod makes.
 func (c *Client) SetPolicy(pod string, p *policy.Policy) error {

@@ -27,7 +27,7 @@ func TestServe_HealthOverUDS(t *testing.T) {
 	sock := filepath.Join(t.TempDir(), "poddled.sock")
 	ctx, cancel := context.WithCancel(context.Background())
 	errc := make(chan error, 1)
-	go func() { errc <- Serve(ctx, sock, "0.0.0.0:0", "redact", "", "") }()
+	go func() { errc <- Serve(ctx, sock, "0.0.0.0:0", "redact", "", "", "") }()
 
 	// Wait for the socket to appear.
 	deadline := time.Now().Add(3 * time.Second)

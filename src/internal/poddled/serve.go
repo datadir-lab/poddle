@@ -47,7 +47,7 @@ func SocketPath() string {
 // gateway (pods reach it over TCP), the L4 Redis listener, and serves the
 // control API on an owner-only Unix socket at sockPath. A stale socket is
 // replaced.
-func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4PostgresBind string) error {
+func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind string) error {
 	dbPath := AuditDBPath()
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return err
@@ -58,7 +58,7 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 	}
 
 	d := New(broker.NewBroker(), store)
-	if _, err := d.Start(gatewayBind, egress, l4RedisBind, l4PostgresBind); err != nil {
+	if _, err := d.Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind); err != nil {
 		return err
 	}
 
