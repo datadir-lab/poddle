@@ -51,6 +51,7 @@ const SEQUENCE = [
   { href: '/docs/examples', label: 'Examples' },
   { href: '/docs/concepts', label: 'Concepts' },
   { href: '/docs/security', label: 'Security' },
+  { href: '/docs/governance', label: 'Governance' },
   { href: '/docs/connectors', label: 'Connectors' },
   { href: '/docs/templates', label: 'Templates' },
   { href: '/docs/headless', label: 'Headless & CI' },
@@ -76,6 +77,7 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
           <a href="/docs/examples" class:list={[isActive('/docs/examples') && 'is-active']}>Examples</a>
           <a href="/docs/concepts" class:list={[isActive('/docs/concepts') && 'is-active']}>Concepts</a>
           <a href="/docs/security" class:list={[isActive('/docs/security') && 'is-active']}>Security</a>
+          <a href="/docs/governance" class:list={[isActive('/docs/governance') && 'is-active']}>Governance</a>
           <a href="/docs/connectors" class:list={[isActive('/docs/connectors') && 'is-active']}>Connectors</a>
           <a href="/docs/templates" class:list={[isActive('/docs/templates') && 'is-active']}>Templates</a>
           <a href="/docs/headless" class:list={[isActive('/docs/headless') && 'is-active']}>Headless &amp; CI</a>
