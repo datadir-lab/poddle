@@ -21,7 +21,7 @@ type Policy = {
 };
 
 const api = {
-  audit: (limit = 500) => fetch(`${CFG.apiBase}/audit?limit=${limit}`, { headers: H }).then((r) => r.json()),
+  audit: (limit = 1000) => fetch(`${CFG.apiBase}/audit?limit=${limit}`, { headers: H }).then((r) => r.json()),
   verify: () => fetch(`${CFG.apiBase}/audit/verify`, { headers: H }).then((r) => r.json()),
   policies: () => fetch(`${CFG.apiBase}/policies`, { headers: H }).then((r) => r.json()),
   putPolicy: (p: Policy) =>
@@ -32,33 +32,137 @@ const api = {
     fetch(`${CFG.apiBase}/policies/${encodeURIComponent(name)}`, { method: "DELETE", headers: H }),
 };
 
-function VerifyBadge() {
-  const [state, setState] = useState<{ ok: boolean; brokenAt: number } | null>(null);
-  useEffect(() => {
-    const tick = () => api.verify().then(setState).catch(() => setState(null));
-    tick();
-    const id = setInterval(tick, 15000);
-    return () => clearInterval(id);
-  }, []);
-  if (!state) return <span class="badge">chain ?</span>;
-  return state.ok
-    ? <span class="badge ok">chain intact ✓</span>
-    : <span class="badge bad">chain BROKEN @{state.brokenAt} ✗</span>;
-}
-
-function AuditView() {
+// useAudit: the single live audit source (initial fetch + SSE tail), shared by
+// the Overview and Audit views so there is one subscription.
+function useAudit(): Event[] {
   const [events, setEvents] = useState<Event[]>([]);
-  const [q, setQ] = useState("");
-  const [decision, setDecision] = useState("");
-
   useEffect(() => {
     api.audit().then((es: Event[]) => setEvents(es || [])).catch(() => {});
     const src = new EventSource(`${CFG.apiBase}/audit/stream`);
     src.onmessage = (e) => {
-      try { const ev = JSON.parse(e.data); setEvents((prev) => [ev, ...prev].slice(0, 2000)); } catch {}
+      try { const ev = JSON.parse(e.data); setEvents((prev) => [ev, ...prev].slice(0, 4000)); } catch {}
     };
     return () => src.close();
   }, []);
+  return events;
+}
+
+type Verify = { ok: boolean; brokenAt: number } | null;
+function useVerify(): Verify {
+  const [v, setV] = useState<Verify>(null);
+  useEffect(() => {
+    const tick = () => api.verify().then(setV).catch(() => setV(null));
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, []);
+  return v;
+}
+
+// ---- aggregations (derived client-side from the audit events) ----
+const secretsFrom = (detail?: string) => { const m = (detail || "").match(/redacted (\d+)/); return m ? +m[1] : 1; };
+
+function summarise(events: Event[]) {
+  const pods = new Set<string>();
+  let requests = 0, redactions = 0, secrets = 0, blocked = 0, denied = 0;
+  for (const e of events) {
+    if (e.pod) pods.add(e.pod);
+    if (e.kind === "request") requests++;
+    if (e.decision === "redact") { redactions++; secrets += secretsFrom(e.detail); }
+    if (e.decision === "block") blocked++;
+    if (e.decision === "deny") denied++;
+  }
+  return { pods: pods.size, requests, redactions, secrets, blocked, denied };
+}
+
+type Grouped = { pod: string; decision: string; upstream: string; count: number; secrets: number };
+function group(events: Event[], decisions: string[]): Grouped[] {
+  const m = new Map<string, Grouped>();
+  for (const e of events) {
+    if (!e.decision || !decisions.includes(e.decision)) continue;
+    const key = `${e.pod || "—"}|${e.decision}|${e.upstream || "—"}`;
+    const g = m.get(key) || { pod: e.pod || "—", decision: e.decision, upstream: e.upstream || "—", count: 0, secrets: 0 };
+    g.count++;
+    if (e.decision === "redact") g.secrets += secretsFrom(e.detail);
+    m.set(key, g);
+  }
+  return [...m.values()].sort((a, b) => b.count - a.count);
+}
+
+// ---- views ----
+function VerifyBadge({ v }: { v: Verify }) {
+  if (!v) return <span class="badge">chain ?</span>;
+  return v.ok
+    ? <span class="badge ok">chain intact ✓</span>
+    : <span class="badge bad">chain BROKEN @{v.brokenAt} ✗</span>;
+}
+
+function Card({ n, label, tone }: { n: number | string; label: string; tone?: string }) {
+  return (
+    <div class={"card" + (tone ? " card--" + tone : "")}>
+      <div class="card__num">{n}</div>
+      <div class="card__label">{label}</div>
+    </div>
+  );
+}
+
+function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod: (pod: string) => void }) {
+  const s = useMemo(() => summarise(events), [events]);
+  const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
+  const caught = useMemo(() => group(events, ["redact", "block"]).slice(0, 12), [events]);
+
+  return (
+    <div>
+      <div class="cards">
+        <Card n={s.pods} label="pods active" />
+        <Card n={s.requests} label="requests" />
+        <Card n={s.secrets} label="secrets redacted" tone={s.secrets ? "warn" : undefined} />
+        <Card n={s.blocked + s.denied} label="blocked / denied" tone={s.blocked + s.denied ? "flag" : undefined} />
+        <Card n={v ? (v.ok ? "✓" : "✗") : "?"} label="audit chain" tone={v && v.ok ? "ok" : v ? "flag" : undefined} />
+      </div>
+
+      <h2 class="section-title">Attention</h2>
+      {attention.length === 0
+        ? <div class="panel empty">no policy denials or blocks — agents are inside their guardrails</div>
+        : <div class="panel">
+            {attention.map((a) => (
+              <button class="attn" onClick={() => onPod(a.pod)}>
+                <span class="attn__pod">{a.pod}</span>
+                <span class="attn__desc">
+                  <span class={"decision d-" + a.decision}>{a.decision}</span> {a.upstream}
+                </span>
+                <span class="attn__count">×{a.count}</span>
+              </button>
+            ))}
+          </div>}
+
+      <h2 class="section-title">Egress &amp; secrets</h2>
+      {caught.length === 0
+        ? <div class="panel empty">nothing caught yet — no secrets redacted, no egress blocked</div>
+        : <div class="table-wrap">
+            <table>
+              <thead><tr><th>pod</th><th>action</th><th>destination</th><th>secrets</th><th>count</th></tr></thead>
+              <tbody>
+                {caught.map((c) => (
+                  <tr onClick={() => onPod(c.pod)} class="clickable">
+                    <td class="c-pod">{c.pod}</td>
+                    <td><span class={"decision d-" + c.decision}>{c.decision}</span></td>
+                    <td class="c-mono">{c.upstream}</td>
+                    <td class="c-mono">{c.decision === "redact" ? c.secrets : <span class="faint">—</span>}</td>
+                    <td class="c-mono">×{c.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>}
+    </div>
+  );
+}
+
+function AuditView({ events, initialPod }: { events: Event[]; initialPod?: string }) {
+  const [q, setQ] = useState(initialPod || "");
+  const [decision, setDecision] = useState("");
+  useEffect(() => { if (initialPod) setQ(initialPod); }, [initialPod]);
 
   const shown = useMemo(() => events.filter((e) => {
     if (decision && e.decision !== decision) return false;
@@ -85,7 +189,7 @@ function AuditView() {
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>time</th><th>pod</th><th>kind</th><th>decision</th><th>upstream</th><th>detail</th></tr>
+            <tr><th scope="col">time</th><th scope="col">pod</th><th scope="col">kind</th><th scope="col">decision</th><th scope="col">upstream</th><th scope="col">detail</th></tr>
           </thead>
           <tbody>
             {shown.length === 0 && <tr><td colSpan={6} class="empty">no events</td></tr>}
@@ -190,8 +294,16 @@ function PolicyView() {
   );
 }
 
+type Tab = "overview" | "audit" | "policies";
 function App() {
-  const [tab, setTab] = useState<"audit" | "policies">("audit");
+  const [tab, setTab] = useState<Tab>("overview");
+  const [podFilter, setPodFilter] = useState<string | undefined>();
+  const events = useAudit();
+  const v = useVerify();
+
+  const goPod = (pod: string) => { setPodFilter(pod); setTab("audit"); };
+  const nav = (t: Tab) => { setTab(t); if (t !== "audit") setPodFilter(undefined); };
+
   return (
     <div>
       <header>
@@ -200,12 +312,17 @@ function App() {
           <span class="brand__sub">governance</span>
         </span>
         <nav>
-          <button class={tab === "audit" ? "on" : ""} onClick={() => setTab("audit")}>Audit</button>
-          <button class={tab === "policies" ? "on" : ""} onClick={() => setTab("policies")}>Policies</button>
+          <button class={tab === "overview" ? "on" : ""} onClick={() => nav("overview")}>Overview</button>
+          <button class={tab === "audit" ? "on" : ""} onClick={() => nav("audit")}>Audit</button>
+          <button class={tab === "policies" ? "on" : ""} onClick={() => nav("policies")}>Policies</button>
         </nav>
-        <VerifyBadge />
+        <VerifyBadge v={v} />
       </header>
-      <main>{tab === "audit" ? <AuditView /> : <PolicyView />}</main>
+      <main>
+        {tab === "overview" && <OverviewView events={events} v={v} onPod={goPod} />}
+        {tab === "audit" && <AuditView events={events} initialPod={podFilter} />}
+        {tab === "policies" && <PolicyView />}
+      </main>
     </div>
   );
 }
