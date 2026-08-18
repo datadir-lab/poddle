@@ -181,6 +181,14 @@ tasks:
       - npm ci
       - npm run build
 
+  e2e-ui:
+    desc: Dashboard UI e2e (Playwright) — drives the real `poddle dashboard` binary in a real browser
+    deps: [build] # produces bin/poddle for the webServer
+    dir: src/web/dashboard
+    cmds:
+      - npm ci
+      - npx playwright test
+
   web-docs:
     desc: Regenerate the docs CLI reference from cobra + lint the doc template examples
     cmds:
