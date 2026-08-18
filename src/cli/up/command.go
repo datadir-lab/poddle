@@ -239,9 +239,12 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 	}
 	spec.Identity = identityName // labelled so `move` can re-broker the same login
 
-	// Any brokered credential — an identity and/or connectors — is issued
-	// against the persistent poddled broker; the handles live until `down`.
-	if identityName != "" || len(tpl.Connectors) > 0 {
+	// The broker is needed for any brokered credential (identity and/or
+	// connectors) AND for a governance policy: a policy forces the pod's
+	// arbitrary egress through the broker's forward proxy, which exists whether
+	// or not the pod has a connector. Handles/policies live until `down`.
+	policyName := flagOr(cmd, "policy", o.policyName, tpl.Policy)
+	if identityName != "" || len(tpl.Connectors) > 0 || (policyName != "" && a.Policies != nil) {
 		if err := b.EnsureRunning(); err != nil {
 			return fail(fmt.Errorf("start poddled: %w", err))
 		}
@@ -293,7 +296,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		}
 		// Bind the pod's governance policy (if any) so the daemon enforces it
 		// on every request the pod makes through the broker.
-		if policyName := flagOr(cmd, "policy", o.policyName, tpl.Policy); policyName != "" && a.Policies != nil {
+		if policyName != "" && a.Policies != nil {
 			pol, err := a.Policies.Get(policyName)
 			if err != nil {
 				return fail(err)
