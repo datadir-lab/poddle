@@ -31,6 +31,12 @@ type ProxyRecord struct {
 // Auditor receives one record per proxied request. The daemon implements it.
 type Auditor interface{ Proxy(ProxyRecord) }
 
+// PolicyChecker decides whether the pod holding handle may reach host with
+// method. The daemon implements it (handle -> pod -> policy); nil = allow all.
+type PolicyChecker interface {
+	Check(handle, host, method string) (allow bool, reason string)
+}
+
 // Gateway is the secretless egress proxy. A pod's harness points at it
 // (BASE_URL) and presents a handle (in Authorization); the gateway resolves the
 // handle to a Credential, injects the REAL secret per the credential's mode, and
@@ -41,6 +47,7 @@ type Gateway struct {
 	handles  *Handles
 	redactor *Redactor
 	auditor  Auditor
+	policy   PolicyChecker
 }
 
 // NewGateway returns a gateway backed by the handle registry, redacting egress
@@ -52,6 +59,9 @@ func (g *Gateway) SetEgressMode(mode string) { g.redactor = NewRedactor(mode) }
 
 // SetAuditor sets the sink that receives one record per proxied request.
 func (g *Gateway) SetAuditor(a Auditor) { g.auditor = a }
+
+// SetPolicyChecker sets the governance policy checker consulted per request.
+func (g *Gateway) SetPolicyChecker(pc PolicyChecker) { g.policy = pc }
 
 // statusCapture wraps a ResponseWriter to remember the upstream status code for
 // the audit record, passing Flush through so SSE (LLM streaming) still flushes.
@@ -85,6 +95,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Capture before the proxy mutates r.
 	handle := handleFromAuth(r.Header.Get("Authorization"))
 	method, path := r.Method, r.URL.Path
+
+	// Policy: the pod's governance policy may forbid this destination/method.
+	// Match on the hostname (port-agnostic).
+	if g.policy != nil {
+		if allow, reason := g.policy.Check(handle, up.Hostname(), method); !allow {
+			http.Error(w, "poddle: blocked by policy: "+reason, http.StatusForbidden)
+			g.audit(handle, up.Host, method, path, "deny", reason, http.StatusForbidden)
+			return
+		}
+	}
 
 	// Egress redaction: scrub secrets from textual bodies (LLM/API JSON). Git
 	// and other binary payloads are skipped so packfiles aren't buffered/mangled.
