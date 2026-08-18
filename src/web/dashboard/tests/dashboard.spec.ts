@@ -71,17 +71,29 @@ test("pods view lists the fleet with state, policy, and performance sparklines",
   await expect(page.locator("table")).toContainText("12.5%");
 });
 
-test("overview summarises the fleet and lifts attention + secrets", async ({ page }) => {
-  await mockAudit(page);
+test("overview: live pod count, attention on denials, secrets ledger", async ({ page }) => {
+  // Audit references 3 distinct pods (incl. a torn-down ghost); the live fleet
+  // has only 2. The "pods active" card must reflect the LIVE fleet, not history.
+  const audit = [...SEED, { seq: 99, time: now(), pod: "ghost-gone", kind: "request", upstream: "x", decision: "allow" }];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: audit }));
+  await mockPods(page); // 2 live pods: agent1, agent2
   await page.goto("/");
+
   await expect(page.locator(".cards")).toContainText("pods active");
-  await expect(page.locator(".cards")).toContainText("secrets redacted");
-  await expect(page.locator(".cards")).toContainText("blocked / denied");
+  await expect(page.locator(".card", { hasText: "pods active" }).locator(".card__num")).toHaveText("2");
   await expect(page.locator(".badge.ok")).toContainText("intact");
+
+  // Denials/blocks surface in Attention.
   await expect(page.getByText("Attention")).toBeVisible();
-  // the deny + blocks surface, and the redaction shows in Egress & secrets
   await expect(page.locator("main")).toContainText("evil.example");
   await expect(page.locator("main")).toContainText("metadata.google.internal");
+
+  // The secrets ledger shows the redaction; no contradictory "no egress blocked"
+  // copy while denials exist.
+  await expect(page.locator("main")).not.toContainText("no egress blocked");
+  await expect(page.locator(".card", { hasText: "secrets redacted" }).locator(".card__num")).toHaveText("1");
 });
 
 test("renders the audit feed, verify badge, and filter", async ({ page }) => {
