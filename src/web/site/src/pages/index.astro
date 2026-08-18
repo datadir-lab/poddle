@@ -214,8 +214,10 @@ import Button from '../components/Button.astro';
   .chip__ext { color: var(--faint); font-size: 0.8rem; }
   .chip--soon { color: var(--faint); font-style: italic; background: transparent; padding: 0.4rem 0.85rem; }
   .chips--planned { margin-top: 0.1rem; }
-  .chips--planned .chip { opacity: 0.62; }
-  .chips--planned a.chip:hover { opacity: 1; }
+  .chips--planned .chip { color: var(--faint); }
+  .chips--planned .chip__logo { opacity: 0.75; }
+  .chips--planned a.chip:hover { color: var(--ink); }
+  .chips--planned a.chip:hover .chip__logo { opacity: 1; }
   .conns { display: flex; flex-wrap: wrap; gap: 1.4rem 1.6rem; margin: 0.3rem 0 0.4rem; }
   .conn { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; width: 78px; text-align: center; text-decoration: none; color: var(--muted); font-size: 0.82rem; font-weight: 500; }
   .conn__i { width: 30px; height: 30px; object-fit: contain; opacity: 0.82; }
@@ -291,8 +293,8 @@ import Button from '../components/Button.astro';
   .pill--handle { border-color: var(--accent); color: var(--accent); }
   .pill--real { border-color: var(--accent); background: #dff0e8; color: var(--accent); }
   .pill--clean { border-color: var(--accent); background: #dff0e8; color: var(--accent); }
-  .pill--leak { border-color: #e2b3a3; background: #f6dcd2; color: #b4552f; }
-  .pill--danger { border-color: #e2b3a3; background: #f6dcd2; color: #b4552f; }
+  .pill--leak { border-color: #e2b3a3; background: #f6dcd2; color: #8a3a19; }
+  .pill--danger { border-color: #e2b3a3; background: #f6dcd2; color: #8a3a19; }
   .picon { flex: none; display: inline-block; width: 12px; height: 12px; background-color: currentColor; -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat; }
   .picon--key { --i: url(/icons/key.svg); }
   .picon--file { --i: url(/icons/file-text.svg); }

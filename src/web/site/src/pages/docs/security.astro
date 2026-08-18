@@ -52,7 +52,7 @@ const scan: [string, string, string][] = [
     <p class="doc-p"><code>egress</code> — what the broker does with secrets in outbound bodies:</p>
     <div class="doc-table">
       <table class="flags">
-        <thead><tr><th>Value</th><th></th><th>Behavior</th></tr></thead>
+        <thead><tr><th>Value</th><th><span class="sr-only">Default</span></th><th>Behavior</th></tr></thead>
         <tbody>
           {egress.map(([v, tag, d]) => (
             <tr>
@@ -67,7 +67,7 @@ const scan: [string, string, string][] = [
     <p class="doc-p" style="margin-top:1.4rem"><code>secret_scan</code> — what happens if a mounted host path carries a credential file:</p>
     <div class="doc-table">
       <table class="flags">
-        <thead><tr><th>Value</th><th></th><th>Behavior</th></tr></thead>
+        <thead><tr><th>Value</th><th><span class="sr-only">Default</span></th><th>Behavior</th></tr></thead>
         <tbody>
           {scan.map(([v, tag, d]) => (
             <tr>
