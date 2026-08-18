@@ -48,13 +48,28 @@ func NewCmd() *cobra.Command {
 func auditCmd() *cobra.Command {
 	var pod, kind, decision string
 	var limit int
+	var verify bool
 	c := &cobra.Command{
 		Use:   "audit",
 		Short: "Show recent audit events (requests, redactions, blocks, handle + pod lifecycle)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
-			events, err := poddled.NewClient("").Audits(audit.Filter{
+			client := poddled.NewClient("")
+			if verify {
+				ok, at, err := client.VerifyAudit()
+				if err != nil {
+					fmt.Fprintln(out, "poddled: not running")
+					return nil
+				}
+				if ok {
+					fmt.Fprintln(out, "audit chain: intact ✓")
+				} else {
+					fmt.Fprintf(out, "audit chain: BROKEN at seq %d ✗\n", at)
+				}
+				return nil
+			}
+			events, err := client.Audits(audit.Filter{
 				Pod: pod, Kind: kind, Decision: decision, Limit: limit,
 			})
 			if err != nil {
@@ -78,6 +93,7 @@ func auditCmd() *cobra.Command {
 	c.Flags().StringVar(&kind, "kind", "", "filter by kind (request|redact|block|handle.issue|pod.up|...)")
 	c.Flags().StringVar(&decision, "decision", "", "filter by decision (allow|redact|block|deny)")
 	c.Flags().IntVar(&limit, "limit", 50, "maximum events to show")
+	c.Flags().BoolVar(&verify, "verify", false, "verify the audit log's hash chain instead of listing events")
 	return c
 }
 

@@ -56,6 +56,7 @@ const (
 type Event struct {
 	Seq      int64     `json:"seq"`
 	Time     time.Time `json:"time"`
+	Source   string    `json:"source,omitempty"` // host id; empty locally, set by the cloud collector
 	Pod      string    `json:"pod,omitempty"`
 	Identity string    `json:"identity,omitempty"`
 	Kind     Kind      `json:"kind"`
@@ -100,8 +101,8 @@ func hostOnly(s string) string {
 // hashWith returns the chain hash of the event's content plus the previous hash.
 func (e Event) hashWith(prev string) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%d\x00%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%s\x00%s\x00%s",
-		e.Seq, e.Time.UnixNano(), e.Pod, e.Identity, e.Kind, e.Upstream,
+	fmt.Fprintf(h, "%d\x00%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%s\x00%s\x00%s",
+		e.Seq, e.Time.UnixNano(), e.Source, e.Pod, e.Identity, e.Kind, e.Upstream,
 		e.Method, e.Path, e.Status, e.Decision, e.Detail, prev)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -153,6 +154,7 @@ const schema = `
 CREATE TABLE IF NOT EXISTS events (
   seq       INTEGER PRIMARY KEY,
   ts        INTEGER NOT NULL,
+  source    TEXT,
   pod       TEXT, identity TEXT, kind TEXT, upstream TEXT,
   method    TEXT, path TEXT, status INTEGER,
   decision  TEXT, detail TEXT,
@@ -192,9 +194,9 @@ func (s *Store) Append(e Event) (Event, error) {
 	e.Hash = e.hashWith(s.lastHash)
 
 	_, err := s.db.Exec(
-		`INSERT INTO events(seq,ts,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		e.Seq, e.Time.UnixNano(), e.Pod, e.Identity, string(e.Kind), e.Upstream,
+		`INSERT INTO events(seq,ts,source,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash)
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		e.Seq, e.Time.UnixNano(), e.Source, e.Pod, e.Identity, string(e.Kind), e.Upstream,
 		e.Method, e.Path, e.Status, string(e.Decision), e.Detail, e.PrevHash, e.Hash)
 	if err != nil {
 		return Event{}, err
@@ -213,7 +215,7 @@ func (s *Store) Append(e Event) (Event, error) {
 
 // Query returns matching events, newest first.
 func (s *Store) Query(f Filter) ([]Event, error) {
-	q := `SELECT seq,ts,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash FROM events WHERE 1=1`
+	q := `SELECT seq,ts,source,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash FROM events WHERE 1=1`
 	var args []any
 	if f.Pod != "" {
 		q += " AND pod = ?"
@@ -253,7 +255,7 @@ func scanEvents(rows *sql.Rows) ([]Event, error) {
 		var e Event
 		var ts int64
 		var kind, decision string
-		if err := rows.Scan(&e.Seq, &ts, &e.Pod, &e.Identity, &kind, &e.Upstream,
+		if err := rows.Scan(&e.Seq, &ts, &e.Source, &e.Pod, &e.Identity, &kind, &e.Upstream,
 			&e.Method, &e.Path, &e.Status, &decision, &e.Detail, &e.PrevHash, &e.Hash); err != nil {
 			return nil, err
 		}
@@ -287,7 +289,7 @@ func (s *Store) Subscribe() (<-chan Event, func()) {
 // the first row whose content or link no longer matches its stored hash.
 func (s *Store) Verify() (ok bool, brokenAt int64, err error) {
 	rows, err := s.db.Query(
-		`SELECT seq,ts,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash FROM events ORDER BY seq ASC`)
+		`SELECT seq,ts,source,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash FROM events ORDER BY seq ASC`)
 	if err != nil {
 		return false, 0, err
 	}
