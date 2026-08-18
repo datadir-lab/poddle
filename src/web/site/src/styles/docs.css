@@ -35,8 +35,9 @@
 .doc-search-modal[hidden] { display: none; }
 .doc-search-modal__backdrop { position: absolute; inset: 0; background: rgba(21, 20, 15, 0.46); }
 .doc-search-modal__panel { position: relative; display: flex; flex-direction: column; width: 100%; max-width: 580px; max-height: 78vh; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 30px 70px -22px rgba(21, 20, 15, 0.55); overflow: hidden; }
-.doc-search-modal__foot { flex: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.9rem; border-top: 1px solid var(--border); font-size: 0.72rem; color: var(--faint); }
-.doc-search-modal__hint { margin-left: auto; }
+.doc-search-modal__foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.7rem; padding: 0.5rem 0.9rem; border-top: 1px solid var(--border); font-size: 0.72rem; color: var(--faint); }
+.doc-search-modal__keys { display: inline-flex; align-items: center; gap: 0.28rem; }
+.doc-search-modal__hint { margin-left: auto; display: inline-flex; align-items: center; gap: 0.28rem; }
 .doc-search-modal__foot kbd { font: 600 0.66rem/1 var(--font-mono, ui-monospace, monospace); color: var(--faint); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.08rem 0.3rem; }
 
 /* Pagefind inside the modal — comfortable input, results scroll within the panel. */

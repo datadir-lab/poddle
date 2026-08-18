@@ -135,7 +135,12 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
     <div class="doc-search-modal__backdrop" data-close></div>
     <div class="doc-search-modal__panel" role="dialog" aria-modal="true" aria-label="Search the docs">
       <div class="doc-search" id="docsearch"></div>
-      <div class="doc-search-modal__foot"><kbd>esc</kbd> to close<span class="doc-search-modal__hint">&#8984;K / <kbd>/</kbd> to open</span></div>
+      <div class="doc-search-modal__foot">
+        <span class="doc-search-modal__keys"><kbd>&#8593;</kbd><kbd>&#8595;</kbd> navigate</span>
+        <span class="doc-search-modal__keys"><kbd>&#8629;</kbd> select</span>
+        <span class="doc-search-modal__keys"><kbd>esc</kbd> close</span>
+        <span class="doc-search-modal__hint"><kbd>&#8984;K</kbd> / <kbd>/</kbd> to open</span>
+      </div>
     </div>
   </div>
 
