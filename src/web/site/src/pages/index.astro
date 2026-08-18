@@ -5,6 +5,46 @@ import Section from '../components/Section.astro';
 import Feature from '../components/Feature.astro';
 import Step from '../components/Step.astro';
 import Button from '../components/Button.astro';
+
+// Workflows shown in the auto-rotating "How it works" carousel.
+const flows = [
+  {
+    key: 'Interactive sandbox',
+    sub: 'A fully-authed shell with no key inside it. Spin up, work, tear down.',
+    steps: [
+      { t: 'Add an identity', c: 'poddle identity add work' },
+      { t: 'Spin up a pod', c: 'poddle up my-sandbox --identity work' },
+      { t: 'Work, then tear down', c: 'poddle down my-sandbox' },
+    ],
+  },
+  {
+    key: 'Headless task',
+    sub: "Hand an agent a job and walk away - it runs in a fresh pod that's gone when it's done.",
+    steps: [
+      { t: 'Run an agent headless', c: 'poddle task "add tests for parseConfig" --identity ci' },
+      { t: "Follow it (or don't)", c: 'poddle logs poddle-task-9f2a --follow' },
+      { t: 'Pod torn down after', c: 'poddle down poddle-task-9f2a' },
+    ],
+  },
+  {
+    key: 'Remote host',
+    sub: 'Run against any machine over SSH. The broker stays put, so your keys never travel.',
+    steps: [
+      { t: 'Point at a host', c: 'export PODDLE_HOST=ssh://you@build-box' },
+      { t: 'Same commands, remotely', c: 'poddle up my-sandbox --identity work' },
+      { t: 'Keys stay on your machine', c: 'poddle down my-sandbox' },
+    ],
+  },
+  {
+    key: 'Governed',
+    sub: 'Pin an egress policy, run under it, and prove exactly what happened.',
+    steps: [
+      { t: 'Spin up under a policy', c: 'poddle up api --policy ci --identity work' },
+      { t: 'Hand off a governed run', c: 'poddle task "triage flaky tests" --template ci' },
+      { t: 'Audit and verify', c: 'poddle dashboard --open' },
+    ],
+  },
+];
 ---
 <Base title="poddle - secret-safe sandboxes for coding agents">
   <Hero />
@@ -209,12 +249,25 @@ import Button from '../components/Button.astro';
     <p class="conn-more"><a href="/connectors">See all connectors →</a></p>
   </Section>
 
-  <Section id="how-it-works" eyebrow="How it works" title="Three commands, no secrets leaked.">
-    <ol class="steps">
-      <Step n={1} title="Add an identity" code="poddle identity add work" />
-      <Step n={2} title="Spin up" code="poddle up my-sandbox --identity work" />
-      <Step n={3} title="Work - then tear down" code="poddle down my-sandbox" />
-    </ol>
+  <Section id="how-it-works" eyebrow="How it works" title="One broker, every workflow.">
+    <div class="flows" data-flows>
+      <div class="flows__tabs" role="tablist" aria-label="Workflows">
+        {flows.map((f, i) => (
+          <button class:list={['flows__tab', i === 0 && 'is-active']} type="button" role="tab" id={`flowtab-${i}`} aria-controls={`flowpanel-${i}`} aria-selected={i === 0 ? 'true' : 'false'} data-i={i}>
+            <span>{f.key}</span>
+            <span class="flows__bar" aria-hidden="true"><span class="flows__fill"></span></span>
+          </button>
+        ))}
+      </div>
+      {flows.map((f, i) => (
+        <div class:list={['flows__panel', i === 0 && 'is-active']} id={`flowpanel-${i}`} role="tabpanel" aria-labelledby={`flowtab-${i}`} tabindex="0" data-i={i}>
+          <p class="flows__sub">{f.sub}</p>
+          <ol class="steps">
+            {f.steps.map((s, k) => <Step n={k + 1} title={s.t} code={s.c} />)}
+          </ol>
+        </div>
+      ))}
+    </div>
   </Section>
 
   <Section title="Give your agents a room of their own.">
@@ -222,12 +275,56 @@ import Button from '../components/Button.astro';
       <Button href="/docs" variant="primary">Get started</Button>
     </div>
   </Section>
+
+  <script is:inline>
+    (function () {
+      const root = document.querySelector('[data-flows]');
+      if (!root) return;
+      const tabs = Array.from(root.querySelectorAll('.flows__tab'));
+      const panels = Array.from(root.querySelectorAll('.flows__panel'));
+      const fills = tabs.map((t) => t.querySelector('.flows__fill'));
+      const DUR = 6500;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let i = 0, timer = null, paused = false;
+      function paint(n) {
+        i = n;
+        tabs.forEach((t, k) => { const a = k === n; t.classList.toggle('is-active', a); t.setAttribute('aria-selected', a ? 'true' : 'false'); });
+        panels.forEach((p, k) => p.classList.toggle('is-active', k === n));
+        fills.forEach((f) => { f.style.transition = 'none'; f.style.width = '0%'; });
+        if (!reduce && !paused) { const f = fills[n]; void f.offsetWidth; f.style.transition = 'width ' + DUR + 'ms linear'; f.style.width = '100%'; }
+      }
+      function schedule() { clearTimeout(timer); if (reduce || paused) return; timer = setTimeout(() => go((i + 1) % tabs.length), DUR); }
+      function go(n) { paint(n); schedule(); }
+      tabs.forEach((t, k) => t.addEventListener('click', () => go(k)));
+      // Pause auto-rotation while the section is hovered or keyboard-focused.
+      root.addEventListener('mouseenter', () => { paused = true; clearTimeout(timer); const f = fills[i]; f.style.transition = 'none'; f.style.width = getComputedStyle(f).width; });
+      root.addEventListener('mouseleave', () => { paused = false; go(i); });
+      root.addEventListener('focusin', () => { paused = true; clearTimeout(timer); });
+      root.addEventListener('focusout', (e) => { if (!root.contains(e.relatedTarget)) { paused = false; go(i); } });
+      go(0);
+    })();
+  </script>
 </Base>
 
 <style>
   .fgroups { display: flex; flex-direction: column; gap: 2.8rem; margin-top: 0.5rem; }
   .fgroup__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--faint); font-weight: 700; margin: 0 0 1.3rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
   .fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1.7rem 2.6rem; }
+
+  /* How it works - auto-rotating workflow carousel */
+  .flows { margin-top: 0.6rem; }
+  .flows__tabs { display: flex; flex-wrap: wrap; gap: 0.2rem 1.7rem; border-bottom: 1px solid var(--border); margin-bottom: 1.7rem; }
+  .flows__tab { position: relative; border: 0; background: none; cursor: pointer; padding: 0.5rem 0 0.85rem; font: 600 0.95rem/1 var(--font-sans); color: var(--faint); transition: color 0.12s; }
+  .flows__tab:hover { color: var(--muted); }
+  .flows__tab.is-active { color: var(--ink); }
+  .flows__bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; }
+  .flows__tab.is-active .flows__bar { background: var(--border); }
+  .flows__fill { display: block; height: 100%; width: 0; background: var(--accent); }
+  .flows__panel { display: none; }
+  .flows__panel.is-active { display: block; animation: flowin 0.35s ease-out; }
+  .flows__panel:focus-visible { outline: none; }
+  .flows__sub { color: var(--muted); max-width: 62ch; margin: 0 0 0.8rem; }
+  @keyframes flowin { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
   .steps { margin: 0; padding: 0; }
   .closing { display: flex; flex-wrap: wrap; gap: 0.85rem; }
   .prose { color: var(--muted); max-width: 60ch; }
