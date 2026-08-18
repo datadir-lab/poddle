@@ -28,7 +28,9 @@ func addCmd(a *app.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a service connection (the token is brokered, never stored in a pod)",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # pipe the token on stdin so it never hits your shell history
+  echo $GITHUB_TOKEN | poddle connect add github --connector forgejo --url https://git.acme.co`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if token == "" { // read the token from stdin so it isn't in argv
 				b, _ := io.ReadAll(cmd.InOrStdin())
@@ -71,9 +73,10 @@ func lsCmd(a *app.App) *cobra.Command {
 
 func rmCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm <name>",
-		Short: "Remove a service connection",
-		Args:  cobra.ExactArgs(1),
+		Use:     "rm <name>",
+		Short:   "Remove a service connection",
+		Example: `  poddle connect rm github`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.Connections.Remove(args[0])
 		},

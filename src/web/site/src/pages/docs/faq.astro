@@ -1,0 +1,117 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+// Grounded in real behavior and error strings from the source:
+// config.go (unknown template / parent / cycle), connect add ("no token…"),
+// identity add (unknown provider), buildSpec (unknown harness), identity
+// status ("NOT authenticated — run: poddle identity add …").
+type QA = { q: string; a: string };
+const setup: QA[] = [
+  {
+    q: 'Do I need Podman installed?',
+    a: 'Yes — poddle drives Podman to create and attach pods, so install it first. Rootless Podman works; see the <code>stats</code> note below for one caveat.',
+  },
+  {
+    q: 'How do I install poddle?',
+    a: 'Build from source with Go 1.25+: <code>go build -o poddle ./src/cli</code>. Prebuilt release binaries are planned.',
+  },
+  {
+    q: 'Can I run against a remote host?',
+    a: 'Set <code>PODDLE_HOST=ssh://user@host</code> and run the same commands; leave it empty for local Podman. The broker runs where you invoke poddle, so your keys never travel to the remote host.',
+  },
+];
+const templates: QA[] = [
+  {
+    q: '“unknown template” — what went wrong?',
+    a: 'poddle looks up <code>--template &lt;name&gt;</code> by filename in <code>.poddle/&lt;name&gt;.toml</code> (project) and <code>~/.config/poddle/templates/&lt;name&gt;.toml</code> (user). Check the name and location — see <a href="/docs/configuration">Configuration</a>.',
+  },
+  {
+    q: '“unknown parent template” or “template cycle via …”',
+    a: 'An <code>extends</code> names a template that doesn’t exist, or two templates extend each other. Fix the chain so it terminates at a real base.',
+  },
+  {
+    q: '“unknown provider” / “unknown harness”',
+    a: 'Today poddle ships the <code>anthropic</code> provider and the <code>claude-code</code> harness; more are planned. Check the flag value.',
+  },
+  {
+    q: 'My identity stopped working.',
+    a: 'Run <code>poddle identity status &lt;name&gt;</code>. If it reports NOT authenticated, re-run <code>poddle identity add &lt;name&gt;</code>. poddle also re-authenticates a stale login before wiring it into a pod, so a dead credential never reaches the sandbox.',
+  },
+];
+const secrets: QA[] = [
+  {
+    q: 'Where are my credentials stored?',
+    a: 'Under <code>~/.config/poddle/identities/&lt;name&gt;/</code> (mode <code>0600</code>) on your machine — never only in poddle. The broker seals a copy into its vault at spin-up; the pod only ever holds a revocable handle.',
+  },
+  {
+    q: 'How do I revoke a pod’s access?',
+    a: '<code>poddle down &lt;name&gt;</code> revokes the pod’s handles as it tears the pod down. Revocation is immediate — no key rotation, no image scrubbing.',
+  },
+  {
+    q: '“no token — pass --token or pipe it on stdin”',
+    a: '<code>poddle connect add</code> needs the service token. Pipe it on stdin (keeps it out of your shell history) or pass <code>--token</code>. See <a href="/docs/connectors">Connectors</a>.',
+  },
+  {
+    q: 'A pod refuses to start on a credential file.',
+    a: 'With <code>secret_scan = "block"</code>, a mount carrying a credential file stops the pod, and <code>block_paths</code> refuses the mount entirely. Loosen to <code>warn</code> or drop the path — see <a href="/docs/security">Security</a>.',
+  },
+];
+const headless: QA[] = [
+  {
+    q: '“poddle stats” shows nothing under rootless Podman.',
+    a: 'Live CPU/memory needs cgroup accounting; some rootless setups without cgroup-v2 delegation don’t expose it. Run on a cgroup-v2 host, or via the system Podman service.',
+  },
+  {
+    q: 'Does autoscale ever shrink my pod?',
+    a: 'No. It grows one size step under memory pressure and never shrinks a live pod out from under a running agent. Headless (<code>task</code>) auto-grows; interactive (<code>up</code>) only warns.',
+  },
+  {
+    q: 'How do I watch a background task?',
+    a: 'Run it with <code>poddle task … --detach</code>, then follow its output with <code>poddle logs &lt;name&gt; --follow</code>. See <a href="/docs/headless">Headless &amp; CI</a>.',
+  },
+];
+const sections: [string, QA[]][] = [
+  ['Install & setup', setup],
+  ['Templates & identities', templates],
+  ['Secrets & safety', secrets],
+  ['Headless & CI', headless],
+];
+---
+<DocsLayout title="FAQ & troubleshooting" description="Common questions and errors — Podman setup, remote hosts, template and identity errors, secret storage and revocation, and headless gotchas.">
+  <div class="doc-intro">
+    <p class="eyebrow">Docs · FAQ</p>
+    <h1 class="doc-title">Questions &amp; gotchas.</h1>
+    <p class="doc-lead">The things people hit first — with the exact fix. If an error here quotes a message, it’s the one poddle actually prints.</p>
+  </div>
+
+  <section class="doc-block" style="margin-top:1.8rem">
+    {sections.map(([title, items]) => (
+      <>
+        <h2>{title}</h2>
+        <dl class="qa">
+          {items.map((it) => (
+            <>
+              <dt class="qa__q" set:html={it.q} />
+              <dd class="qa__a" set:html={it.a} />
+            </>
+          ))}
+        </dl>
+      </>
+    ))}
+  </section>
+
+  <div class="doc-more">
+    <a href="/docs">← Getting started</a>
+    <a href="/docs/configuration">Configuration →</a>
+    <a href="/docs/commands">Command reference →</a>
+  </div>
+</DocsLayout>
+
+<style>
+  .doc-block h2 { margin-top: 2.8rem; }
+  .doc-block h2:first-of-type { margin-top: 0.4rem; }
+  .qa { margin: 0.6rem 0 0; }
+  .qa__q { font-weight: 600; color: var(--ink); margin: 1.3rem 0 0.3rem; }
+  .qa__q:first-of-type { margin-top: 0.4rem; }
+  .qa__a { margin: 0; color: var(--muted); line-height: 1.6; }
+</style>

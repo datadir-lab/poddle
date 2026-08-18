@@ -13,7 +13,9 @@ func NewLogsCmd(a *app.App) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "logs <name|id>",
 		Short: "Show a detached task's output",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # follow a detached task's output live
+  poddle logs poddle-task-9f2a --follow`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reader := "cat " + TaskLogPath
 			if follow {

@@ -28,7 +28,11 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "task <prompt>",
 		Short: "Run a coding agent headless on a prompt in a fresh secretless pod",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # one-shot autonomous run in a fresh pod, torn down after
+  poddle task "add tests for parseConfig" --identity work
+  # burst to a strong pod and keep it to inspect afterward
+  poddle task "port the module to v2" --size strong --keep --identity work`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prompt := args[0]
 			name := podName
