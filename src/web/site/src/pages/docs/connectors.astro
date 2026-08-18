@@ -2,7 +2,7 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 import Callout from '../../components/Callout.astro';
 ---
-<DocsLayout title="Connectors" description="Wire services into a pod through the broker — the token stays in the broker, never in the pod.">
+<DocsLayout title="Connectors" description="Wire services into a pod through the broker - the token stays in the broker, never in the pod.">
   <div class="doc-intro">
     <p class="eyebrow">Docs · Connectors</p>
     <h1 class="doc-title">Wire in services. Keep the tokens out.</h1>
@@ -14,7 +14,7 @@ import Callout from '../../components/Callout.astro';
 
   <section class="doc-block" style="margin-top:1.8rem">
     <h2>Add a connection</h2>
-    <p class="doc-p">Register a service and its token once. It's brokered — never written into a pod.</p>
+    <p class="doc-p">Register a service and its token once. It's brokered - never written into a pod.</p>
     <div class="term">
       <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
       <pre class="term__body"><code><span class="cmt"># pipe the token on stdin so it never hits your shell history</span>
@@ -23,7 +23,7 @@ import Callout from '../../components/Callout.astro';
 <span class="ok">✓ connection “github” added (brokered)</span></code></pre>
     </div>
     <Callout type="tip" title="Pipe secrets, don't type them">
-      <p>Feeding the token on stdin keeps it out of your shell history and process list. You can pass <code>--token</code> / <code>--user</code> directly for scripts, but stdin is the safer default. <code>--connector</code> is the type — <code>forgejo</code>, <code>woodpecker</code>, or a custom one.</p>
+      <p>Feeding the token on stdin keeps it out of your shell history and process list. You can pass <code>--token</code> / <code>--user</code> directly for scripts, but stdin is the safer default. <code>--connector</code> is the type - <code>forgejo</code>, <code>woodpecker</code>, or a custom one.</p>
     </Callout>
 
     <h2 style="margin-top:2.2rem">List &amp; remove</h2>
@@ -39,7 +39,7 @@ import Callout from '../../components/Callout.astro';
     <p class="doc-p">
       Opt a pod into connections through its template's <code>connectors</code> list. When the pod
       calls the service, the broker injects the real credential on the wire and scrubs stray secrets
-      from the outbound body — the pod only ever holds a revocable handle.
+      from the outbound body - the pod only ever holds a revocable handle.
     </p>
     <div class="term">
       <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">.poddle/api.toml</span></div>

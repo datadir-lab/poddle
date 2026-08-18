@@ -19,7 +19,7 @@ const site = Astro.site ?? new URL('https://poddle.dev');
 const canonical = new URL(Astro.url.pathname, site).href;
 const ogImage = new URL('/og.png', site).href;
 
-// Site-wide structured data — one @graph, entities defined once (Organization,
+// Site-wide structured data - one @graph, entities defined once (Organization,
 // WebSite, SoftwareApplication) so search engines and AI crawlers get a single,
 // consistent signal. URLs derive from the configured site so they follow the
 // canonical domain.

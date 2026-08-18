@@ -1,6 +1,6 @@
 /* Shared styles for the /docs/* section. Imported once by DocsLayout, so it
-   loads on docs pages only. Keeps every docs page — including the per-command
-   pages generated from cli.json — visually consistent. */
+   loads on docs pages only. Keeps every docs page - including the per-command
+   pages generated from cli.json - visually consistent. */
 
 .doc-shell { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 2.6rem; padding-block: clamp(2rem, 5vw, 3rem) var(--space-section); align-items: start; }
 .doc-nav { position: sticky; top: 1.4rem; max-height: calc(100vh - 2.4rem); overflow-y: auto; padding-right: 0.3rem; }
@@ -17,7 +17,7 @@
 .doc-nav::-webkit-scrollbar { width: 6px; }
 .doc-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* Sidebar search trigger — opens the command-palette modal. */
+/* Sidebar search trigger - opens the command-palette modal. */
 .doc-search-btn {
   display: flex; align-items: center; gap: 0.5rem; width: 100%;
   height: 36px; margin-bottom: 0.9rem; padding: 0 0.55rem;
@@ -40,7 +40,7 @@
 .doc-search-modal__hint { margin-left: auto; display: inline-flex; align-items: center; gap: 0.28rem; }
 .doc-search-modal__foot kbd { font: 600 0.66rem/1 var(--font-mono, ui-monospace, monospace); color: var(--faint); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.08rem 0.3rem; }
 
-/* Pagefind inside the modal — comfortable input, results scroll within the panel. */
+/* Pagefind inside the modal - comfortable input, results scroll within the panel. */
 .doc-search {
   display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
   --pagefind-ui-scale: 0.85; --pagefind-ui-primary: var(--accent); --pagefind-ui-text: var(--ink);
@@ -57,7 +57,7 @@
 .doc-search .pagefind-ui__form::before { width: 17px !important; height: 17px !important; top: 19px !important; left: 18px !important; opacity: 0.5 !important; }
 .doc-search .pagefind-ui__search-clear { top: 10px !important; right: 10px !important; height: 34px !important; padding: 0 0.7rem !important; font-size: 0.75rem !important; background: #fff !important; }
 .doc-search .pagefind-ui__drawer { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0.9rem 0.6rem !important; }
-/* Dense, scannable result list — the whole row is one hover/click/keyboard target. */
+/* Dense, scannable result list - the whole row is one hover/click/keyboard target. */
 .doc-search .pagefind-ui__message { padding: 0.75rem 0.6rem 0.4rem !important; margin: 0 !important; font-size: 0.68rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint) !important; }
 .doc-search .pagefind-ui__results { display: block !important; }
 .doc-search .pagefind-ui__result { position: relative; padding: 0.55rem 0.6rem !important; margin: 0 0 1px !important; border: 0 !important; border-radius: 8px !important; }

@@ -10,7 +10,7 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 
   <section class="doc-block" style="margin-top:1.8rem">
     <h2>Run an agent headless</h2>
-    <p class="doc-p">Give <code>poddle task</code> a prompt and it runs a coding agent to completion in a throwaway pod — the broker injects credentials on the wire, never into the pod.</p>
+    <p class="doc-p">Give <code>poddle task</code> a prompt and it runs a coding agent to completion in a throwaway pod - the broker injects credentials on the wire, never into the pod.</p>
     <div class="term">
       <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
       <pre class="term__body"><code><span class="cmd">poddle task "port the auth module to the new API" --identity work --size strong</span>
@@ -27,11 +27,11 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 <span class="out">a1b2c3d4e5f6</span>
 <span class="cmd">poddle ls</span>
 <span class="out">ID            NAME  TEMPLATE  SIZE  STATE    REPO</span>
-<span class="out">a1b2c3d4e5f6  api   base      weak  running  —</span>
+<span class="out">a1b2c3d4e5f6  api   base      weak  running  -</span>
 <span class="cmd">poddle down api</span></code></pre>
     </div>
     <h2 style="margin-top:2.2rem">Run against a remote host</h2>
-    <p class="doc-p">Point <code>PODDLE_HOST</code> at an SSH target and every command runs there — same flags, remote pods.</p>
+    <p class="doc-p">Point <code>PODDLE_HOST</code> at an SSH target and every command runs there - same flags, remote pods.</p>
     <div class="term">
       <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
       <pre class="term__body"><code><span class="cmd">export PODDLE_HOST=ssh://build@10.0.0.5</span>

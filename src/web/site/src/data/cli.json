@@ -3,10 +3,11 @@
     "path": "poddle",
     "name": "poddle",
     "use": "poddle",
-    "short": "poddle — secret-safe dev sandboxes for coding agents",
+    "short": "poddle - secret-safe dev sandboxes for coding agents",
     "subcommands": [
       "poddle attach",
       "poddle connect",
+      "poddle dashboard",
       "poddle down",
       "poddle identity",
       "poddle logs",
@@ -79,6 +80,27 @@
     "use": "rm \u003cname\u003e",
     "short": "Remove a service connection",
     "example": "  poddle connect rm github"
+  },
+  {
+    "path": "poddle dashboard",
+    "name": "dashboard",
+    "use": "dashboard",
+    "short": "Serve a local web dashboard of the audit log",
+    "long": "Serve a local, read-only web view of the daemon's audit log (proxied\nrequests, redactions, blocks, handle + pod lifecycle) with a live feed\nand hash-chain verification. Local-only (binds 127.0.0.1).",
+    "flags": [
+      {
+        "name": "open",
+        "type": "bool",
+        "default": "false",
+        "usage": "open the dashboard in your browser"
+      },
+      {
+        "name": "port",
+        "type": "int",
+        "default": "7333",
+        "usage": "local port to bind (127.0.0.1)"
+      }
+    ]
   },
   {
     "path": "poddle down",
@@ -281,6 +303,11 @@
         "usage": "pod name (default: a generated poddle-task-* name)"
       },
       {
+        "name": "policy",
+        "type": "string",
+        "usage": "governance policy to enforce on the pod's egress (from ~/.config/poddle/policies)"
+      },
+      {
         "name": "size",
         "type": "string",
         "default": "weak",
@@ -334,6 +361,11 @@
         "type": "string",
         "default": "docker.io/library/debian:stable-slim",
         "usage": "base image"
+      },
+      {
+        "name": "policy",
+        "type": "string",
+        "usage": "governance policy to enforce on the pod's egress (from ~/.config/poddle/policies)"
       },
       {
         "name": "size",
