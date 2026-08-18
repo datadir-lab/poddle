@@ -115,6 +115,11 @@ test("audit feed: text filter + segmented decision filter (no native select)", a
   await page.getByRole("radio", { name: "deny", exact: true }).click();
   await expect(page.locator("table")).toContainText("metadata.google.internal");
   await expect(page.locator("table")).not.toContainText("evil.example"); // a block, not a deny
+
+  // filtered-empty state is distinguished from no-data-yet
+  await page.getByRole("radio", { name: "all", exact: true }).click();
+  await page.getByPlaceholder("filter").fill("zzz-no-such-host");
+  await expect(page.locator("table")).toContainText("No events match your filter.");
 });
 
 test("creates, lists, and deletes a policy through the editor (real /v1/policies)", async ({ page }) => {
@@ -123,6 +128,7 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await page.getByText("new policy").click();
   await expect(page).toHaveURL(/\/policies\/new$/);
   await expect(page.locator("select")).toHaveCount(0); // segmented egress, no native select
+  await expect(page.getByText("Allowed destinations")).toBeVisible(); // human label, not allow_upstreams
 
   await page.locator(".editor input").first().fill("e2e-pol");
   await page.locator(".editor textarea").first().fill("api.anthropic.com\ngit.internal");
