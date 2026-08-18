@@ -4,12 +4,12 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 // Grounded in real behavior and error strings from the source:
 // config.go (unknown template / parent / cycle), connect add ("no token…"),
 // identity add (unknown provider), buildSpec (unknown harness), identity
-// status ("NOT authenticated — run: poddle identity add …").
+// status ("NOT authenticated - run: poddle identity add …").
 type QA = { q: string; a: string };
 const setup: QA[] = [
   {
     q: 'Do I need Podman installed?',
-    a: 'Yes — poddle drives Podman to create and attach pods, so install it first. Rootless Podman works; see the <code>stats</code> note below for one caveat.',
+    a: 'Yes - poddle drives Podman to create and attach pods, so install it first. Rootless Podman works; see the <code>stats</code> note below for one caveat.',
   },
   {
     q: 'How do I install poddle?',
@@ -22,8 +22,8 @@ const setup: QA[] = [
 ];
 const templates: QA[] = [
   {
-    q: '“unknown template” — what went wrong?',
-    a: 'poddle looks up <code>--template &lt;name&gt;</code> by filename in <code>.poddle/&lt;name&gt;.toml</code> (project) and <code>~/.config/poddle/templates/&lt;name&gt;.toml</code> (user). Check the name and location — see <a href="/docs/configuration">Configuration</a>.',
+    q: '“unknown template” - what went wrong?',
+    a: 'poddle looks up <code>--template &lt;name&gt;</code> by filename in <code>.poddle/&lt;name&gt;.toml</code> (project) and <code>~/.config/poddle/templates/&lt;name&gt;.toml</code> (user). Check the name and location - see <a href="/docs/configuration">Configuration</a>.',
   },
   {
     q: '“unknown parent template” or “template cycle via …”',
@@ -41,19 +41,19 @@ const templates: QA[] = [
 const secrets: QA[] = [
   {
     q: 'Where are my credentials stored?',
-    a: 'Under <code>~/.config/poddle/identities/&lt;name&gt;/</code> (mode <code>0600</code>) on your machine — never only in poddle. The broker seals a copy into its vault at spin-up; the pod only ever holds a revocable handle.',
+    a: 'Under <code>~/.config/poddle/identities/&lt;name&gt;/</code> (mode <code>0600</code>) on your machine - never only in poddle. The broker seals a copy into its vault at spin-up; the pod only ever holds a revocable handle.',
   },
   {
     q: 'How do I revoke a pod’s access?',
-    a: '<code>poddle down &lt;name&gt;</code> revokes the pod’s handles as it tears the pod down. Revocation is immediate — no key rotation, no image scrubbing.',
+    a: '<code>poddle down &lt;name&gt;</code> revokes the pod’s handles as it tears the pod down. Revocation is immediate - no key rotation, no image scrubbing.',
   },
   {
-    q: '“no token — pass --token or pipe it on stdin”',
+    q: '“no token - pass --token or pipe it on stdin”',
     a: '<code>poddle connect add</code> needs the service token. Pipe it on stdin (keeps it out of your shell history) or pass <code>--token</code>. See <a href="/docs/connectors">Connectors</a>.',
   },
   {
     q: 'A pod refuses to start on a credential file.',
-    a: 'With <code>secret_scan = "block"</code>, a mount carrying a credential file stops the pod, and <code>block_paths</code> refuses the mount entirely. Loosen to <code>warn</code> or drop the path — see <a href="/docs/security">Security</a>.',
+    a: 'With <code>secret_scan = "block"</code>, a mount carrying a credential file stops the pod, and <code>block_paths</code> refuses the mount entirely. Loosen to <code>warn</code> or drop the path - see <a href="/docs/security">Security</a>.',
   },
 ];
 const headless: QA[] = [
@@ -77,11 +77,11 @@ const sections: [string, QA[]][] = [
   ['Headless & CI', headless],
 ];
 ---
-<DocsLayout title="FAQ & troubleshooting" description="Common questions and errors — Podman setup, remote hosts, template and identity errors, secret storage and revocation, and headless gotchas.">
+<DocsLayout title="FAQ & troubleshooting" description="Common questions and errors - Podman setup, remote hosts, template and identity errors, secret storage and revocation, and headless gotchas.">
   <div class="doc-intro">
     <p class="eyebrow">Docs · FAQ</p>
     <h1 class="doc-title">Questions &amp; gotchas.</h1>
-    <p class="doc-lead">The things people hit first — with the exact fix. If an error here quotes a message, it’s the one poddle actually prints.</p>
+    <p class="doc-lead">The things people hit first - with the exact fix. If an error here quotes a message, it’s the one poddle actually prints.</p>
   </div>
 
   <section class="doc-block" style="margin-top:1.8rem">

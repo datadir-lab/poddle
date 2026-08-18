@@ -12,7 +12,7 @@ type CommandDoc = {
 
 // Single source of truth: the command tree generated from the cobra CLI by
 // src/cli/docgen (task web-docs). The sidebar is derived from it, so it always
-// matches the code — new commands appear automatically (in "More" if ungrouped).
+// matches the code - new commands appear automatically (in "More" if ungrouped).
 const commands = (cli as CommandDoc[]).filter((c) => c.path !== 'poddle');
 const top = commands.filter((c) => c.path.split(' ').length === 2);
 const subsOf = (path: string) => commands.filter((c) => c.path.startsWith(path + ' '));
@@ -25,7 +25,7 @@ const NAV_GROUPS = [
   { label: 'Headless agents', names: ['task'] },
   { label: 'Auth', names: ['identity'] },
   { label: 'Connectors', names: ['connect'] },
-  { label: 'System', names: ['daemon', 'version'] },
+  { label: 'System', names: ['daemon', 'dashboard', 'version'] },
 ];
 const grouped = new Set(NAV_GROUPS.flatMap((g) => g.names));
 const groups = NAV_GROUPS
@@ -145,7 +145,7 @@ const nextPage = seqIdx >= 0 && seqIdx < SEQUENCE.length - 1 ? SEQUENCE[seqIdx +
   </div>
 
   <!-- Pagefind static search. Generated into /pagefind at build; served during `astro dev` too.
-       Load its CSS non-render-blocking — the search UI is lazy (mounts on first open), and
+       Load its CSS non-render-blocking - the search UI is lazy (mounts on first open), and
        docs.css already styles the modal shell, so nothing needs it during first paint. -->
   <link rel="stylesheet" href="/pagefind/pagefind-ui.css" media="print" data-pagefind-css />
   <noscript><link rel="stylesheet" href="/pagefind/pagefind-ui.css" /></noscript>

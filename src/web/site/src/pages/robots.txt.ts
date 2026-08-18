@@ -1,11 +1,11 @@
 import type { APIRoute } from 'astro';
 
 // Emits /robots.txt from Astro.site so the Sitemap/llms.txt URLs always match
-// the canonical domain. AI crawlers are welcome — for a developer tool, being
+// the canonical domain. AI crawlers are welcome - for a developer tool, being
 // cited in AI answers is a net benefit, so we allow all and only point the way.
 export const GET: APIRoute = ({ site }) => {
   const base = (site?.href ?? 'https://poddle.dev/').replace(/\/$/, '');
-  const body = `# poddle — all crawlers welcome, AI included.
+  const body = `# poddle - all crawlers welcome, AI included.
 User-agent: *
 Allow: /
 

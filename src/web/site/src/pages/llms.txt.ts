@@ -10,16 +10,16 @@ export const GET: APIRoute = ({ site }) => {
 
   const body = `# poddle
 
-> Secret-safe dev sandboxes for coding agents. poddle is a secretless credential broker: a pod holds only a revocable \`poddle_…\` handle, and the broker injects the real key on the wire while scrubbing stray secrets from outbound request bodies — so the raw secret never lands in the pod.
+> Secret-safe dev sandboxes for coding agents. poddle is a secretless credential broker: a pod holds only a revocable \`poddle_…\` handle, and the broker injects the real key on the wire while scrubbing stray secrets from outbound request bodies - so the raw secret never lands in the pod.
 
 ## Docs
 ${[
   link('/docs', 'Getting started', 'install, add an identity, and run a coding agent in a fresh secretless pod'),
   link('/docs/examples', 'Examples', 'end-to-end terminals: headless tasks, up/ls/down, remote hosts'),
-  link('/docs/concepts', 'Concepts', 'the five ideas — identity, provider, harness, pod, broker'),
+  link('/docs/concepts', 'Concepts', 'the five ideas - identity, provider, harness, pod, broker'),
   link('/docs/security', 'Security & threat model', 'isolation, credential injection, egress redaction, and exactly what an attacker gets'),
   link('/docs/connectors', 'Connectors', 'broker services (git, CI, databases) into a pod without the token entering it'),
-  link('/docs/templates', 'Templates', 'reproducible pod blueprints in TOML — image, repo, connectors, safety rules'),
+  link('/docs/templates', 'Templates', 'reproducible pod blueprints in TOML - image, repo, connectors, safety rules'),
   link('/docs/headless', 'Headless & CI', 'poddle task, burst-and-shrink sizing, reactive autoscaling, secret-safe pipelines'),
   link('/docs/configuration', 'Configuration', 'on-disk layout, template resolution and merging, every environment variable'),
   link('/docs/faq', 'FAQ & troubleshooting', 'Podman setup, remote hosts, template/identity errors, secret storage'),

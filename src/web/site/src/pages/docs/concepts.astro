@@ -12,7 +12,7 @@ import Callout from '../../components/Callout.astro';
   <section class="doc-block" style="margin-top:1.8rem">
     <dl class="concepts">
       <dt>Identity</dt>
-      <dd>A coding-agent login, created and stored on your machine — never only in poddle. You authenticate once with <code>poddle identity add</code>; poddle re-authenticates it if it goes stale before wiring it into a pod, so a dead credential never reaches the sandbox.</dd>
+      <dd>A coding-agent login, created and stored on your machine - never only in poddle. You authenticate once with <code>poddle identity add</code>; poddle re-authenticates it if it goes stale before wiring it into a pod, so a dead credential never reaches the sandbox.</dd>
       <dt>Provider</dt>
       <dd>The auth vendor behind an identity (e.g. Anthropic). A provider knows how to authenticate a login and materialize it into a pod's mounts and environment.</dd>
       <dt>Harness</dt>
@@ -20,11 +20,11 @@ import Callout from '../../components/Callout.astro';
       <dt>Pod</dt>
       <dd>An isolated, disposable Podman-backed environment created by <code>poddle up</code> (or per <code>poddle task</code>) and removed by <code>poddle down</code>. Sized <code>weak</code> (2 vCPU / 4 GB) or <code>strong</code> (8 vCPU / 16 GB); resize it live with <code>poddle resize</code>, or re-home a session onto a fresh shell with <code>poddle move</code>.</dd>
       <dt>Broker</dt>
-      <dd>The secret-safe egress path — the <code>poddled</code> daemon. The pod carries a revocable handle, and the broker injects the real credential on the wire while scrubbing stray secrets from outbound bodies — so the raw secret never lands in the pod. <code>poddle connect</code> brokers services (git, CI, …) the same way.</dd>
+      <dd>The secret-safe egress path - the <code>poddled</code> daemon. The pod carries a revocable handle, and the broker injects the real credential on the wire while scrubbing stray secrets from outbound bodies - so the raw secret never lands in the pod. <code>poddle connect</code> brokers services (git, CI, …) the same way.</dd>
     </dl>
 
     <Callout type="note" title="The broker is the whole trick">
-      <p>Everything else is plumbing around one guarantee: the pod holds a revocable <em>handle</em>, and the broker swaps in the real credential on the wire. Revoke the handle and the pod is instantly locked out — no key rotation, no scrubbing a container image.</p>
+      <p>Everything else is plumbing around one guarantee: the pod holds a revocable <em>handle</em>, and the broker swaps in the real credential on the wire. Revoke the handle and the pod is instantly locked out - no key rotation, no scrubbing a container image.</p>
     </Callout>
   </section>
 
