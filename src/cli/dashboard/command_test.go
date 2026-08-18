@@ -32,6 +32,36 @@ func TestHandler_ServesEmbeddedBundle(t *testing.T) {
 	}
 }
 
+func TestHandler_SPAFallback(t *testing.T) {
+	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), nil, nil))
+	t.Cleanup(srv.Close)
+
+	// A client-side route path must serve the SPA shell (index.html) so deep
+	// links and refreshes work with history-API routing.
+	for _, path := range []string{"/pods", "/audit", "/pods/my-agent", "/policies/prod"} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "assets/") {
+			t.Fatalf("GET %s should serve the SPA shell; got %d:\n%s", path, resp.StatusCode, body)
+		}
+	}
+
+	// A missing asset must still 404 — the fallback must not mask it (else a
+	// stale hashed bundle reference would silently serve HTML).
+	r2, err := http.Get(srv.URL + "/assets/does-not-exist.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusNotFound {
+		t.Errorf("missing asset should 404, got %d", r2.StatusCode)
+	}
+}
+
 func TestHandler_ProxiesV1AuditToDaemon(t *testing.T) {
 	// A stub daemon on a Unix socket answering the /audit* routes.
 	sock := filepath.Join(t.TempDir(), "daemon.sock")
