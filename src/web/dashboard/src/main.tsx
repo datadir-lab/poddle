@@ -201,6 +201,51 @@ function Card({ n, label, tone }: { n: number | string; label: string; tone?: st
   );
 }
 
+// Segmented is an accessible single-select control (role=radiogroup) for a
+// small set of mutually exclusive options that should all stay visible with
+// immediate effect — the right pattern for egress mode and the audit filter,
+// and it keeps the bundle dependency-free for go:embed. An option's `tone`
+// colors the active segment by its meaning (e.g. block = deny-red).
+type SegOption = { value: string; label: string; tone?: string };
+function Segmented({ value, options, onChange, ariaLabel }: {
+  value: string; options: SegOption[]; onChange: (v: string) => void; ariaLabel: string;
+}) {
+  const idx = Math.max(0, options.findIndex((o) => o.value === value));
+  const onKey = (e: KeyboardEvent) => {
+    let ni = idx;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") ni = (idx + 1) % options.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") ni = (idx - 1 + options.length) % options.length;
+    else return;
+    e.preventDefault();
+    onChange(options[ni].value);
+  };
+  return (
+    <div class="seg" role="radiogroup" aria-label={ariaLabel} onKeyDown={onKey}>
+      {options.map((o, i) => (
+        <button type="button" role="radio" aria-checked={value === o.value} data-tone={o.tone}
+          tabIndex={i === idx ? 0 : -1}
+          class={"seg__opt" + (value === o.value ? " on" : "")}
+          onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const DECISION_FILTER: SegOption[] = [
+  { value: "", label: "all" },
+  { value: "allow", label: "allow", tone: "allow" },
+  { value: "redact", label: "redact", tone: "redact" },
+  { value: "block", label: "block", tone: "deny" },
+  { value: "deny", label: "deny", tone: "deny" },
+];
+const EGRESS_MODES: SegOption[] = [
+  { value: "redact", label: "redact", tone: "redact" },
+  { value: "block", label: "block", tone: "deny" },
+  { value: "off", label: "off", tone: "faint" },
+];
+
 function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod: (pod: string) => void }) {
   const { pods: livePods } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
@@ -302,13 +347,7 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
       <div class="toolbar">
         <input class="grow" placeholder="filter pod / kind / upstream…" value={q}
           onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
-        <select value={decision} onChange={(e) => setDecision((e.target as HTMLSelectElement).value)}>
-          <option value="">all decisions</option>
-          <option value="allow">allow</option>
-          <option value="redact">redact</option>
-          <option value="block">block</option>
-          <option value="deny">deny</option>
-        </select>
+        <Segmented value={decision} options={DECISION_FILTER} onChange={setDecision} ariaLabel="filter by decision" />
         <span class="count">{shown.length} events</span>
       </div>
       <div class="table-wrap">
@@ -373,12 +412,8 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
           <input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </div>
         <div class="narrow">
-          <label>egress</label>
-          <select value={egress} onChange={(e) => setEgress((e.target as HTMLSelectElement).value)}>
-            <option value="redact">redact</option>
-            <option value="block">block</option>
-            <option value="off">off</option>
-          </select>
+          <label>egress mode</label>
+          <Segmented value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
       <label>allow_upstreams — default-deny when set; one host per line (".x" = any subdomain)</label>

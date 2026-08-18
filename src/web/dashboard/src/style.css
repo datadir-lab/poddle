@@ -84,6 +84,22 @@ main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 
 .toolbar .grow { flex: 1; }
 .toolbar .count { color: var(--faint); font-size: 0.82rem; white-space: nowrap; }
 
+/* ---- segmented control (replaces native <select>) ---- */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: #fff; }
+.seg__opt {
+  font: 600 0.8rem/1 var(--font-sans);
+  background: transparent; border: 0; border-left: 1px solid var(--border);
+  color: var(--faint); padding: 0.46rem 0.8rem; cursor: pointer; white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.seg__opt:first-child { border-left: 0; }
+.seg__opt:hover { color: var(--ink); background: var(--surface); }
+.seg__opt.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.seg__opt.on[data-tone="allow"] { color: var(--allow); background: color-mix(in srgb, var(--allow) 12%, transparent); }
+.seg__opt.on[data-tone="redact"] { color: var(--redact); background: color-mix(in srgb, var(--redact) 12%, transparent); }
+.seg__opt.on[data-tone="deny"] { color: var(--deny); background: color-mix(in srgb, var(--deny) 12%, transparent); }
+.seg__opt.on[data-tone="faint"] { color: var(--muted); background: var(--surface); }
+
 /* ---- overview ---- */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 0.9rem; margin-bottom: 0.5rem; }
 .card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; padding: 1rem 1.15rem; }

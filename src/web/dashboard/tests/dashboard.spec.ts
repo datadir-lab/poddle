@@ -96,16 +96,23 @@ test("overview: live pod count, attention on denials, secrets ledger", async ({ 
   await expect(page.locator(".card", { hasText: "secrets redacted" }).locator(".card__num")).toHaveText("1");
 });
 
-test("renders the audit feed, verify badge, and filter", async ({ page }) => {
+test("audit feed: text filter + segmented decision filter (no native select)", async ({ page }) => {
   await mockAudit(page);
-  await page.goto("/");
-  await page.getByRole("link", { name: "Audit" }).click(); // default view is Overview now
+  await page.goto("/audit"); // deep-link
+  await expect(page.locator("select")).toHaveCount(0); // native dropdown replaced
   await expect(page.locator("table")).toContainText("api.anthropic.com");
   await expect(page.locator("table")).toContainText("evil.example");
 
+  // text filter
   await page.getByPlaceholder("filter").fill("evil");
   await expect(page.locator("table")).toContainText("evil.example");
   await expect(page.locator("table")).not.toContainText("api.anthropic.com");
+  await page.getByPlaceholder("filter").fill("");
+
+  // segmented decision filter: show only denials
+  await page.getByRole("radio", { name: "deny", exact: true }).click();
+  await expect(page.locator("table")).toContainText("metadata.google.internal");
+  await expect(page.locator("table")).not.toContainText("evil.example"); // a block, not a deny
 });
 
 test("creates, lists, and deletes a policy through the editor (real /v1/policies)", async ({ page }) => {
@@ -113,15 +120,19 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await page.getByRole("link", { name: "Policies" }).click();
   await page.getByText("new policy").click();
   await expect(page).toHaveURL(/\/policies\/new$/);
+  await expect(page.locator("select")).toHaveCount(0); // segmented egress, no native select
 
   await page.locator(".editor input").first().fill("e2e-pol");
   await page.locator(".editor textarea").first().fill("api.anthropic.com\ngit.internal");
+  await page.getByRole("radio", { name: "block", exact: true }).click(); // egress = block
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page.locator(".list")).toContainText("e2e-pol");
   await expect(page).toHaveURL(/\/policies\/e2e-pol$/); // save deep-links to the policy
 
   await page.locator(".list a", { hasText: "e2e-pol" }).click();
+  // the egress mode round-tripped through the file store and shows as active
+  await expect(page.getByRole("radio", { name: "block", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
 });
