@@ -199,12 +199,24 @@ function group(events: Event[], decisions: string[]): Grouped[] {
   return [...m.values()].sort((a, b) => b.count - a.count);
 }
 
+// relTime renders an event's age compactly (the absolute time goes in a tooltip).
+function relTime(iso: string): string {
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+
 // ---- views ----
 function VerifyBadge({ v }: { v: Verify }) {
-  if (!v) return <span class="badge">chain ?</span>;
+  if (!v) return <span class="badge">verifying…</span>;
   return v.ok
     ? <span class="badge ok">chain intact ✓</span>
-    : <span class="badge bad">chain BROKEN @{v.brokenAt} ✗</span>;
+    : <span class="badge bad">chain broken @{v.brokenAt} ✗</span>;
 }
 
 function Card({ n, label, tone }: { n: number | string; label: string; tone?: string }) {
@@ -261,7 +273,7 @@ const EGRESS_MODES: SegOption[] = [
   { value: "off", label: "off", tone: "faint" },
 ];
 
-function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod: (pod: string) => void }) {
+function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string) => void }) {
   const { pods: livePods } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
   const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
@@ -274,7 +286,6 @@ function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod:
         <Card n={s.requests} label="requests" />
         <Card n={s.secrets} label="secrets redacted" tone={s.secrets ? "warn" : undefined} />
         <Card n={s.blocked + s.denied} label="blocked / denied" tone={s.blocked + s.denied ? "flag" : undefined} />
-        <Card n={v ? (v.ok ? "✓" : "✗") : "?"} label="audit chain" tone={v && v.ok ? "ok" : v ? "flag" : undefined} />
       </div>
 
       <h2 class="section-title">Attention</h2>
@@ -323,7 +334,7 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
           <tr><th scope="col">pod</th><th scope="col">state</th><th scope="col">size</th><th scope="col">mode</th><th scope="col">policy</th><th scope="col" class="num">cpu</th><th scope="col" class="num">memory</th></tr>
         </thead>
         <tbody>
-          {pods.length === 0 && <tr><td colSpan={7} class="empty">no pods running</td></tr>}
+          {pods.length === 0 && <tr><td colSpan={7} class="empty">No pods running yet — start one with <code>poddle up</code>.</td></tr>}
           {pods.map((p) => {
             const h = hist[p.name] || { cpu: [], mem: [] };
             return (
@@ -366,15 +377,19 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
         <span class="count">{shown.length} events</span>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="dense">
           <thead>
             <tr><th scope="col">time</th><th scope="col">pod</th><th scope="col">kind</th><th scope="col">decision</th><th scope="col">upstream</th><th scope="col">detail</th></tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <tr><td colSpan={6} class="empty">no events</td></tr>}
+            {shown.length === 0 && (
+              <tr><td colSpan={6} class="empty">
+                {q || decision ? "No events match your filter." : "Monitoring active — no events recorded yet."}
+              </td></tr>
+            )}
             {shown.slice(0, 800).map((e) => (
               <tr key={e.seq}>
-                <td class="c-time">{new Date(e.time).toLocaleTimeString()}</td>
+                <td class="c-time" title={new Date(e.time).toLocaleString()}>{relTime(e.time)}</td>
                 <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
                 <td class="c-mono">{e.kind}</td>
                 <td><span class={"decision d-" + (e.decision || "")}>{e.decision || <span class="faint">—</span>}</span></td>
@@ -423,20 +438,20 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
     <div class="editor">
       <div class="row">
         <div>
-          <label>name</label>
+          <label>Name</label>
           <input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </div>
         <div class="narrow">
-          <label>egress mode</label>
+          <label>Egress mode</label>
           <Segmented value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
-      <label>allow_upstreams — default-deny when set; one host per line (".x" = any subdomain)</label>
-      <textarea value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} />
-      <label>deny_upstreams — always denied (wins)</label>
-      <textarea value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} />
-      <label>methods — per-host allowed HTTP methods (JSON)</label>
-      <textarea value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} />
+      <label>Allowed destinations <span class="label-hint">default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
+      <textarea value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
+      <label>Always blocked <span class="label-hint">wins over allowed · one host per line</span></label>
+      <textarea value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
+      <label>Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
+      <textarea value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
       {err && <div class="err">{err}</div>}
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
@@ -519,7 +534,7 @@ function App() {
         <VerifyBadge v={v} />
       </header>
       <main>
-        {route.view === "overview" && <OverviewView events={events} v={v} onPod={goPod} />}
+        {route.view === "overview" && <OverviewView events={events} onPod={goPod} />}
         {route.view === "pods" && <PodsView onPod={goPod} />}
         {route.view === "pod" && <PodDetailView name={route.name} events={events} />}
         {route.view === "audit" && <AuditView events={events} initialPod={route.pod} />}
