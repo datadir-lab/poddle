@@ -76,8 +76,39 @@ func Handler(sock string, policies policy.Store, pods PodsSource) http.Handler {
 		})
 	}
 	mux.Handle("/v1/", proxy) // /v1/audit* -> daemon
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	mux.Handle("/", spaHandler(sub))
 	return mux
+}
+
+// spaHandler serves the embedded bundle with a single-page-app fallback: an
+// existing file is served as-is; a missing /assets/* path 404s (never mask a
+// stale hashed-bundle reference with HTML); any other path is a client-side
+// route, so it returns index.html and the router takes over in the browser.
+func spaHandler(fsys fs.FS) http.Handler {
+	files := http.FileServer(http.FS(fsys))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if name == "" {
+			name = "index.html"
+		}
+		if f, err := fsys.Open(name); err == nil {
+			_ = f.Close()
+			files.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			http.NotFound(w, r)
+			return
+		}
+		b, err := fs.ReadFile(fsys, "index.html")
+		if err != nil {
+			http.Error(w, "index.html missing from bundle", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache") // always re-fetch the shell so a new bundle is picked up
+		_, _ = w.Write(b)
+	})
 }
 
 // registerPolicyAPI wires the /v1/policies CRUD contract onto mux, backed by the

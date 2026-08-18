@@ -37,6 +37,57 @@ const api = {
     fetch(`${CFG.apiBase}/policies/${encodeURIComponent(name)}`, { method: "DELETE", headers: H }),
 };
 
+// ---- router ----
+// A tiny dependency-free history router. The Go handler serves the SPA shell for
+// any non-asset path, so these URLs deep-link and survive a refresh.
+type Route =
+  | { view: "overview" }
+  | { view: "pods" }
+  | { view: "pod"; name: string }
+  | { view: "audit"; pod?: string }
+  | { view: "policies"; name?: string };
+
+function parseRoute(path: string): Route {
+  const [p, qs] = path.split("?");
+  const seg = p.split("/").filter(Boolean);
+  const query = new URLSearchParams(qs || "");
+  switch (seg[0]) {
+    case "pods":
+      return seg[1] ? { view: "pod", name: decodeURIComponent(seg[1]) } : { view: "pods" };
+    case "audit":
+      return { view: "audit", pod: query.get("pod") || undefined };
+    case "policies":
+      return { view: "policies", name: seg[1] ? decodeURIComponent(seg[1]) : undefined };
+    default:
+      return { view: "overview" };
+  }
+}
+
+function useRoute(): Route {
+  const [path, setPath] = useState(location.pathname + location.search);
+  useEffect(() => {
+    const on = () => setPath(location.pathname + location.search);
+    addEventListener("popstate", on);
+    return () => removeEventListener("popstate", on);
+  }, []);
+  return parseRoute(path);
+}
+
+function navigate(to: string) {
+  if (to === location.pathname + location.search) return;
+  history.pushState(null, "", to);
+  dispatchEvent(new PopStateEvent("popstate")); // notify useRoute subscribers
+}
+
+// linkTo intercepts a plain-left-click on an <a> for SPA nav while keeping the
+// href real (so middle-click / ⌘-click open a new tab, and the status bar shows
+// the target).
+const linkTo = (to: string) => (e: MouseEvent) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  navigate(to);
+};
+
 // useAudit: the single live audit source (initial fetch + SSE tail), shared by
 // the Overview and Audit views so there is one subscription.
 function useAudit(): Event[] {
@@ -287,7 +338,7 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
 const lines = (a?: string[]) => (a || []).join("\n");
 const parseLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
-function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved: () => void; onDeleted: () => void }) {
+function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved: (name: string) => void; onDeleted: () => void }) {
   const [name, setName] = useState(policy.name);
   const [allow, setAllow] = useState(lines(policy.allow_upstreams));
   const [deny, setDeny] = useState(lines(policy.deny_upstreams));
@@ -310,7 +361,7 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
       methods: parsedMethods, egress,
     });
     if (!res.ok) { setErr("save failed: " + res.status); return; }
-    onSaved();
+    onSaved(name.trim());
   };
   const del = async () => { await api.delPolicy(policy.name); onDeleted(); };
 
@@ -346,58 +397,83 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
   );
 }
 
-function PolicyView() {
+function PolicyView({ selected }: { selected?: string }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
-  const [sel, setSel] = useState<Policy | null>(null);
-
   const load = () => api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => setPolicies([]));
   useEffect(() => { load(); }, []);
+
+  // The selected policy is URL-driven (/policies/:name; "new" is the blank draft).
+  const sel: Policy | null =
+    selected === "new" ? { name: "", egress: "redact" }
+      : selected ? (policies.find((p) => p.name === selected) || null)
+        : null;
 
   return (
     <div class="layout">
       <div class="list">
         {policies.map((p) => (
-          <button key={p.name} class={sel && sel.name === p.name ? "on" : ""} onClick={() => setSel(p)}>{p.name}</button>
+          <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
+            class={selected === p.name ? "on" : ""}>{p.name}</a>
         ))}
-        <button class="new" onClick={() => setSel({ name: "", egress: "redact" })}>＋ new policy</button>
+        <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ new policy</a>
       </div>
       {sel
-        ? <PolicyEditor policy={sel} onSaved={() => { load(); }} onDeleted={() => { setSel(null); load(); }} />
+        ? <PolicyEditor policy={sel}
+            onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
+            onDeleted={() => { load(); navigate("/policies"); }} />
         : <div class="editor empty">select a policy, or create one</div>}
     </div>
   );
 }
 
-type Tab = "overview" | "pods" | "audit" | "policies";
+function NavLink({ to, active, children }: { to: string; active: boolean; children: any }) {
+  return <a href={to} class={active ? "on" : ""} onClick={linkTo(to)}>{children}</a>;
+}
+
+// goPod routes to a pod's drill-down page.
+const goPod = (pod: string) => navigate("/pods/" + encodeURIComponent(pod));
+
+function PodDetailView({ name, events }: { name: string; events: Event[] }) {
+  return (
+    <div>
+      <div class="detail-head">
+        <a href="/pods" class="back" onClick={linkTo("/pods")}>← Pods</a>
+        <h1 class="detail-title">{name}</h1>
+      </div>
+      {/* Task A: the drill-down is the pod's audit trail; a later task adds its
+          live stats + bound policy + lifecycle. */}
+      <AuditView events={events} initialPod={name} />
+    </div>
+  );
+}
+
 function App() {
-  const [tab, setTab] = useState<Tab>("overview");
-  const [podFilter, setPodFilter] = useState<string | undefined>();
+  const route = useRoute();
   const events = useAudit();
   const v = useVerify();
-
-  const goPod = (pod: string) => { setPodFilter(pod); setTab("audit"); };
-  const nav = (t: Tab) => { setTab(t); if (t !== "audit") setPodFilter(undefined); };
+  const active = route.view === "pod" ? "pods" : route.view;
 
   return (
     <div>
       <header>
-        <span class="brand">
+        <a class="brand" href="/overview" onClick={linkTo("/overview")}>
           <span class="brand__name">poddle</span>
           <span class="brand__sub">governance</span>
-        </span>
+        </a>
         <nav>
-          <button class={tab === "overview" ? "on" : ""} onClick={() => nav("overview")}>Overview</button>
-          <button class={tab === "pods" ? "on" : ""} onClick={() => nav("pods")}>Pods</button>
-          <button class={tab === "audit" ? "on" : ""} onClick={() => nav("audit")}>Audit</button>
-          <button class={tab === "policies" ? "on" : ""} onClick={() => nav("policies")}>Policies</button>
+          <NavLink to="/overview" active={active === "overview"}>Overview</NavLink>
+          <NavLink to="/pods" active={active === "pods"}>Pods</NavLink>
+          <NavLink to="/audit" active={active === "audit"}>Audit</NavLink>
+          <NavLink to="/policies" active={active === "policies"}>Policies</NavLink>
         </nav>
         <VerifyBadge v={v} />
       </header>
       <main>
-        {tab === "overview" && <OverviewView events={events} v={v} onPod={goPod} />}
-        {tab === "pods" && <PodsView onPod={goPod} />}
-        {tab === "audit" && <AuditView events={events} initialPod={podFilter} />}
-        {tab === "policies" && <PolicyView />}
+        {route.view === "overview" && <OverviewView events={events} v={v} onPod={goPod} />}
+        {route.view === "pods" && <PodsView onPod={goPod} />}
+        {route.view === "pod" && <PodDetailView name={route.name} events={events} />}
+        {route.view === "audit" && <AuditView events={events} initialPod={route.pod} />}
+        {route.view === "policies" && <PolicyView selected={route.name} />}
       </main>
     </div>
   );

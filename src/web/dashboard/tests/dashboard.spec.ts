@@ -28,14 +28,37 @@ test("loads the console with overview, pods, audit, and policies tabs", async ({
   await page.goto("/");
   await expect(page.locator(".brand__name")).toContainText("poddle");
   for (const t of ["Overview", "Pods", "Audit", "Policies"]) {
-    await expect(page.getByRole("button", { name: t })).toBeVisible();
+    await expect(page.getByRole("link", { name: t })).toBeVisible();
   }
+});
+
+test("routes with real URLs: deep-link, nav updates the URL, back works", async ({ page }) => {
+  await mockPods(page);
+  // Deep-link straight to /pods (SPA fallback served the shell) → Pods is active.
+  await page.goto("/pods");
+  await expect(page.getByRole("link", { name: "Pods" })).toHaveClass(/on/);
+  await expect(page.locator("main table")).toBeVisible();
+
+  // Clicking Audit pushes /audit and marks it active.
+  await page.getByRole("link", { name: "Audit" }).click();
+  await expect(page).toHaveURL(/\/audit$/);
+  await expect(page.getByRole("link", { name: "Audit" })).toHaveClass(/on/);
+
+  // Browser back returns to /pods.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/pods$/);
+  await expect(page.getByRole("link", { name: "Pods" })).toHaveClass(/on/);
+
+  // A pod row drills down to /pods/:name.
+  await page.locator("tr", { hasText: "agent1" }).first().click();
+  await expect(page).toHaveURL(/\/pods\/agent1$/);
+  await expect(page.locator(".detail-title")).toHaveText("agent1");
 });
 
 test("pods view lists the fleet with state, policy, and performance sparklines", async ({ page }) => {
   await mockPods(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Pods" }).click();
+  await page.getByRole("link", { name: "Pods" }).click();
   await expect(page.locator("table")).toContainText("agent1");
   await expect(page.locator("table")).toContainText("agent2");
   // state badges + policy binding + autoscale tag surface
@@ -64,7 +87,7 @@ test("overview summarises the fleet and lifts attention + secrets", async ({ pag
 test("renders the audit feed, verify badge, and filter", async ({ page }) => {
   await mockAudit(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Audit" }).click(); // default view is Overview now
+  await page.getByRole("link", { name: "Audit" }).click(); // default view is Overview now
   await expect(page.locator("table")).toContainText("api.anthropic.com");
   await expect(page.locator("table")).toContainText("evil.example");
 
@@ -75,16 +98,18 @@ test("renders the audit feed, verify badge, and filter", async ({ page }) => {
 
 test("creates, lists, and deletes a policy through the editor (real /v1/policies)", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Policies" }).click();
+  await page.getByRole("link", { name: "Policies" }).click();
   await page.getByText("new policy").click();
+  await expect(page).toHaveURL(/\/policies\/new$/);
 
   await page.locator(".editor input").first().fill("e2e-pol");
   await page.locator(".editor textarea").first().fill("api.anthropic.com\ngit.internal");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page.locator(".list")).toContainText("e2e-pol");
+  await expect(page).toHaveURL(/\/policies\/e2e-pol$/); // save deep-links to the policy
 
-  await page.locator(".list button", { hasText: "e2e-pol" }).click();
+  await page.locator(".list a", { hasText: "e2e-pol" }).click();
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
 });
