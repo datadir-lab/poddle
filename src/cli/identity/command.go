@@ -31,7 +31,9 @@ func addCmd(store *idn.Store, reg idn.Registry) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add an identity by logging into a provider (client-side)",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # log into a provider once; the key stays on your machine
+  poddle identity add work --provider anthropic`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p, ok := reg.Get(provider)
 			if !ok {
@@ -70,9 +72,10 @@ func lsCmd(store *idn.Store, reg idn.Registry) *cobra.Command {
 
 func statusCmd(store *idn.Store, reg idn.Registry) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <name>",
-		Short: "Check whether an identity is authenticated",
-		Args:  cobra.ExactArgs(1),
+		Use:     "status <name>",
+		Short:   "Check whether an identity is authenticated",
+		Example: `  poddle identity status work`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := store.Get(args[0])
 			if err != nil {
@@ -98,9 +101,10 @@ func statusCmd(store *idn.Store, reg idn.Registry) *cobra.Command {
 
 func rmCmd(store *idn.Store) *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm <name>",
-		Short: "Remove an identity",
-		Args:  cobra.ExactArgs(1),
+		Use:     "rm <name>",
+		Short:   "Remove an identity",
+		Example: `  poddle identity rm work`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return store.Remove(args[0])
 		},

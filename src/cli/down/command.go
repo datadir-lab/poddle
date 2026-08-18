@@ -20,7 +20,9 @@ func NewCmd(a *app.App, r podRevoker) *cobra.Command {
 	return &cobra.Command{
 		Use:   "down <name|id>",
 		Short: "Stop and remove a sandbox",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # tear down the pod and revoke its handles
+  poddle down my-sandbox`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = r.RevokePod(args[0]) // best-effort: the pod's handles die with it
 			if err := a.Engine.Remove(args[0]); err != nil {

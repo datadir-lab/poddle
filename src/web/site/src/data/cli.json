@@ -24,7 +24,8 @@
     "path": "poddle attach",
     "name": "attach",
     "use": "attach \u003cname|id\u003e",
-    "short": "Reconnect to a running sandbox"
+    "short": "Reconnect to a running sandbox",
+    "example": "  # reconnect to a detached pod's shell\n  poddle attach my-sandbox"
   },
   {
     "path": "poddle connect",
@@ -42,6 +43,7 @@
     "name": "add",
     "use": "add \u003cname\u003e",
     "short": "Add a service connection (the token is brokered, never stored in a pod)",
+    "example": "  # pipe the token on stdin so it never hits your shell history\n  echo $GITHUB_TOKEN | poddle connect add github --connector forgejo --url https://git.acme.co",
     "flags": [
       {
         "name": "connector",
@@ -75,13 +77,15 @@
     "path": "poddle connect rm",
     "name": "rm",
     "use": "rm \u003cname\u003e",
-    "short": "Remove a service connection"
+    "short": "Remove a service connection",
+    "example": "  poddle connect rm github"
   },
   {
     "path": "poddle down",
     "name": "down",
     "use": "down \u003cname|id\u003e",
-    "short": "Stop and remove a sandbox"
+    "short": "Stop and remove a sandbox",
+    "example": "  # tear down the pod and revoke its handles\n  poddle down my-sandbox"
   },
   {
     "path": "poddle identity",
@@ -100,6 +104,7 @@
     "name": "add",
     "use": "add \u003cname\u003e",
     "short": "Add an identity by logging into a provider (client-side)",
+    "example": "  # log into a provider once; the key stays on your machine\n  poddle identity add work --provider anthropic",
     "flags": [
       {
         "name": "provider",
@@ -119,19 +124,22 @@
     "path": "poddle identity rm",
     "name": "rm",
     "use": "rm \u003cname\u003e",
-    "short": "Remove an identity"
+    "short": "Remove an identity",
+    "example": "  poddle identity rm work"
   },
   {
     "path": "poddle identity status",
     "name": "status",
     "use": "status \u003cname\u003e",
-    "short": "Check whether an identity is authenticated"
+    "short": "Check whether an identity is authenticated",
+    "example": "  poddle identity status work"
   },
   {
     "path": "poddle logs",
     "name": "logs",
     "use": "logs \u003cname|id\u003e",
     "short": "Show a detached task's output",
+    "example": "  # follow a detached task's output live\n  poddle logs poddle-task-9f2a --follow",
     "flags": [
       {
         "name": "follow",
@@ -153,6 +161,7 @@
     "name": "move",
     "use": "move \u003cname\u003e",
     "short": "Re-home a pod's session onto a fresh, re-sized shell (keeps workspace + state)",
+    "example": "  # move onto a bigger shell without losing workspace or agent state\n  poddle move my-sandbox --size strong",
     "flags": [
       {
         "name": "detach",
@@ -189,6 +198,7 @@
     "name": "resize",
     "use": "resize \u003cname|id\u003e [size]",
     "short": "Change a running pod's CPU/memory live (no restart)",
+    "example": "  # jump to a named size, or set CPU/memory directly\n  poddle resize my-sandbox strong\n  poddle resize my-sandbox --cpus 8 --memory 16g",
     "flags": [
       {
         "name": "cpus",
@@ -207,7 +217,8 @@
     "path": "poddle run",
     "name": "run",
     "use": "run \u003cname|id\u003e \u003ccommand\u003e...",
-    "short": "Run a command in a running sandbox"
+    "short": "Run a command in a running sandbox",
+    "example": "  # run a command in a pod without attaching\n  poddle run my-sandbox go test ./..."
   },
   {
     "path": "poddle stats",
@@ -220,6 +231,7 @@
     "name": "task",
     "use": "task \u003cprompt\u003e",
     "short": "Run a coding agent headless on a prompt in a fresh secretless pod",
+    "example": "  # one-shot autonomous run in a fresh pod, torn down after\n  poddle task \"add tests for parseConfig\" --identity work\n  # burst to a strong pod and keep it to inspect afterward\n  poddle task \"port the module to v2\" --size strong --keep --identity work",
     "flags": [
       {
         "name": "autoscale",
@@ -286,6 +298,7 @@
     "name": "up",
     "use": "up [name]",
     "short": "Create a sandbox and connect to it",
+    "example": "  # a shell wired to your work identity\n  poddle up my-sandbox --identity work --harness claude-code\n  # from a template, in the background\n  poddle up api --template api --identity work --detach",
     "flags": [
       {
         "name": "autoscale",
