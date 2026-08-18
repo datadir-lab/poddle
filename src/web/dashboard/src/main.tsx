@@ -498,15 +498,40 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
 // goPod routes to a pod's drill-down page.
 const goPod = (pod: string) => navigate("/pods/" + encodeURIComponent(pod));
 
+function Fact({ label, children }: { label: string; children: any }) {
+  return <div><dt>{label}</dt><dd>{children}</dd></div>;
+}
+
 function PodDetailView({ name, events }: { name: string; events: Event[] }) {
+  const { pods, hist } = usePods();
+  const pod = pods.find((p) => p.name === name);
+  const h = hist[name] || { cpu: [], mem: [] };
   return (
     <div>
       <div class="detail-head">
         <a href="/pods" class="back" onClick={linkTo("/pods")}>← Pods</a>
         <h1 class="detail-title">{name}</h1>
+        {pod
+          ? <span class={"state state--" + pod.state}>{pod.state}</span>
+          : <span class="state state--stopped">not running</span>}
+        {pod?.autoscale && <span class="tag">auto</span>}
       </div>
-      {/* Task A: the drill-down is the pod's audit trail; a later task adds its
-          live stats + bound policy + lifecycle. */}
+
+      {pod && (
+        <dl class="facts">
+          <Fact label="size"><span class="c-mono">{pod.size}</span></Fact>
+          <Fact label="mode"><span class="c-mono">{pod.mode || "—"}</span></Fact>
+          <Fact label="policy">
+            {pod.policy
+              ? <a class="fact-link c-mono" href={`/policies/${encodeURIComponent(pod.policy)}`} onClick={linkTo(`/policies/${encodeURIComponent(pod.policy)}`)}>{pod.policy}</a>
+              : <span class="faint">none</span>}
+          </Fact>
+          <Fact label="cpu"><span class="perf-inline"><Spark data={h.cpu} /><span class="c-mono">{pod.cpu || "—"}</span></span></Fact>
+          <Fact label="memory"><span class="perf-inline"><Spark data={h.mem} /><span class="c-mono">{pod.mem || "—"}</span></span></Fact>
+        </dl>
+      )}
+
+      <h2 class="section-title">Audit trail</h2>
       <AuditView events={events} initialPod={name} />
     </div>
   );

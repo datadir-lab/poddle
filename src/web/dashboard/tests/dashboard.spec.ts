@@ -55,6 +55,27 @@ test("routes with real URLs: deep-link, nav updates the URL, back works", async 
   await expect(page.locator(".detail-title")).toHaveText("agent1");
 });
 
+test("pod drill-down shows live facts + the pod's audit trail", async ({ page }) => {
+  await mockPods(page);
+  await mockAudit(page);
+  await page.goto("/pods/agent1"); // deep-link into the drill-down
+
+  await expect(page.locator(".detail-title")).toHaveText("agent1");
+  await expect(page.locator(".detail-head .state--running")).toBeVisible();
+  await expect(page.locator(".detail-head .tag")).toHaveText("auto"); // agent1 autoscales
+
+  // live facts: bound policy (links to /policies/:name), mode
+  await expect(page.locator(".facts")).toContainText("headless");
+  await expect(page.locator(".facts a.fact-link")).toHaveText("prod");
+  await page.locator(".facts a.fact-link").click();
+  await expect(page).toHaveURL(/\/policies\/prod$/); // policy fact deep-links
+
+  // back to the pod, its audit trail is scoped to agent1 (agent2's block hidden)
+  await page.goBack();
+  await expect(page.locator("table")).toContainText("api.anthropic.com");
+  await expect(page.locator("table")).not.toContainText("evil.example");
+});
+
 test("pods view lists the fleet with state, policy, and performance sparklines", async ({ page }) => {
   await mockPods(page);
   await page.goto("/");
