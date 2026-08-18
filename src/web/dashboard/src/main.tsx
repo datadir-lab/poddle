@@ -19,10 +19,15 @@ type Policy = {
   name: string; allow_upstreams?: string[]; deny_upstreams?: string[];
   methods?: Record<string, string[]>; egress?: string;
 };
+type Pod = {
+  name: string; state: string; size: string; mode: string; policy: string;
+  autoscale: boolean; cpu: string; memPerc: string; mem: string;
+};
 
 const api = {
   audit: (limit = 1000) => fetch(`${CFG.apiBase}/audit?limit=${limit}`, { headers: H }).then((r) => r.json()),
   verify: () => fetch(`${CFG.apiBase}/audit/verify`, { headers: H }).then((r) => r.json()),
+  pods: () => fetch(`${CFG.apiBase}/pods`, { headers: H }).then((r) => r.json()),
   policies: () => fetch(`${CFG.apiBase}/policies`, { headers: H }).then((r) => r.json()),
   putPolicy: (p: Policy) =>
     fetch(`${CFG.apiBase}/policies/${encodeURIComponent(p.name)}`, {
@@ -57,6 +62,45 @@ function useVerify(): Verify {
     return () => clearInterval(id);
   }, []);
   return v;
+}
+
+// usePods polls /v1/pods and keeps a rolling CPU/mem history per pod for the
+// sparklines (the browser is the time-series store — no server needed).
+type Hist = Record<string, { cpu: number[]; mem: number[] }>;
+function usePods(): { pods: Pod[]; hist: Hist } {
+  const [pods, setPods] = useState<Pod[]>([]);
+  const [hist, setHist] = useState<Hist>({});
+  useEffect(() => {
+    const tick = () => api.pods().then((ps: Pod[]) => {
+      setPods(ps || []);
+      setHist((h) => {
+        const nh: Hist = { ...h };
+        for (const p of ps || []) {
+          const cur = nh[p.name] || { cpu: [], mem: [] };
+          nh[p.name] = {
+            cpu: [...cur.cpu, parseFloat(p.cpu) || 0].slice(-40),
+            mem: [...cur.mem, parseFloat(p.memPerc) || 0].slice(-40),
+          };
+        }
+        return nh;
+      });
+    }).catch(() => {});
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => clearInterval(id);
+  }, []);
+  return { pods, hist };
+}
+
+function Spark({ data, tone }: { data: number[]; tone: string }) {
+  if (data.length < 2) return <span class="faint">—</span>;
+  const w = 64, h = 18, last = data.length - 1;
+  const pts = data.map((v, i) => `${(i / last) * w},${h - (Math.min(Math.max(v, 0), 100) / 100) * h}`).join(" ");
+  return (
+    <svg class={"spark spark--" + tone} width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+      <polyline points={pts} fill="none" />
+    </svg>
+  );
 }
 
 // ---- aggregations (derived client-side from the audit events) ----
@@ -155,6 +199,36 @@ function OverviewView({ events, v, onPod }: { events: Event[]; v: Verify; onPod:
               </tbody>
             </table>
           </div>}
+    </div>
+  );
+}
+
+function PodsView({ onPod }: { onPod: (pod: string) => void }) {
+  const { pods, hist } = usePods();
+  return (
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">pod</th><th scope="col">state</th><th scope="col">size</th><th scope="col">mode</th><th scope="col">policy</th><th scope="col">cpu</th><th scope="col">memory</th></tr>
+        </thead>
+        <tbody>
+          {pods.length === 0 && <tr><td colSpan={7} class="empty">no pods running</td></tr>}
+          {pods.map((p) => {
+            const h = hist[p.name] || { cpu: [], mem: [] };
+            return (
+              <tr key={p.name} class="clickable" onClick={() => onPod(p.name)}>
+                <td class="c-pod">{p.name}{p.autoscale && <span class="tag">auto</span>}</td>
+                <td><span class={"state state--" + p.state}>{p.state}</span></td>
+                <td class="c-mono">{p.size}</td>
+                <td class="c-mono">{p.mode || <span class="faint">—</span>}</td>
+                <td class="c-mono">{p.policy || <span class="faint">—</span>}</td>
+                <td class="perf"><Spark data={h.cpu} tone="cpu" /><span class="c-mono">{p.cpu || "—"}</span></td>
+                <td class="perf"><Spark data={h.mem} tone="mem" /><span class="c-mono">{p.memPerc || "—"}</span></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -294,7 +368,7 @@ function PolicyView() {
   );
 }
 
-type Tab = "overview" | "audit" | "policies";
+type Tab = "overview" | "pods" | "audit" | "policies";
 function App() {
   const [tab, setTab] = useState<Tab>("overview");
   const [podFilter, setPodFilter] = useState<string | undefined>();
@@ -313,6 +387,7 @@ function App() {
         </span>
         <nav>
           <button class={tab === "overview" ? "on" : ""} onClick={() => nav("overview")}>Overview</button>
+          <button class={tab === "pods" ? "on" : ""} onClick={() => nav("pods")}>Pods</button>
           <button class={tab === "audit" ? "on" : ""} onClick={() => nav("audit")}>Audit</button>
           <button class={tab === "policies" ? "on" : ""} onClick={() => nav("policies")}>Policies</button>
         </nav>
@@ -320,6 +395,7 @@ function App() {
       </header>
       <main>
         {tab === "overview" && <OverviewView events={events} v={v} onPod={goPod} />}
+        {tab === "pods" && <PodsView onPod={goPod} />}
         {tab === "audit" && <AuditView events={events} initialPod={podFilter} />}
         {tab === "policies" && <PolicyView />}
       </main>
