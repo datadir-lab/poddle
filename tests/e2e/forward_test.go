@@ -77,9 +77,9 @@ func TestE2E_ForwardProxy_GovernsArbitraryEgress(t *testing.T) {
 		t.Fatalf("up --policy failed: %v\n%s", err, out)
 	}
 
+	// `poddle run` already wraps the command in `sh -c`, so pass it as one arg.
 	code := func(url string) string {
-		r := exec.Command(bin, "run", pod, "sh", "-c",
-			`curl -s -o /dev/null -w "%{http_code}" `+url)
+		r := exec.Command(bin, "run", pod, `curl -s -o /dev/null -w "%{http_code}" `+url)
 		r.Env = env
 		out, _ := r.CombinedOutput()
 		return strings.TrimSpace(string(out))
