@@ -29,16 +29,26 @@ import Callout from '../../components/Callout.astro';
     <h2>Prerequisites</h2>
     <ul class="doc-list">
       <li><strong>Podman</strong> - poddle drives Podman to create and attach pods.</li>
-      <li><strong>Go 1.25+</strong> - to build from source (prebuilt releases are on the way).</li>
+      <li><strong>Go 1.25+</strong> - only if you build from source; prebuilt binaries and packages ship with every release.</li>
     </ul>
 
     <h2 style="margin-top:2rem">Install</h2>
     <div class="term">
-      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">build from source</span></div>
-      <pre class="term__body"><code><span class="cmd">git clone https://github.com/datadir-lab/poddle</span>
-<span class="cmd">cd poddle</span>
-<span class="cmd">go build -o poddle ./src/cli</span></code></pre>
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">install poddle</span></div>
+      <pre class="term__body"><code><span class="cmt"># any platform - downloads the signed release binary</span>
+<span class="cmd">curl -sSf https://get.poddle.dev | sh</span>
+
+<span class="cmt"># Homebrew (macOS / Linux)</span>
+<span class="cmd">brew tap datadir-lab/tap &amp;&amp; brew install poddle</span>
+
+<span class="cmt"># Scoop (Windows)</span>
+<span class="cmd">scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket</span>
+<span class="cmd">scoop install poddle</span>
+
+<span class="cmt"># Go</span>
+<span class="cmd">go install github.com/datadir-lab/poddle/src@latest</span></code></pre>
     </div>
+    <p class="doc-p">Linux <code>.deb</code>/<code>.rpm</code>/<code>.apk</code> packages ship on each <a href="https://github.com/datadir-lab/poddle/releases">release</a>. Building from source instead? <code>git clone</code>, then <code>go build -o poddle ./src/cli</code>.</p>
 
     <h2 style="margin-top:2rem">Quickstart</h2>
     <p class="doc-p">Log into a provider, create a pod wired to that identity, then remove it:</p>
