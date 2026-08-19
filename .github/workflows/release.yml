@@ -36,3 +36,18 @@ jobs:
           # Pushes the Homebrew formula + Scoop manifest to the tap/bucket repos.
           # Absent -> goreleaser skips those uploads (release still succeeds).
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      # Keep get.poddle.dev (curl | sh) serving the current installer. Skips
+      # cleanly if the Bunny storage key is absent, so releases never break.
+      - name: Publish install.sh to get.poddle.dev
+        env:
+          BUNNY_KEY: ${{ secrets.BUNNY_GET_STORAGE_KEY }}
+        run: |
+          if [ -z "$BUNNY_KEY" ]; then
+            echo "BUNNY_GET_STORAGE_KEY not set; skipping get.poddle.dev upload."
+            exit 0
+          fi
+          curl -fsS -T install.sh \
+            -H "AccessKey: $BUNNY_KEY" \
+            https://storage.bunnycdn.com/datadir-poddle-get/install.sh
+          echo "Uploaded install.sh to get.poddle.dev."
