@@ -2,6 +2,12 @@
 
 **Self-hostable, secret-safe dev sandboxes for coding agents.**
 
+[![CI](https://github.com/datadir-lab/poddle/actions/workflows/ci.yml/badge.svg)](https://github.com/datadir-lab/poddle/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/datadir-lab/poddle?sort=semver)](https://github.com/datadir-lab/poddle/releases)
+[![codecov](https://codecov.io/gh/datadir-lab/poddle/branch/main/graph/badge.svg)](https://codecov.io/gh/datadir-lab/poddle)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/datadir-lab/poddle/badge)](https://securityscorecards.dev/viewer/?uri=github.com/datadir-lab/poddle)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
+
 `poddle up` spins an isolated, reproducible pod on your own infra, wired to your
 stack (git host, CI, registries, databases) — and **no real secret ever enters
 the pod**. The agent gets a revocable *handle*; a broker on your host holds the
@@ -176,7 +182,6 @@ enterprise** editions are commercial and live in a separate, private repository.
 - **[LICENSING.md](./LICENSING.md)** — what's licensed how, and how the
   proprietary editions coexist with an AGPL core.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — how to contribute (DCO sign-off).
-- **[TRADEMARKS.md](./TRADEMARKS.md)** — the "poddle" name.
 - **[docs/design/open-core.md](./docs/design/open-core.md)** — the engineering
   boundary between core and cloud.
 

@@ -20,19 +20,19 @@ are additive; they never fork or replace the core.
 ## Repository topology
 
 ```
-github.com/datadir-lab/poddle          public,  AGPL-3.0     (this repo)
-github.com/datadir-lab/poddle-cloud     private, proprietary
+github.com/datadir-lab/poddle               public,  AGPL-3.0     (this repo)
+poddle-cloud                                 private, proprietary  (never published)
 ```
 
-- **poddle** (this repo) is the whole open-source product. When we publish to
-  GitHub (`github.com/datadir-lab/poddle`) it is a straight mirror of this repo -
-  there is nothing to redact, because the closed code lives in a different repo.
-- **poddle-cloud** is private and never mirrored. It depends on the core the way
+- **poddle** (this repo) is the whole open-source product, developed in the open
+  on GitHub. The closed code lives in a different repo, so there is nothing to
+  redact here.
+- **poddle-cloud** is private and never published. It depends on the core the way
   any operator would: it runs the released `poddle` broker.
 
 Keeping closed code in a **separate repo** (not a filtered subdirectory) makes the
-boundary a repository boundary - impossible to leak through a mirror
-misconfiguration, and clean history on both sides.
+boundary a repository boundary - impossible to leak, with clean history on both
+sides.
 
 ## The arms-length rule (the important one)
 
@@ -70,4 +70,4 @@ in, or dual-licensed into, the proprietary editions.
 - The cloud consumes core capabilities only through the broker's released CLI /
   control API, versioned like any external contract.
 - This repo stays self-contained: nothing here imports or references the private
-  repo, so the public mirror is always complete and buildable on its own.
+  repo, so the public repository is always complete and buildable on its own.
