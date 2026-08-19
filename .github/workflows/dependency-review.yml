@@ -1,0 +1,24 @@
+name: Dependency review
+
+# Blocks pull requests that introduce dependencies with known vulnerabilities,
+# before they reach main. Complements Dependabot (fixes existing advisories) and
+# the clean osv-scanner baseline. PR-only: the action diffs base vs head.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          # Fail on high/critical advisories in newly added deps. Kept at "high"
+          # so routine dev-dependency churn in src/web does not block PRs.
+          fail-on-severity: high
