@@ -1,0 +1,100 @@
+# Security design and cryptography
+
+This document records poddle's secure-design posture and its cryptography
+inventory. It is the canonical reference for the security questions in our
+[OpenSSF Best Practices self-assessment](./openssf-best-practices.md) and for
+anyone reviewing how poddle handles secrets. For how to *report* a vulnerability,
+see [SECURITY.md](../SECURITY.md).
+
+## Threat model
+
+poddle's whole purpose is to run an untrusted coding agent without giving it real
+credentials. The design assumptions:
+
+- **The pod is untrusted.** A coding agent (and any code it runs) inside a pod
+  may be adversarial. It must never obtain a real credential.
+- **The broker is trusted** and runs on the user's own host. It holds the real
+  credentials, injects them per request, and stays outside the pod's reach.
+- **The network is hostile.** All brokered upstreams are reached over TLS; the
+  pod holds only opaque, revocable *handles*, never secrets.
+
+The core invariant — *no real secret is ever present inside a pod* — is enforced
+in code and guarded by architecture and end-to-end tests (`task arch`, `task
+e2e-*`; see [TESTING.md](../TESTING.md)).
+
+## Secure-design principles applied
+
+- **Secretless by construction.** The pod receives a handle; the broker swaps it
+  for the real credential on the wire (`src/internal/broker/gateway.go`). HTTP
+  services get header injection; databases (Postgres, Redis) are terminated at
+  the broker, which performs the real authentication handshake and splices the
+  sockets so the password never reaches the pod.
+- **Least privilege / fail-closed mounts.** `block_paths` refuses to create a pod
+  that would mount host secret stores (`~/.ssh`, `~/.aws`, poddle's own token
+  store); bind mounts are scanned for credentials (`secret_scan = warn | block`).
+- **Defense in depth on egress.** The gateway redacts the broker's managed
+  secrets plus high-confidence secret shapes (private keys, `AKIA…`, `ghp_…`)
+  from outbound bodies, and can block on detection (`egress = redact | block |
+  off`, `src/internal/broker/redactor.go`). Every brokered request is recorded in
+  a tamper-evident audit log.
+- **Revocation.** `poddle down` revokes a pod's handles; access dies immediately
+  because the broker stops honoring them.
+
+## Cryptography inventory
+
+poddle does not invent cryptographic primitives. It uses well-reviewed,
+standard protocols implemented with Go's standard library and
+`golang.org/x/crypto`; all of it is FLOSS and reproducible with FLOSS tools.
+
+| Concern | What poddle uses | Where |
+|---|---|---|
+| Transport / MITM resistance | TLS via Go `net/http` + `crypto/tls` (TLS 1.2+ by default), to HTTPS-only upstreams; no `InsecureSkipVerify` | `src/internal/broker`, `src/internal/connector` |
+| Database auth (Postgres) | SCRAM-SHA-256 (RFC 5802 / RFC 7677), PBKDF2-SHA-256, HMAC-SHA-256 | `src/internal/l4/scram.go`, `postgres.go` |
+| Database auth (Redis) | Redis `AUTH` over the broker-terminated connection | `src/internal/l4/redis.go` |
+| Secure randomness | `crypto/rand` for handles and SCRAM client nonces | `src/internal/broker/handles.go`, `src/internal/l4/postgres.go`, `src/internal/poddled/daemon.go` |
+| In-memory secret protection | memguard (`github.com/awnumar/memguard`) guarded enclaves; BLAKE2b via `golang.org/x/crypto` | broker credential vault |
+| Release integrity | cosign keyless signature over `checksums.txt` + SLSA provenance (`*.intoto.jsonl`) | `.github/workflows/release.yml`, `.goreleaser.yaml` |
+
+Notes that map to the OpenSSF crypto criteria:
+
+- **Published protocols only** (`crypto_published`, `crypto_working`,
+  `crypto_weaknesses`): SCRAM-SHA-256 and TLS are publicly specified and
+  reviewed. No MD5/SHA-1-based or otherwise-broken constructions are used for
+  security purposes.
+- **Delegated to libraries** (`crypto_call`, `crypto_floss`): primitives come
+  from the Go standard library and `x/crypto`; the only bespoke code is the
+  SCRAM *protocol driver*, which composes stdlib HMAC/SHA-256/PBKDF2.
+- **Key length** (`crypto_keylength`): SCRAM-SHA-256 derives a 32-byte key; TLS
+  suite and key selection follow Go defaults, which meet current NIST minimums.
+- **Randomness** (`crypto_random`): all security-relevant random values use
+  `crypto/rand`, never `math/rand`.
+- **Password storage** (`crypto_password_storage`): *not applicable* — poddle
+  authenticates no end-users and stores no user passwords. It brokers *service*
+  credentials, which live only in memory (memguard) on the trusted host and are
+  never written to disk. The one at-rest secret, a client-side identity token,
+  is written with owner-only `0600` permissions
+  (`src/internal/identity/anthropic/anthropic.go`) and is scoped to the user's
+  own machine.
+- **DoS hardening**: the SCRAM client caps the server-supplied PBKDF2 iteration
+  count at 2^20 to bound work from a hostile or misbehaving server
+  (`maxSCRAMIterations`, `src/internal/l4/scram.go`).
+
+## Knowledge of common vulnerabilities
+
+Maintainers apply standard secure-coding practice for this class of tool:
+
+- **Input parsing is fuzzed.** The wire parsers most exposed to hostile input —
+  the Postgres and Redis L4 handlers, the SCRAM exchange, and the egress policy
+  engine — have Go native fuzz targets (`src/internal/l4/*_fuzz_test.go`,
+  `src/internal/policy/policy_fuzz_test.go`), run continuously.
+- **Secrets stay out of logs and egress** by design (redaction + audit above).
+- **Static and dependency analysis run in CI**: CodeQL (SAST), golangci-lint,
+  `govulncheck`, osv-scanner, and Dependabot. See
+  [`.github/workflows`](../.github/workflows).
+
+## References
+
+- Architecture and boundaries: [docs/design/](./design)
+  (`secretless-identity.md`, `stateless-pods-and-move.md`, `open-core.md`, …)
+- Reporting: [SECURITY.md](../SECURITY.md)
+- Test tiers: [TESTING.md](../TESTING.md)

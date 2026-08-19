@@ -21,3 +21,20 @@ covered separately at the same contact.
 
 poddle is pre-1.0 and moves fast; security fixes land on `main`. Supported
 versions will be listed here once tagged releases begin.
+
+## Disclosure in release notes
+
+Every release that fixes a publicly known, security-relevant vulnerability —
+whether in poddle itself or in a bundled dependency — names it in the release
+notes and in [CHANGELOG.md](./CHANGELOG.md) under a `Security` heading, with the
+advisory identifier (CVE / GHSA) where one exists. Routine dependency updates
+with no known vulnerability are not called out this way.
+
+## How we find vulnerabilities
+
+Dependencies are watched continuously: Dependabot opens update PRs,
+[osv-scanner](./osv-scanner.toml) and `govulncheck` run in CI, CodeQL provides
+static analysis, and the [OpenSSF Scorecard](https://securityscorecards.dev/viewer/?uri=github.com/datadir-lab/poddle)
+tracks the project's security posture. See
+[docs/security-design.md](./docs/security-design.md) for the secure-design and
+cryptography posture.
