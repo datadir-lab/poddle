@@ -14,10 +14,17 @@ builds:
     binary: poddle
     env:
       - CGO_ENABLED=0
+    # Reproducible builds: -trimpath strips local filesystem paths, -buildid=
+    # clears the non-deterministic build id, and mod_timestamp stamps the binary
+    # mtime from the commit (not wall-clock). Anyone can rebuild the same tag and
+    # verify the artifacts byte-for-byte, complementing the SLSA provenance.
+    flags:
+      - -trimpath
+    mod_timestamp: '{{ .CommitTimestamp }}'
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      - -s -w -buildid= -X main.version={{ .Version }}
 
 archives:
   - id: poddle
