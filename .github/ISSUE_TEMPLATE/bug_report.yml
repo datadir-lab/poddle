@@ -1,0 +1,42 @@
+name: Bug report
+description: Something isn't working the way it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. poddle up ...
+        2. ...
+        3. see error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: poddle version
+      description: Output of `poddle version`.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS and podman version
+      placeholder: e.g. Ubuntu 24.04, podman 5.1
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and didn't find a duplicate
+          required: true
+        - label: This is not a security report (those go to security@datadir.co)
+          required: true

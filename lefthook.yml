@@ -24,3 +24,9 @@ commit-msg:
     # Conventional Commits (feat:, fix:, docs(scope): ...).
     commitlint:
       run: npx --no-install commitlint --edit "{1}"
+
+pre-push:
+  commands:
+    # Lint Go before pushing (only if golangci-lint is installed; CI always lints).
+    golangci-lint:
+      run: sh scripts/golangci-lint.sh

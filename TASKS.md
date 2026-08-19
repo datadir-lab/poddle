@@ -100,3 +100,13 @@ TDD unit: write the test, make it pass, `task ci` green, commit. Check it off.
 *Rule: never start a task before the previous one is green + committed. Keep the
 old secret-inject `up --identity` working until 1.11 replaces it, so the tree
 always builds.*
+
+---
+
+## Distribution / install methods (later)
+
+- [ ] Publish install methods beyond `go install`: Homebrew tap, Scoop, and a
+  `curl | sh` installer (goreleaser can produce all of these).
+- [ ] Consider renaming the Go module path to `github.com/datadir-lab/poddle` so
+  `go install github.com/datadir-lab/poddle/...@latest` is the blessed path now
+  that GitHub is canonical (large mechanical change: every import under `src/`).

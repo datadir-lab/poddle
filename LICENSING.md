@@ -69,9 +69,3 @@ This is the part to get right, so it is spelled out:
 If AGPL-3.0 doesn't work for you - for example, you want to embed poddle in a
 proprietary product without AGPL obligations - a **commercial license** is
 available. Email [hello@datadir.co](mailto:hello@datadir.co).
-
-## Trademarks
-
-The AGPL covers the **code**, not the **name**. "poddle", the poddle logo, and
-"datadir" are trademarks of datadir s. r. o. - see [TRADEMARKS.md](./TRADEMARKS.md).
-You can fork the code; you can't call your fork "poddle".
