@@ -29,6 +29,12 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
+          # The default GITHUB_TOKEN can't read classic branch-protection rules,
+          # which fails the Branch-Protection check. SCORECARD_TOKEN is a
+          # fine-grained PAT with Administration:read (+ Metadata:read). Falls
+          # back to the default token when the secret is absent.
+          # https://github.com/ossf/scorecard-action/blob/main/docs/authentication/fine-grained-auth-token.md
+          repo_token: ${{ secrets.SCORECARD_TOKEN || secrets.GITHUB_TOKEN }}
           publish_results: true
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
