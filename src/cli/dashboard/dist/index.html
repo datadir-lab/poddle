@@ -4,8 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>poddle</title>
-    <script type="module" crossorigin src="/assets/index-BYUYRR3o.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-nS-YV7-q.css">
+    <script>
+      // Set the theme before first paint (no flash): saved choice, else the OS preference.
+      try {
+        var t = localStorage.getItem("poddle-theme");
+        if (t !== "light" && t !== "dark")
+          t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="/assets/index-Crpg1uZI.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CZKDgTfn.css">
   </head>
   <body>
     <div id="app"></div>
