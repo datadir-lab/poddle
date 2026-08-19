@@ -18,6 +18,9 @@
 # Brainstorming visual companion (superpowers)
 .superpowers/
 
+# AI-planning scratch (superpowers skill output); never commit these
+docs/superpowers/
+
 # Web (Astro) build + deps
 src/web/site/node_modules/
 src/web/site/dist/
