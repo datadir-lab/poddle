@@ -16,17 +16,28 @@ updates:
       actions:
         patterns: ['*']
 
+  # npm: minor/patch only - major bumps (Astro, TypeScript, Vite, vitest,
+  # lefthook, commitlint) are breaking and adopted manually.
   - package-ecosystem: npm
     directory: / # root dev tooling (lefthook, commitlint)
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /src/web/site
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /src/web/dashboard
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
