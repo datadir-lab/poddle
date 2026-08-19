@@ -37,7 +37,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Use an npm that supports trusted publishing
-        run: npm install -g npm@latest # needs npm >= 11.5.1
+        run: npm install -g npm@11.5.1 # pinned; trusted publishing needs npm >= 11.5.1
 
       - name: Publish if the version is new
         working-directory: src/web/ui
