@@ -80,18 +80,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [installsh, go, deb, rpm, apk]
+        method: [installsh, deb, rpm, apk]
     steps:
-      - name: Set up Go
-        if: matrix.method == 'go'
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version: '1.25'
-
       - name: Wait for the release to be current
         run: |
           for i in $(seq 1 30); do
-            latest=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+            body=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" || true)
+            latest=$(printf '%s' "$body" | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
             [ "$latest" = "$TAG" ] && { echo "release $TAG is live"; break; }
             echo "waiting for release $TAG ($i)..."; sleep 10
           done
@@ -109,25 +104,19 @@ jobs:
               export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
               poddle version | grep -q "poddle $NUM"
               rm -f "$(command -v poddle)"
-              ! command -v poddle
-              ;;
-            go)
-              export PATH="$(go env GOPATH)/bin:$PATH"
-              go install "github.com/datadir-lab/poddle/src@${TAG}"
-              # go install has no goreleaser ldflags, so version is "dev";
-              # assert the binary runs and is the poddle CLI.
-              poddle version | grep -q "^poddle "
-              rm -f "$(go env GOPATH)/bin/poddle"
+              hash -r 2>/dev/null || true
               ! command -v poddle
               ;;
             deb)
+              # Verify removal by file, not `command -v` (the shell caches the
+              # path from the earlier `poddle version`, giving a false positive).
               docker run --rm "debian:stable-slim" sh -eux -c "
                 apt-get update -qq && apt-get install -y -qq curl >/dev/null
                 curl -fsSL -o /tmp/p.deb $base/poddle_${NUM}_linux_amd64.deb
                 dpkg -i /tmp/p.deb
                 poddle version | grep -q 'poddle $NUM'
                 dpkg -r poddle
-                ! command -v poddle"
+                [ ! -e /usr/bin/poddle ]"
               ;;
             rpm)
               docker run --rm "fedora:latest" sh -eux -c "
@@ -136,7 +125,7 @@ jobs:
                 rpm -i /tmp/p.rpm
                 poddle version | grep -q 'poddle $NUM'
                 rpm -e poddle
-                ! command -v poddle"
+                [ ! -e /usr/bin/poddle ]"
               ;;
             apk)
               docker run --rm "alpine:latest" sh -eux -c "
@@ -145,7 +134,7 @@ jobs:
                 apk add --allow-untrusted /tmp/p.apk
                 poddle version | grep -q 'poddle $NUM'
                 apk del poddle
-                ! command -v poddle"
+                [ ! -e /usr/bin/poddle ]"
               ;;
           esac
 
@@ -175,10 +164,14 @@ jobs:
               ;;
             brew)
               brew tap datadir-lab/tap
-              brew install --cask --no-quarantine datadir-lab/tap/poddle
-              poddle version | grep -q "poddle $NUM"
+              brew install --cask datadir-lab/tap/poddle
+              BIN="$(brew --prefix)/bin/poddle"
+              # The binary is unsigned; clear any Gatekeeper quarantine so CI can
+              # run it. (Real macOS users may need notarization - see caveats.)
+              xattr -d com.apple.quarantine "$BIN" 2>/dev/null || true
+              "$BIN" version | grep -q "poddle $NUM"
               brew uninstall --cask datadir-lab/tap/poddle
-              ! command -v poddle
+              [ ! -e "$BIN" ]
               ;;
           esac
 

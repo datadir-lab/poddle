@@ -38,15 +38,12 @@ import Callout from '../../components/Callout.astro';
       <pre class="term__body"><code><span class="cmt"># any platform - downloads the signed release binary</span>
 <span class="cmd">curl -sSf https://get.poddle.dev | sh</span>
 
-<span class="cmt"># Homebrew (macOS / Linux)</span>
+<span class="cmt"># Homebrew (macOS)</span>
 <span class="cmd">brew tap datadir-lab/tap &amp;&amp; brew install poddle</span>
 
 <span class="cmt"># Scoop (Windows)</span>
 <span class="cmd">scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket</span>
-<span class="cmd">scoop install poddle</span>
-
-<span class="cmt"># Go</span>
-<span class="cmd">go install github.com/datadir-lab/poddle/src@latest</span></code></pre>
+<span class="cmd">scoop install poddle</span></code></pre>
     </div>
     <p class="doc-p">Linux <code>.deb</code>/<code>.rpm</code>/<code>.apk</code> packages ship on each <a href="https://github.com/datadir-lab/poddle/releases">release</a>. Building from source instead? <code>git clone</code>, then <code>go build -o poddle ./src/cli</code>.</p>
 

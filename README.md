@@ -33,17 +33,14 @@ today, a remote SSH host with one flag.
 # Any platform (downloads the signed release binary):
 curl -sSf https://get.poddle.dev | sh
 
-# Homebrew (macOS / Linux):
+# Homebrew (macOS):
 brew tap datadir-lab/tap && brew install poddle
 
 # Scoop (Windows):
 scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket && scoop install poddle
-
-# Go:
-go install github.com/datadir-lab/poddle/src@latest
 ```
 
-`.deb` / `.rpm` / `.apk` packages are attached to each [release](https://github.com/datadir-lab/poddle/releases). From a checkout: `task build` builds `./bin/poddle`.
+Linux `.deb` / `.rpm` / `.apk` packages are attached to each [release](https://github.com/datadir-lab/poddle/releases). From source: `git clone` the repo and `go build -o poddle ./src/cli` (or `task build`).
 
 Requires [podman](https://podman.io) on the host that runs the pods.
 
