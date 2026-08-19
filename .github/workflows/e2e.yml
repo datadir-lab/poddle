@@ -5,9 +5,11 @@ name: E2E
 # from the fast `ci` gate, on demand ("Run workflow").
 #
 # Ported from the woodpecker/ pipelines, archived on branch archive/woodpecker-ci.
-# GitHub-hosted runners ship podman. Suites that need ssh (e2e-remote) or the
-# testcontainers Docker socket (integration) may need tuning or a self-hosted
-# runner; run a subset with the `suites` input while validating.
+# GitHub-hosted runners ship rootless podman and run 17 of the 19 suites green.
+# e2e-move and e2e-task need ROOTFUL podman (they mix a custom XDG_RUNTIME_DIR
+# with direct podman calls, which only works as root, the retired Woodpecker
+# setup), so they are not in the default set; run them with the `suites` input
+# on a rootful or self-hosted runner.
 
 on:
   workflow_dispatch:
@@ -35,7 +37,10 @@ jobs:
     steps:
       - id: pick
         run: |
-          all='["e2e-up","e2e-l4","e2e-task","e2e-connector","e2e-templates","e2e-audit","e2e-policy","e2e-forward","e2e-secure","e2e-poddled","e2e-resize","e2e-move","e2e-resume-move","e2e-autoscale","e2e-ui","e2e-claude","e2e-remote","e2e","integration"]'
+          # Default set: the 17 suites that pass on GitHub's rootless podman.
+          # e2e-move and e2e-task are omitted (need rootful podman); pass them
+          # explicitly via the `suites` input on a rootful/self-hosted runner.
+          all='["e2e-up","e2e-l4","e2e-connector","e2e-templates","e2e-audit","e2e-policy","e2e-forward","e2e-secure","e2e-poddled","e2e-resize","e2e-resume-move","e2e-autoscale","e2e-ui","e2e-claude","e2e-remote","e2e","integration"]'
           if [ -n "$REQUESTED" ]; then
             echo "suites=$(printf '%s' "$REQUESTED" | jq -R -c 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           else

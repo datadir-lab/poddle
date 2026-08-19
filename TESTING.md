@@ -115,7 +115,7 @@ func TestRemote_ListsSandboxes(t *testing.T) {
 ## CI mapping (GitHub Actions)
 
 - `.github/workflows/ci.yml`: `task ci` (vet + fmt + unit + arch + build), the web build/typecheck, govulncheck, and golangci-lint. Every push and PR, fast, container-free.
-- `.github/workflows/e2e.yml`: the `task e2e-*` suites on podman. Manual ("Run workflow"), all suites or a subset. The retired Woodpecker pipelines are frozen on branch `archive/woodpecker-ci`.
+- `.github/workflows/e2e.yml`: the `task e2e-*` suites on podman. Manual ("Run workflow"), all suites or a subset. 17 of 19 pass on GitHub's rootless podman; `e2e-move` and `e2e-task` need rootful podman, so run them via the `suites` input on a rootful/self-hosted runner. The retired Woodpecker pipelines are frozen on branch `archive/woodpecker-ci`.
 - `.github/workflows/codeql.yml`, `scorecard.yml`, `release.yml`: code scanning, supply-chain scoring, and signed releases.
 
 ## Run locally
