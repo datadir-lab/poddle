@@ -1,0 +1,75 @@
+# goreleaser config - builds poddle binaries and cuts a GitHub Release on tag.
+# Local check:  goreleaser check   |   dry run:  goreleaser release --snapshot --clean
+version: 2
+
+project_name: poddle
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: poddle
+    main: ./src/cli
+    binary: poddle
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: poddle
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+# SBOM per archive (syft) and keyless cosign signature over the checksums file.
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    certificate: '${artifact}.pem'
+    signature: '${artifact}.sig'
+    args:
+      - sign-blob
+      - '--output-certificate=${certificate}'
+      - '--output-signature=${signature}'
+      - '${artifact}'
+      - '--yes'
+    artifacts: checksum
+    output: true
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat'
+      order: 0
+    - title: Fixes
+      regexp: '^fix'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - '^docs'
+      - '^test'
+      - '^chore'
+      - '^ci'
+      - '^style'
+
+release:
+  github:
+    owner: datadir-lab
+    name: poddle
+  prerelease: auto

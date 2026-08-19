@@ -1,0 +1,25 @@
+# golangci-lint v2 config - https://golangci-lint.run
+# CI pins the linter version; see .github/workflows/ci.yml.
+version: "2"
+
+linters:
+  # `default: standard` = errcheck, govet, ineffassign, staticcheck, unused.
+  enable:
+    - misspell
+  settings:
+    errcheck:
+      # Writes to stdout/stderr/tabwriters: the error is conventionally ignored.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    rules:
+      # Unchecked errors in tests are usually intentional.
+      - path: '_test\.go'
+        linters:
+          - errcheck
+      # Deferred Close() errors are conventionally ignored.
+      - linters:
+          - errcheck
+        source: 'defer .*\.Close\(\)'

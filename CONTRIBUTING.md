@@ -3,10 +3,9 @@
 Thanks for your interest. poddle's core is open source (AGPL-3.0) and we welcome
 issues and patches.
 
-> Development currently happens on our Forgejo
-> (`github.com/datadir-lab/poddle`). A public GitHub mirror
-> (`github.com/datadir-lab/poddle`) is planned; until then, open issues and pull
-> requests on Forgejo.
+> Development happens on **GitHub**:
+> [github.com/datadir-lab/poddle](https://github.com/datadir-lab/poddle). Open
+> issues and pull requests there - CI runs on every pull request.
 
 ## Licensing of contributions
 
