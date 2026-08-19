@@ -10,7 +10,7 @@ export const GET: APIRoute = ({ site }) => {
 
   const body = `# poddle
 
-> Secret-safe dev sandboxes for coding agents. poddle is a secretless credential broker: a pod holds only a revocable \`poddle_…\` handle, and the broker injects the real key on the wire while scrubbing stray secrets from outbound request bodies - so the raw secret never lands in the pod.
+> Secret-safe dev sandboxes for coding agents. Poddle is a secretless credential broker: a pod holds only a revocable \`poddle_…\` handle, and the broker injects the real key on the wire while scrubbing stray secrets from outbound request bodies - so the raw secret never lands in the pod.
 
 ## Docs
 ${[
