@@ -33,8 +33,10 @@ today, a remote SSH host with one flag.
 # Any platform (downloads the signed release binary):
 curl -sSf https://get.poddle.dev | sh
 
-# Homebrew (macOS):
-brew tap datadir-lab/tap && brew install poddle
+# Homebrew (macOS or Linuxbrew):
+brew tap datadir-lab/tap
+brew trust datadir-lab/tap   # Homebrew 6.0+: trust the third-party tap once
+brew install poddle
 
 # Scoop (Windows):
 scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket && scoop install poddle

@@ -38,8 +38,10 @@ import Callout from '../../components/Callout.astro';
       <pre class="term__body"><code><span class="cmt"># any platform - downloads the signed release binary</span>
 <span class="cmd">curl -sSf https://get.poddle.dev | sh</span>
 
-<span class="cmt"># Homebrew (macOS)</span>
-<span class="cmd">brew tap datadir-lab/tap &amp;&amp; brew install poddle</span>
+<span class="cmt"># Homebrew (macOS or Linux); trust the tap once on Homebrew 6.0+</span>
+<span class="cmd">brew tap datadir-lab/tap</span>
+<span class="cmd">brew trust datadir-lab/tap</span>
+<span class="cmd">brew install poddle</span>
 
 <span class="cmt"># Scoop (Windows)</span>
 <span class="cmd">scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket</span>
