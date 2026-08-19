@@ -46,8 +46,14 @@ jobs:
           node-version: 22 # trusted publishing needs Node >= 22.14
           registry-url: https://registry.npmjs.org
 
-      - name: Use an npm that supports trusted publishing
-        run: npm install -g npm@11.5.1 # pinned; trusted publishing needs npm >= 11.5.1
+      - name: Activate a pinned npm (trusted publishing needs >= 11.5.1)
+        # corepack, not `npm install -g`: pins the version without a global
+        # install, which Scorecard flags as an unpinned npmCommand. The
+        # npm --version line fails the job loudly if activation didn't take.
+        run: |
+          corepack prepare npm@11.5.1 --activate
+          corepack enable npm
+          npm --version
 
       - name: Build the packages from the release binaries
         run: sh packaging/npm/build.sh "$TAG" "$RUNNER_TEMP/npm-out"
