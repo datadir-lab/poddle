@@ -31,7 +31,7 @@ today, a remote SSH host with one flag.
 
 ```bash
 # Any platform (downloads the signed release binary):
-curl -sSf https://raw.githubusercontent.com/datadir-lab/poddle/HEAD/install.sh | sh
+curl -sSf https://get.poddle.dev | sh
 
 # Homebrew (macOS / Linux):
 brew tap datadir-lab/tap && brew install poddle
