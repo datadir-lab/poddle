@@ -1,8 +1,7 @@
-/* Reuse poddle's design tokens verbatim (single source of truth). */
-@import "../../shared/tokens.css";
+/* Design tokens from the shared @poddle/ui package (single source of truth). */
+@import "@poddle/ui/tokens.css";
 
 :root {
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   /* decision colours — earthy, WCAG-AA on --bone */
   --allow: var(--accent);
   --redact: #8a5a00;

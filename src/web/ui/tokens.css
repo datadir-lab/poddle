@@ -1,4 +1,4 @@
-/* poddle design tokens - single source of truth. Imported by src/web/site. */
+/* @poddle/ui design tokens — single source of truth for all poddle UI. */
 :root {
   /* color */
   --bone: #faf8f2;        /* page background */
@@ -23,6 +23,7 @@
   /* type */
   --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
   /* fluid scale */
   --fs-hero: clamp(2.5rem, 6vw, 4.5rem);

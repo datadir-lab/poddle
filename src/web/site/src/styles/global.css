@@ -1,4 +1,4 @@
-@import "../../../shared/tokens.css";
+@import "@poddle/ui/tokens.css";
 
 *, *::before, *::after { box-sizing: border-box; }
 
