@@ -8,7 +8,7 @@
 only a *scoped, revocable handle* to a broker. The broker holds the real creds
 (client-side), injects them per-request on the way to the vendor, attributes
 each request to a user, and can revoke a handle instantly. Baking a token into
-a pod's env is the thing we refuse to do — because the moment a teammate can
+a pod's env is the thing we refuse to do, because the moment a teammate can
 `attach`, a baked token is a credential leak.
 
 This replaces the current `up --identity` behaviour (which injects
@@ -16,19 +16,19 @@ This replaces the current `up --identity` behaviour (which injects
 
 ## Three roles (unchanged split, secret removed)
 
-- **Provider** — auth vendor, **client-side** (`anthropic`, `openai`, `local`).
+- **Provider**: auth vendor, **client-side** (`anthropic`, `openai`, `local`).
   Owns `Authenticate` (login) and `IsAuthenticated` (the ping). It hands its
   credential to the **broker**, never to the pod.
-- **Harness** — runtime, **pod-side** (`claude-code`, `codex`, `pi`, `aider`).
-  Owns `Provisions()` (install) and `Materialize()` — which now points the
+- **Harness**: runtime, **pod-side** (`claude-code`, `codex`, `pi`, `aider`).
+  Owns `Provisions()` (install) and `Materialize()`, which now points the
   harness at the broker (`*_BASE_URL` + the handle) instead of a real secret.
-- **Broker** — **client-side (later: poddled)**. Holds creds, runs an egress
+- **Broker**: **client-side (later: poddled)**. Holds creds, runs an egress
   gateway the pod calls, issues/revokes handles, injects the real cred, and
   logs attribution.
 
 The **Credential** stays in the broker; the pod only ever sees a **Handle**.
 
-## Data flow — single user
+## Data flow - single user
 
 ```
 poddle up --harness claude-code --identity work
@@ -47,7 +47,7 @@ poddle down / detach:  broker.Revoke(handle)            # pod access dies; nothi
 The pod never had the anthropic token. Steal the handle and it's worthless off
 the broker, and dead the moment the pod is torn down.
 
-## Data flow — shared pod (team)
+## Data flow - shared pod (team)
 
 ```
 poddle share <pod> --with bob        # authZ: bob may attach
@@ -67,7 +67,7 @@ bob: poddle attach <pod>
 
 - Opaque, random, high-entropy; bound to `{pod, user, provider, scope}`.
 - **Revocable** (tear-down, detach, timeout) and short-TTL with broker-side
-  refresh — so a captured handle has a tiny, bounded window.
+  refresh, so a captured handle has a tiny, bounded window.
 - Presented by the pod exactly where the harness expects a key
   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) so no harness changes are needed.
 
@@ -88,10 +88,10 @@ this is the reason poddled exists.
 ## Harness / mode compatibility (honest)
 
 - **API-key mode** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `*_BASE_URL`): clean.
-  This is the proven LLM-gateway pattern (LiteLLM/Portkey) — the pod gets a
+  This is the proven LLM-gateway pattern (LiteLLM/Portkey): the pod gets a
   gateway handle, the gateway injects the real key. Fully secretless. ✅
-- **Subscription/OAuth mode** (`CLAUDE_CODE_OAUTH_TOKEN`): needs verification —
-  subscription traffic may not route through `*_BASE_URL`. Fallbacks: (a) run
+- **Subscription/OAuth mode** (`CLAUDE_CODE_OAUTH_TOKEN`): needs verification.
+  Subscription traffic may not route through `*_BASE_URL`. Fallbacks: (a) run
   subscription requests through the broker if the harness honours base-url in
   that mode; (b) if not, the broker mints/rotates a **short-TTL** token as the
   handle (not fully secretless, but revocable + bounded, not a long-lived
@@ -121,12 +121,12 @@ this is the reason poddled exists.
 
 ## Risks / open decisions
 
-- **Broker complexity from day 1** — even local single-user now runs a proxy.
+- **Broker complexity from day 1**: even local single-user now runs a proxy.
   Accepted: it's the point (no baked secrets ever).
-- **Subscription-through-base-url** unverified per harness — verify on the
+- **Subscription-through-base-url** unverified per harness: verify on the
   homelab; fall back to short-TTL rotating handle where it doesn't route.
-- **Remote reachability** — the pod must reach the broker; needs a reverse
+- **Remote reachability**: the pod must reach the broker; needs a reverse
   tunnel over the engine/ssh connection.
-- **Broker = crown jewel** (holds all creds) — self-hosted, hardened, client or
+- **Broker = crown jewel** (holds all creds): self-hosted, hardened, client or
   poddled only; the same concentration-of-risk noted in the governance spec.
-- **Per-user agent sessions** for shared pods — UX + harness support to design.
+- **Per-user agent sessions** for shared pods: UX + harness support to design.

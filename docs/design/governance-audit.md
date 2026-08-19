@@ -1,10 +1,10 @@
-# Governable & auditable pods — design
+# Governable & auditable pods - design
 
 ## Goal
 
-Every security-relevant thing an agent's pod does — which upstreams it reached,
+Every security-relevant thing an agent's pod does (which upstreams it reached,
 what got redacted or blocked, when a handle was issued or revoked, when a pod was
-created/moved/torn down — must be **audit-logged** and visible in a **dashboard**
+created/moved/torn down) must be **audit-logged** and visible in a **dashboard**
 (local now, cloud-hosted later). And it must be **governable**: policies decide
 what a pod may do, enforced at the broker, with every allow/deny recorded. This
 is poddle's Enterprise/governance tier (the original Vernir thesis) built on the
@@ -16,7 +16,7 @@ Egress control + audit is the **missing feature across the AI-sandbox market**
 (E2B has no outbound filtering; Daytona has no network policy by default), and a
 compromised agent with open egress can exfiltrate regardless of filesystem
 isolation. The recommended pattern everywhere is a **credential-injection proxy +
-default-deny egress allowlist** enforced below the agent — which is exactly what
+default-deny egress allowlist** enforced below the agent, which is exactly what
 poddle's broker already is.
 
 On TLS inspection, the consensus is **do not MITM by default**: a CONNECT / SNI
@@ -24,13 +24,13 @@ domain-allowlist proxy preserves end-to-end encryption, avoids the CA-trust
 burden, and survives Encrypted ClientHello (which is breaking selective MITM).
 The closest analog (an engineer sandboxing coding agents) and the most mature
 production system (StepSecurity Harden-Runner) both do domain-allowlist,
-default-deny, **no MITM**, enforced at L3/L4 (not DNS-only — DNS-only has known
+default-deny, **no MITM**, enforced at L3/L4 (not DNS-only; DNS-only has known
 bypasses). Audit best practice: log every action with identity + destination +
 policy outcome (never the secret), append-only + hash-chained (tamper-evident),
 with separation of duties.
 
 **poddle's unfair advantage:** it already *terminates* the credentialed upstreams
-(LLM, connectors, DBs) — so it gets **full content audit + redaction for free on
+(LLM, connectors, DBs), so it gets **full content audit + redaction for free on
 the highest-risk traffic**, with no MITM. A CONNECT-allowlist forward proxy covers
 everything else at the destination level. One chokepoint, two modes; MITM becomes
 a rarely-needed opt-in, not the foundation.
@@ -52,14 +52,14 @@ a rarely-needed opt-in, not the foundation.
 
 ## Decomposition (each is its own spec → plan → build)
 
-1. **Audit spine + local dashboard** — *this doc.* The observe half and the
+1. **Audit spine + local dashboard**: *this doc.* The observe half and the
    foundation every enforcement decision records into.
-2. **Forced egress** — CONNECT forward-proxy in the broker + pod network
+2. **Forced egress**: CONNECT forward-proxy in the broker + pod network
    default-deny (L3/L4) + sole-exit routing. Emits egress events into the spine.
-3. **Policy engine** — per-pod/identity/template rules (destination allow-lists,
+3. **Policy engine**: per-pod/identity/template rules (destination allow-lists,
    method/path, egress mode, later: approval gates) enforced at the
    gateway/proxy; every decision audited.
-4. **Dashboard polish → cloud collector** — richer UI, then multi-host ingest,
+4. **Dashboard polish → cloud collector**: richer UI, then multi-host ingest,
    retention, SSO, WORM/tamper-evident storage (Enterprise).
 
 ---
@@ -93,7 +93,7 @@ type Event struct {
     Path     string    // request path WITHOUT query-string
     Status   int       // HTTP status or 0
     Decision Decision  // allow | redact | block | deny | ""
-    Detail   string    // e.g. "redacted 1 secret (AKIA…rule)", "size=1.2MB" — NEVER a secret
+    Detail   string    // e.g. "redacted 1 secret (AKIA…rule)", "size=1.2MB" - NEVER a secret
     PrevHash string
     Hash     string
 }
@@ -104,7 +104,7 @@ type Kind string // pod.up|pod.task|pod.move|pod.down | handle.issue|handle.revo
 type Decision string // allow | redact | block | deny
 ```
 
-## Store (SQLite, pure-Go modernc — no cgo)
+## Store (SQLite, pure-Go modernc, no cgo)
 
 ```go
 type Filter struct { Pod, Kind, Decision string; SinceSeq int64; Limit int }
@@ -143,9 +143,9 @@ adapter over `Store.Append`.
 
 ## Exposure (daemon control API, over the owner-only UDS)
 
-- `POST /audit` — the CLI submits a client-side event (lifecycle, mount refusal).
-- `GET /audit?pod=&kind=&decision=&since=&limit=` — filtered query (JSON array).
-- `GET /audit/stream` — Server-Sent Events live tail.
+- `POST /audit`: the CLI submits a client-side event (lifecycle, mount refusal).
+- `GET /audit?pod=&kind=&decision=&since=&limit=`: filtered query (JSON array).
+- `GET /audit/stream`: Server-Sent Events live tail.
 
 ## Dashboard
 
@@ -169,12 +169,12 @@ consumes the same `GET /audit/stream`.
 
 ## Task breakdown (each: red→green→commit→push, discussed first)
 
-- **Task 1 — `internal/audit`:** `Event`/`Kind`/`Decision`, the SQLite `Store`
+- **Task 1 - `internal/audit`:** `Event`/`Kind`/`Decision`, the SQLite `Store`
   (append+chain, query, subscribe, verify), the secret-free event constructor.
   Add `modernc.org/sqlite`. Unit-tested. No wiring yet.
-- **Task 2 — daemon owns the store + emits + control API:** wire `Store` into
+- **Task 2 - daemon owns the store + emits + control API:** wire `Store` into
   `poddled`; emit at gateway/handles/l4/autoscale; add `POST /audit`,
   `GET /audit`, `GET /audit/stream`; CLI client method + emit lifecycle/mount
   events; `poddle daemon audit` to query. Unit + e2e.
-- **Task 3 — `poddle dashboard`:** the local server + self-contained live UI
+- **Task 3 - `poddle dashboard`:** the local server + self-contained live UI
   over the SSE stream. Unit (handler) + e2e (page renders, feed streams).
