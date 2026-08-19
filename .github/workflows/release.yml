@@ -55,10 +55,15 @@ jobs:
             echo "BUNNY_GET_STORAGE_KEY not set; skipping get.poddle.dev upload."
             exit 0
           fi
-          curl -fsS -T install.sh \
-            -H "AccessKey: $BUNNY_KEY" \
-            https://storage.bunnycdn.com/datadir-poddle-get/install.sh
-          echo "Uploaded install.sh to get.poddle.dev."
+          # Upload to both paths: index.html so `curl get.poddle.dev` (the root
+          # document) serves the installer directly, and install.sh for the
+          # explicit /install.sh path.
+          for path in index.html install.sh; do
+            curl -fsS -T install.sh \
+              -H "AccessKey: $BUNNY_KEY" \
+              "https://storage.bunnycdn.com/datadir-poddle-get/$path"
+          done
+          echo "Uploaded installer to get.poddle.dev (index.html + install.sh)."
 
   # --- Post-release install verification -----------------------------------
   # Each job installs poddle from the just-published release the way a user
