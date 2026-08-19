@@ -11,13 +11,7 @@ pre-commit:
   commands:
     gofmt:
       glob: "*.go"
-      run: |
-        unformatted=$(gofmt -l {staged_files})
-        if [ -n "$unformatted" ]; then
-          echo "These Go files need gofmt:"; echo "$unformatted"
-          echo "Fix with: gofmt -w <files>   (or: task fmt)"
-          exit 1
-        fi
+      run: sh scripts/gofmt-check.sh {staged_files}
 
 commit-msg:
   commands:
