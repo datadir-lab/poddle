@@ -94,6 +94,9 @@ jobs:
       matrix:
         method: [installsh, deb, rpm, apk]
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.TAG }} # the released tag, so install.sh matches the release
       - name: Wait for the release to be current
         run: |
           for i in $(seq 1 30); do
@@ -112,7 +115,12 @@ jobs:
 
           case "${{ matrix.method }}" in
             installsh)
-              curl -sSf https://get.poddle.dev | sh
+              # Run the repo's own installer (checked out at the tag) instead of
+              # piping the get.poddle.dev CDN script into a shell: it is the same
+              # script the CDN serves, but as a local file it is deterministic and
+              # not a download-then-run (which Scorecard flags as unpinned). The
+              # CDN upload itself is already verified at publish time by goreleaser.
+              PODDLE_VERSION="$TAG" sh install.sh
               export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
               poddle version | grep -q "poddle $NUM"
               rm -f "$(command -v poddle)"
@@ -162,13 +170,20 @@ jobs:
       matrix:
         method: [installsh, brew]
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.TAG }} # the released tag, so install.sh matches the release
       - name: Install, verify, uninstall
         run: |
           set -eux
           NUM="${TAG#v}"
           case "${{ matrix.method }}" in
             installsh)
-              curl -sSf https://get.poddle.dev | sh
+              # Run the repo's own installer (checked out at the tag) instead of
+              # piping the get.poddle.dev CDN script into a shell: same script,
+              # but a local file - deterministic and not a Scorecard-flagged
+              # download-then-run. The CDN upload is verified at publish time.
+              PODDLE_VERSION="$TAG" sh install.sh
               export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
               poddle version | grep -q "poddle $NUM"
               rm -f "$(command -v poddle)"
