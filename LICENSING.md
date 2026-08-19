@@ -24,6 +24,13 @@ The core is the CLI (`src/cli`), the broker and kernel (`src/internal`:
 credential injection, egress redaction, egress policy, tamper-evident audit
 log), and this website (`src/web`).
 
+**One exception — `@poddle/ui`.** The design-system package in `src/web/ui`
+(shared design tokens and CSS primitives) is licensed **MIT**, not AGPL — see
+[`src/web/ui/LICENSE`](./src/web/ui/LICENSE). datadir dual-licenses this small
+brand layer so the same theme can be used by both this core and the proprietary
+editions without extending copyleft. It is published to npm as `@poddle/ui`;
+the site and dashboard here consume it locally.
+
 ## What is NOT in this repository
 
 Two commercial editions live in a **separate, private** repository
