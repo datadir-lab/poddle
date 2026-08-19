@@ -20,7 +20,7 @@
   --card: #151f1b;        /* raised surface */
   --ink: #e9efe9;         /* primary text */
   --muted: #a7b4ab;       /* secondary text */
-  --faint: #7e8d83;       /* tertiary text - WCAG-AA on --bone */
+  --faint: #879a8d;       /* tertiary text - WCAG-AA on --bone and --card */
   --accent: #5cc08a;      /* brighter forest-mint reads on dark */
   --accent-ink: #7fd3a4;
   --border: #28332d;      /* hairlines */
@@ -263,7 +263,7 @@ td.perf { text-align: right; white-space: nowrap; }
 .editor.empty { color: var(--faint); display: flex; align-items: center; justify-content: center; min-height: 180px; }
 .editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); margin: 1.15rem 0 0.4rem; }
 .editor label:first-of-type { margin-top: 0; }
-.label-hint { text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--faint); opacity: 0.9; margin-left: 0.5rem; }
+.label-hint { text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--faint); margin-left: 0.5rem; }
 .editor .row { display: flex; gap: 1rem; align-items: flex-end; }
 .editor .row > div { flex: 1; }
 .editor .row > div.narrow { flex: 0 0 auto; }

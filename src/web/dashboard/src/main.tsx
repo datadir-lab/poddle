@@ -379,7 +379,7 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
   return (
     <div>
       <div class="toolbar">
-        <input class="grow" placeholder="Filter by pod, kind, or upstream…" value={q}
+        <input class="grow" aria-label="Filter events by pod, kind, or upstream" placeholder="Filter by pod, kind, or upstream…" value={q}
           onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
         <Segmented value={decision} options={DECISION_FILTER} onChange={setDecision} ariaLabel="filter by decision" />
         <span class="count">{shown.length} events</span>
@@ -446,20 +446,20 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
     <div class="editor">
       <div class="row">
         <div>
-          <label>Name</label>
-          <input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+          <label for="pol-name">Name</label>
+          <input id="pol-name" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </div>
         <div class="narrow">
           <label>Egress mode</label>
           <Segmented value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
-      <label>Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
-      <textarea value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
-      <label>Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
-      <textarea value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
-      <label>Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
-      <textarea value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
+      <label for="pol-allow">Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
+      <textarea id="pol-allow" value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
+      <label for="pol-deny">Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
+      <textarea id="pol-deny" value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
+      <label for="pol-methods">Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
+      <textarea id="pol-methods" value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
       {err && <div class="err">{err}</div>}
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
