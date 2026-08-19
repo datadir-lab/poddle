@@ -10,6 +10,7 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
     "@fontsource/instrument-serif": "^5.1.0",
+    "@poddle/ui": "file:../ui",
     "preact": "^10.24.3"
   },
   "devDependencies": {
