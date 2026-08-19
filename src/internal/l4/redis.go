@@ -120,6 +120,14 @@ func splice(a, b net.Conn, aR, bR *bufio.Reader) error {
 	return nil
 }
 
+// Bounds on untrusted RESP framing, to avoid unbounded allocation from a
+// malicious length header (a DoS): a huge "*N" or "$N" must be rejected, not
+// make()'d. Postgres framing is bounded the same way (see readMessage).
+const (
+	maxRESPArgs = 1 << 20 // elements in one client command array
+	maxRESPBulk = 1 << 29 // 512 MiB, the largest bulk string we will buffer
+)
+
 // readCommand reads one RESP array-of-bulk-strings client command.
 func readCommand(r *bufio.Reader) ([]string, error) {
 	line, err := r.ReadString('\n')
@@ -131,7 +139,7 @@ func readCommand(r *bufio.Reader) ([]string, error) {
 		return nil, fmt.Errorf("expected a RESP array, got %q", line)
 	}
 	n, err := strconv.Atoi(line[1:])
-	if err != nil || n < 1 {
+	if err != nil || n < 1 || n > maxRESPArgs {
 		return nil, fmt.Errorf("bad array length %q", line)
 	}
 	args := make([]string, 0, n)
@@ -145,7 +153,7 @@ func readCommand(r *bufio.Reader) ([]string, error) {
 			return nil, fmt.Errorf("expected a bulk string, got %q", hdr)
 		}
 		blen, err := strconv.Atoi(hdr[1:])
-		if err != nil || blen < 0 {
+		if err != nil || blen < 0 || blen > maxRESPBulk {
 			return nil, fmt.Errorf("bad bulk length %q", hdr)
 		}
 		buf := make([]byte, blen+2) // include trailing CRLF
