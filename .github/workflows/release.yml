@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # Manual: run the install smoke matrix against an EXISTING tag. No publish,
+  # no rollback - just proves the install methods work for that release.
+  workflow_dispatch:
+    inputs:
+      smoke_tag:
+        description: 'Existing release tag to smoke-test (e.g. v0.1.1)'
+        required: true
 
 permissions:
   contents: read
@@ -10,6 +17,7 @@ permissions:
 jobs:
   goreleaser:
     name: goreleaser
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release
@@ -33,7 +41,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Pushes the Homebrew formula + Scoop manifest to the tap/bucket repos.
+          # Pushes the Homebrew cask + Scoop manifest to the tap/bucket repos.
           # Absent -> goreleaser skips those uploads (release still succeeds).
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
 
@@ -51,3 +59,201 @@ jobs:
             -H "AccessKey: $BUNNY_KEY" \
             https://storage.bunnycdn.com/datadir-poddle-get/install.sh
           echo "Uploaded install.sh to get.poddle.dev."
+
+  # --- Post-release install verification -----------------------------------
+  # Each job installs poddle from the just-published release the way a user
+  # would, asserts `poddle version` reports the released version, then
+  # uninstalls and confirms it is gone. A failure trips the rollback job.
+
+  smoke-linux:
+    name: install (linux / ${{ matrix.method }})
+    needs: goreleaser
+    if: always() && (needs.goreleaser.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tag || github.ref_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [installsh, go, deb, rpm, apk]
+    steps:
+      - name: Set up Go
+        if: matrix.method == 'go'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.25'
+
+      - name: Wait for the release to be current
+        run: |
+          for i in $(seq 1 30); do
+            latest=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+            [ "$latest" = "$TAG" ] && { echo "release $TAG is live"; break; }
+            echo "waiting for release $TAG ($i)..."; sleep 10
+          done
+
+      - name: Install, verify, uninstall
+        run: |
+          set -eux
+          NUM="${TAG#v}"
+          REPO="${GITHUB_REPOSITORY}"
+          base="https://github.com/$REPO/releases/download/$TAG"
+
+          case "${{ matrix.method }}" in
+            installsh)
+              curl -sSf https://get.poddle.dev | sh
+              export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+              poddle version | grep -q "poddle $NUM"
+              rm -f "$(command -v poddle)"
+              ! command -v poddle
+              ;;
+            go)
+              export PATH="$(go env GOPATH)/bin:$PATH"
+              go install "github.com/datadir-lab/poddle/src@${TAG}"
+              # go install has no goreleaser ldflags, so version is "dev";
+              # assert the binary runs and is the poddle CLI.
+              poddle version | grep -q "^poddle "
+              rm -f "$(go env GOPATH)/bin/poddle"
+              ! command -v poddle
+              ;;
+            deb)
+              docker run --rm "debian:stable-slim" sh -eux -c "
+                apt-get update -qq && apt-get install -y -qq curl >/dev/null
+                curl -fsSL -o /tmp/p.deb $base/poddle_${NUM}_linux_amd64.deb
+                dpkg -i /tmp/p.deb
+                poddle version | grep -q 'poddle $NUM'
+                dpkg -r poddle
+                ! command -v poddle"
+              ;;
+            rpm)
+              docker run --rm "fedora:latest" sh -eux -c "
+                command -v curl >/dev/null || dnf install -y -q curl >/dev/null
+                curl -fsSL -o /tmp/p.rpm $base/poddle_${NUM}_linux_amd64.rpm
+                rpm -i /tmp/p.rpm
+                poddle version | grep -q 'poddle $NUM'
+                rpm -e poddle
+                ! command -v poddle"
+              ;;
+            apk)
+              docker run --rm "alpine:latest" sh -eux -c "
+                apk add --no-cache curl >/dev/null
+                curl -fsSL -o /tmp/p.apk $base/poddle_${NUM}_linux_amd64.apk
+                apk add --allow-untrusted /tmp/p.apk
+                poddle version | grep -q 'poddle $NUM'
+                apk del poddle
+                ! command -v poddle"
+              ;;
+          esac
+
+  smoke-macos:
+    name: install (macos / ${{ matrix.method }})
+    needs: goreleaser
+    if: always() && (needs.goreleaser.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: macos-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tag || github.ref_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [installsh, brew]
+    steps:
+      - name: Install, verify, uninstall
+        run: |
+          set -eux
+          NUM="${TAG#v}"
+          case "${{ matrix.method }}" in
+            installsh)
+              curl -sSf https://get.poddle.dev | sh
+              export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+              poddle version | grep -q "poddle $NUM"
+              rm -f "$(command -v poddle)"
+              ! command -v poddle
+              ;;
+            brew)
+              brew tap datadir-lab/tap
+              brew install --cask --no-quarantine datadir-lab/tap/poddle
+              poddle version | grep -q "poddle $NUM"
+              brew uninstall --cask datadir-lab/tap/poddle
+              ! command -v poddle
+              ;;
+          esac
+
+  smoke-windows:
+    name: install (windows / scoop)
+    needs: goreleaser
+    if: always() && (needs.goreleaser.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tag || github.ref_name }}
+    steps:
+      - name: Install, verify, uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $num = $env:TAG.TrimStart('v')
+          irm get.scoop.sh -outfile "$env:TEMP\scoop.ps1"
+          & "$env:TEMP\scoop.ps1" -RunAsAdmin
+          $env:PATH = "$HOME\scoop\shims;$env:PATH"
+          scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket
+          scoop install poddle
+          $out = poddle version
+          if ($out -notmatch "poddle $num") { throw "version mismatch: $out" }
+          scoop uninstall poddle
+          if (Get-Command poddle -ErrorAction SilentlyContinue) { throw "uninstall failed" }
+
+  # --- Rollback -------------------------------------------------------------
+  # Only on a real release (push) where goreleaser succeeded but an install
+  # smoke test failed. Undo the publish so users never see a broken release.
+  rollback:
+    name: rollback the release
+    needs: [goreleaser, smoke-linux, smoke-macos, smoke-windows]
+    if: >-
+      always() && github.event_name == 'push' &&
+      needs.goreleaser.result == 'success' &&
+      (needs.smoke-linux.result == 'failure' ||
+       needs.smoke-macos.result == 'failure' ||
+       needs.smoke-windows.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # delete the release + tag
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+    steps:
+      - name: Delete the GitHub release and tag
+        run: |
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          echo "Deleted release and tag $TAG."
+
+      - name: Revert the Homebrew tap and Scoop bucket
+        if: env.TAP_TOKEN != ''
+        run: |
+          git config --global user.name "poddle-ci"
+          git config --global user.email "ci@datadir.co"
+          for repo in homebrew-tap scoop-bucket; do
+            url="https://x-access-token:${TAP_TOKEN}@github.com/datadir-lab/${repo}.git"
+            rm -rf "$repo" && git clone --depth 2 "$url" "$repo"
+            ( cd "$repo"
+              # goreleaser makes one commit per release; revert it so the tap
+              # no longer advertises the broken version.
+              if git revert --no-edit HEAD; then
+                git push origin HEAD
+                echo "Reverted latest commit in $repo."
+              else
+                echo "Nothing to revert in $repo (or manual state); skipping." >&2
+              fi )
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Release $TAG rolled back"
+            echo ""
+            echo "An install smoke test failed, so the release was withdrawn:"
+            echo "- Deleted the GitHub release and tag \`$TAG\`"
+            echo "- Reverted the Homebrew cask and Scoop manifest"
+            echo "- get.poddle.dev self-heals (its installer fetches the latest release)"
+            echo ""
+            echo "Fix the issue and cut a new tag."
+          } >> "$GITHUB_STEP_SUMMARY"
