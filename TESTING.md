@@ -112,10 +112,11 @@ func TestRemote_ListsSandboxes(t *testing.T) {
 > run and verified. Until then, `tests/integration/` holds the black-box
 > scaffolding and the co-located white-box provider test.
 
-## CI mapping (Woodpecker)
+## CI mapping (GitHub Actions)
 
-- `woodpecker/check.yaml` → `task ci` (vet + unit + arch + build): **every push**, fast, container-free.
-- `woodpecker/e2e.yaml` → `task e2e` (+ `task integration` once the runner has an engine): heavier; gate as needed.
+- `.github/workflows/ci.yml`: `task ci` (vet + fmt + unit + arch + build), the web build/typecheck, govulncheck, and golangci-lint. Every push and PR, fast, container-free.
+- `.github/workflows/e2e.yml`: the `task e2e-*` suites on podman. Manual ("Run workflow"), all suites or a subset. The retired Woodpecker pipelines are frozen on branch `archive/woodpecker-ci`.
+- `.github/workflows/codeql.yml`, `scorecard.yml`, `release.yml`: code scanning, supply-chain scoring, and signed releases.
 
 ## Run locally
 

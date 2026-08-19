@@ -1,0 +1,66 @@
+name: E2E
+
+# Heavy end-to-end suites: real podman pods driven by the real poddle binary
+# against a real broker. They need a container engine, so they run separately
+# from the fast `ci` gate, on demand ("Run workflow").
+#
+# Ported from the woodpecker/ pipelines, archived on branch archive/woodpecker-ci.
+# GitHub-hosted runners ship podman. Suites that need ssh (e2e-remote) or the
+# testcontainers Docker socket (integration) may need tuning or a self-hosted
+# runner; run a subset with the `suites` input while validating.
+
+on:
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: 'Space-separated task names to run (empty = the full set)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.pick.outputs.suites }}
+    env:
+      REQUESTED: ${{ inputs.suites }}
+    steps:
+      - id: pick
+        run: |
+          all='["e2e-up","e2e-l4","e2e-task","e2e-connector","e2e-templates","e2e-audit","e2e-policy","e2e-forward","e2e-secure","e2e-poddled","e2e-resize","e2e-move","e2e-resume-move","e2e-autoscale","e2e-ui","e2e-claude","e2e-remote","e2e","integration"]'
+          if [ -n "$REQUESTED" ]; then
+            echo "suites=$(printf '%s' "$REQUESTED" | jq -R -c 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          else
+            echo "suites=$all" >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    name: ${{ matrix.suite }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.plan.outputs.suites) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Engine versions
+        run: |
+          podman version || true
+          docker version --format 'docker {{.Server.Version}}' || true
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
+      - name: Run ${{ matrix.suite }}
+        run: task ${{ matrix.suite }}

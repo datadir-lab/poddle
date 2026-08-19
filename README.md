@@ -158,7 +158,7 @@ memory (memguard), never on disk.
 src/cli/              CLI entry + one vertical slice per command
 src/internal/         private kernel: broker, poddled, l4, connector, podman
 tests/e2e/            end-to-end tests driving the built binary against podman
-woodpecker/           CI pipelines
+.github/workflows/    CI on GitHub Actions: ci, e2e, codeql, scorecard, release
 Taskfile.yml          all dev commands
 ```
 

@@ -79,6 +79,12 @@ jobs:
       - run: npm ci
       - run: npm run test
       - run: npm run check
+      - run: npm run build
+      - name: Assert the site builds and keeps its safety copy
+        working-directory: src/web/site
+        run: |
+          test -f dist/index.html
+          grep -q "leak out of" dist/index.html
 
   commitlint:
     name: Commit messages (Conventional Commits)

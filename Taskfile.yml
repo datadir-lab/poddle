@@ -18,12 +18,13 @@ tasks:
 
   _docker-mirror:
     internal: true
-    desc: CI-only — route docker.io pulls through AWS ECR Public so nested-podman e2e dodges Docker Hub's anonymous rate limit
+    desc: CI-only. Route docker.io pulls through AWS ECR Public so e2e dodges Docker Hub's anonymous rate limit.
     status:
-      - test -z "$CI" # skip locally (only CI writes /etc/containers); Woodpecker sets $CI
+      - test -z "$CI" # skip locally (only CI writes /etc/containers); GitHub Actions sets $CI
     cmds:
-      - mkdir -p /etc/containers/registries.conf.d
-      - printf '%s\n' '[[registry]]' 'location = "docker.io"' '[[registry.mirror]]' 'location = "public.ecr.aws/docker"' > /etc/containers/registries.conf.d/aws-mirror.conf
+      # sudo because CI runners are non-root; writing /etc/containers needs root.
+      - sudo mkdir -p /etc/containers/registries.conf.d
+      - printf '%s\n' '[[registry]]' 'location = "docker.io"' '[[registry.mirror]]' 'location = "public.ecr.aws/docker"' | sudo tee /etc/containers/registries.conf.d/aws-mirror.conf > /dev/null
 
   e2e:
     desc: Pod lifecycle e2e (needs podman) — local + remote up/ls/down. Feature suites have their own e2e-* tasks.
