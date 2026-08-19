@@ -164,8 +164,12 @@ jobs:
               ;;
             brew)
               # Formula (not cask): formula binaries are not quarantined, so the
-              # unsigned binary runs with no xattr workaround. No --cask, no strip.
+              # unsigned binary runs with no xattr workaround. Homebrew 6.0+ needs
+              # a non-official tap trusted before installing a formula; `brew
+              # trust` is the documented one-time step (older Homebrew lacks the
+              # command and does not require trust, so fall back to the env var).
               brew tap datadir-lab/tap
+              brew trust datadir-lab/tap || export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
               brew install poddle
               poddle version | grep -q "poddle $NUM"
               BIN="$(command -v poddle)"
