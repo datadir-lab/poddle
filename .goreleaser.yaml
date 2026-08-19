@@ -61,23 +61,26 @@ nfpms:
     recommends:
       - podman
 
-# Homebrew (macOS): `brew tap datadir-lab/tap && brew install poddle`.
-# Casks are the current goreleaser way to ship a pre-built binary; `brews`
-# (formula) is deprecated. macOS-focused - Linux users use curl|sh, the
-# .deb/.rpm/.apk, or go install. Pushes to datadir-lab/homebrew-tap when
-# TAP_GITHUB_TOKEN is set; skips otherwise, so releases never break.
-homebrew_casks:
+# Homebrew (macOS + Linux): `brew tap datadir-lab/tap && brew install poddle`.
+# A formula, not a cask: casks quarantine the download, so an unsigned binary
+# gets Gatekeeper-blocked; formula-installed binaries are not quarantined and
+# run without notarization. goreleaser marks `brews` deprecated but it works,
+# and a formula is the right shape for a CLI in a tap. Pushes to
+# datadir-lab/homebrew-tap when TAP_GITHUB_TOKEN is set; skips otherwise.
+brews:
   - repository:
       owner: datadir-lab
       name: homebrew-tap
       token: '{{ .Env.TAP_GITHUB_TOKEN }}'
-    directory: Casks
+    directory: Formula
     homepage: https://github.com/datadir-lab/poddle
     description: Self-hostable, secret-safe dev sandboxes for coding agents.
     license: AGPL-3.0
     skip_upload: '{{ if .Env.TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
-    binaries:
-      - poddle
+    install: |
+      bin.install "poddle"
+    test: |
+      system "#{bin}/poddle", "version"
     caveats: "poddle runs pods with podman - install it separately: brew install podman"
 
 # Scoop bucket (Windows): `scoop bucket add poddle <url> && scoop install poddle`.

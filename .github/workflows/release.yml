@@ -163,14 +163,13 @@ jobs:
               ! command -v poddle
               ;;
             brew)
+              # Formula (not cask): formula binaries are not quarantined, so the
+              # unsigned binary runs with no xattr workaround. No --cask, no strip.
               brew tap datadir-lab/tap
-              brew install --cask datadir-lab/tap/poddle
-              BIN="$(brew --prefix)/bin/poddle"
-              # The binary is unsigned; clear any Gatekeeper quarantine so CI can
-              # run it. (Real macOS users may need notarization - see caveats.)
-              xattr -d com.apple.quarantine "$BIN" 2>/dev/null || true
-              "$BIN" version | grep -q "poddle $NUM"
-              brew uninstall --cask datadir-lab/tap/poddle
+              brew install poddle
+              poddle version | grep -q "poddle $NUM"
+              BIN="$(command -v poddle)"
+              brew uninstall poddle
               [ ! -e "$BIN" ]
               ;;
           esac
