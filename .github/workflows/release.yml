@@ -33,3 +33,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pushes the Homebrew formula + Scoop manifest to the tap/bucket repos.
+          # Absent -> goreleaser skips those uploads (release still succeeds).
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

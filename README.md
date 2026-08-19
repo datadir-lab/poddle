@@ -30,10 +30,20 @@ today, a remote SSH host with one flag.
 ## Install
 
 ```bash
-go install github.com/datadir-lab/poddle/src@latest   # installs `poddle`
-# or, from a checkout:
-task build      # -> ./bin/poddle
+# Any platform (downloads the signed release binary):
+curl -sSf https://raw.githubusercontent.com/datadir-lab/poddle/HEAD/install.sh | sh
+
+# Homebrew (macOS / Linux):
+brew tap datadir-lab/tap && brew install poddle
+
+# Scoop (Windows):
+scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket && scoop install poddle
+
+# Go:
+go install github.com/datadir-lab/poddle/src@latest
 ```
+
+`.deb` / `.rpm` / `.apk` packages are attached to each [release](https://github.com/datadir-lab/poddle/releases). From a checkout: `task build` builds `./bin/poddle`.
 
 Requires [podman](https://podman.io) on the host that runs the pods.
 
