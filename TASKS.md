@@ -107,6 +107,7 @@ always builds.*
 
 - [ ] Publish install methods beyond `go install`: Homebrew tap, Scoop, and a
   `curl | sh` installer (goreleaser can produce all of these).
-- [ ] Consider renaming the Go module path to `github.com/datadir-lab/poddle` so
-  `go install github.com/datadir-lab/poddle/...@latest` is the blessed path now
-  that GitHub is canonical (large mechanical change: every import under `src/`).
+- [x] Renamed the Go module path to `github.com/datadir-lab/poddle` (2026-08-19):
+  `go install github.com/datadir-lab/poddle/src@latest` is now the blessed path.
+  Scrubbed the old Forgejo path from all history, re-signed every commit, and
+  re-released v0.1.0 with clean binaries/SBOMs.
