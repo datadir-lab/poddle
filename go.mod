@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/huh v1.0.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/testcontainers/testcontainers-go v0.44.0
 	golang.org/x/term v0.45.0
 	modernc.org/sqlite v1.56.0
