@@ -1,17 +1,16 @@
 # Contributing to poddle
 
-Thanks for your interest. poddle's core is open source (AGPL-3.0) and we welcome
-issues and patches.
+poddle's core is open source (AGPL-3.0) and we welcome issues and patches.
 
 > Development happens on **GitHub**:
 > [github.com/datadir-lab/poddle](https://github.com/datadir-lab/poddle). Open
-> issues and pull requests there - CI runs on every pull request.
+> issues and pull requests there; CI runs on every pull request.
 
 ## Licensing of contributions
 
-By contributing, you agree your contribution is licensed to the project under the
-**AGPL-3.0** (the same license as the core), and you certify the **Developer
-Certificate of Origin** (below) by adding a `Signed-off-by` line to every commit:
+By contributing, you license your contribution to the project under **AGPL-3.0**
+(same as the core) and certify the **Developer Certificate of Origin** (below)
+with a `Signed-off-by` line on every commit:
 
 ```bash
 git commit -s -m "your message"
@@ -26,8 +25,8 @@ Signed-off-by: Your Name <you@example.com>
 Use your real name and a reachable email.
 
 > Note: before opening to external contributions at scale, datadir may introduce
-> a lightweight **CLA**, so it can keep offering the core under commercial terms
-> alongside AGPL. Until then, the DCO applies. See [LICENSING.md](./LICENSING.md).
+> a lightweight **CLA** to keep offering the core commercially alongside AGPL.
+> Until then, the DCO applies. See [LICENSING.md](./LICENSING.md).
 
 ## Developer Certificate of Origin 1.1
 
@@ -77,7 +76,7 @@ By making a contribution to this project, I certify that:
   `fix(up): ...`, `docs: ...`). Enforced by commitlint.
 - **Sign off** every commit (`git commit -s`) per the DCO above.
 
-Install the hooks once - they run commitlint and gofmt:
+Install the hooks once; they run commitlint and gofmt:
 
 ```bash
 npm install        # installs dev tooling and runs `lefthook install`
@@ -85,11 +84,11 @@ npm install        # installs dev tooling and runs `lefthook install`
 
 ## Before you open a PR
 
-- `task ci` passes (fmt + vet + test + arch + build) - see `Taskfile.yml`.
+- `task ci` passes (fmt + vet + test + arch + build); see `Taskfile.yml`.
 - New behavior has a test at the right tier: unit tests co-located in `src/`,
   architecture boundaries via `task arch`, end-to-end under `tests/e2e/`.
-- Keep the secret-safety and boundary invariants intact - the architecture tests
-  (`task arch`) guard several of them.
+- Keep secret-safety and boundary invariants intact; the architecture tests
+  (`task arch`) guard several.
 - Website house style: plain hyphens, no em/en dashes (enforced by `task
   web-test`).
 

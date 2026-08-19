@@ -9,24 +9,23 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
 
 `poddle up` spins an isolated, reproducible pod on your own infra, wired to your
-stack (git host, CI, registries, databases) — and **no real secret ever enters
-the pod**. The agent gets a revocable *handle*; a broker on your host holds the
-real credential and swaps it in on the wire. Revoke a pod and its access is
-dead instantly.
+stack (git host, CI, registries, databases), with **no real secret inside the
+pod**. The agent gets a revocable *handle*; a broker on your host holds the real
+credential and swaps it in on the wire. Revoke a pod and its access dies at once.
 
 ```bash
 poddle up                       # interactive secretless sandbox
 poddle task "add tests for X"   # run an agent headless, to completion
-poddle task "big refactor" -d   # …or in the background (poddle logs / down)
+poddle task "big refactor" -d   # or in the background (poddle logs / down)
 ```
 
 ## Why
 
-Giving a coding agent real access means handing it your API keys, git tokens,
-and DB passwords. poddle doesn't. The pod holds only opaque handles; the broker
-holds the credentials and injects them per-request, logs attribution, and can
-redact secrets from outbound traffic. Everything runs on **your** infra — local
-podman today, a remote SSH host with one flag.
+Giving a coding agent real access means handing it your API keys, git tokens, and
+DB passwords. poddle doesn't. The pod holds only opaque handles; the broker holds
+the credentials, injects them per request, logs attribution, and can redact
+secrets from outbound traffic. Everything runs on **your** infra: local podman
+today, a remote SSH host with one flag.
 
 ## Install
 
@@ -41,7 +40,7 @@ Requires [podman](https://podman.io) on the host that runs the pods.
 ## Quickstart
 
 ```bash
-# 1. Add a login for your agent (token via stdin — never argv). Re-auth is
+# 1. Add a login for your agent (token via stdin, never argv). Re-auth is
 #    prompted when stale; the real token stays on your machine.
 poddle identity add work --provider anthropic
 
@@ -62,8 +61,8 @@ poddle up                       # attach an interactive session
 poddle task "fix the failing parser test and open a PR"
 ```
 
-Inside the pod, `git`, `psql`, `npm`, … just work — each authenticated through
-the broker with a handle. The real credentials are never present.
+Inside the pod, `git`, `psql`, `npm`, and the rest just work, each authenticated
+through the broker with a handle. The real credentials are never present.
 
 ## How it works
 
@@ -77,24 +76,24 @@ the broker with a handle. The real credentials are never present.
 - **HTTP services** (LLM APIs, git over HTTP, CI, npm/pypi): a reverse-proxy
   gateway swaps the handle for the real header on each request.
 - **Databases** (Postgres, Redis): auth binds to the connection, so the broker
-  *terminates* it — authenticates the pod with its handle, does the real
-  handshake (Postgres **SCRAM-SHA-256**, Redis `AUTH`) with the real password,
-  then splices the sockets. The pod never learns the password.
+  terminates it. It authenticates the pod with its handle, does the real
+  handshake (Postgres SCRAM-SHA-256, Redis `AUTH`) with the real password, then
+  splices the sockets. The pod never learns the password.
 
-The broker runs as a persistent daemon (`poddled`, auto-started) so pods keep
-working after the client exits, and can be reattached.
+The broker runs as a persistent daemon (`poddled`, auto-started), so pods keep
+working after the client exits and can be reattached.
 
 ## What's brokered
 
 | Kind | Connectors |
 |---|---|
-| **Git** | github · gitlab · forgejo · gitea · bitbucket |
-| **CI** | woodpecker · drone · argocd · jenkins |
-| **Registries** | npm · pypi · docker |
-| **Databases** | postgres · redis |
+| **Git** | github, gitlab, forgejo, gitea, bitbucket |
+| **CI** | woodpecker, drone, argocd, jenkins |
+| **Registries** | npm, pypi, docker |
+| **Databases** | postgres, redis |
 | **LLM** | anthropic (claude-code) |
 
-New HTTP services are a few lines of declarative TOML — no code.
+New HTTP services are a few lines of declarative TOML, no code.
 
 ## Commands
 
@@ -117,37 +116,37 @@ poddle version
 
 ## Secret-safety
 
-- **`block_paths`** — mounts that would expose host secrets (`~/.ssh`, `~/.aws`,
-  poddle's own token store, …) are refused before the pod is created.
-- **credential scan** — bind mounts are scanned for `.env`/keys/`.npmrc`; warn
-  (default) or `secret_scan = "block"`.
-- **egress redaction** — the broker scrubs its managed secrets plus
-  high-confidence patterns (private keys, `AKIA…`, `ghp_…`, …) from outbound
+- **`block_paths`**: mounts that would expose host secrets (`~/.ssh`, `~/.aws`,
+  poddle's own token store) are refused before the pod is created.
+- **credential scan**: bind mounts are scanned for `.env`/keys/`.npmrc`; warn by
+  default, or `secret_scan = "block"`.
+- **egress redaction**: the broker scrubs its managed secrets plus
+  high-confidence patterns (private keys, `AKIA...`, `ghp_...`) from outbound
   bodies (`egress = redact | block | off`).
 
 ## Sizing
 
-`size` (weak/strong) is a **CPU ceiling, not a reservation** — idle pods float
-to ~0 and burst up to the cap for free, so oversubscription is fine. Resize a
-*running* pod's **CPU** live with `poddle resize <pod> strong` (no restart), or
-let a task burst its CPU itself: `before_task = "strong"` / `after_task = "weak"`
-in a template (CPU only).
+`size` (weak/strong) is a **CPU ceiling, not a reservation**: idle pods float to
+~0 and burst to the cap for free, so oversubscription is fine. Resize a running
+pod's CPU live with `poddle resize <pod> strong` (no restart), or let a task
+burst its own CPU with `before_task = "strong"` / `after_task = "weak"` in a
+template (CPU only).
 
-**Memory is different** — it's incompressible, so you can't safely shrink it live
-(you'd OOM the pod). The answer to "needs more RAM" is `poddle move` (below), not
-resize: re-home the session onto a bigger shell. Live *memory* resize is
-grow-only and needs cgroup delegation (a rootful / systemd-delegated host).
+Memory is different. It's incompressible, so you can't safely shrink it live
+without OOMing the pod. The answer to "needs more RAM" is `poddle move` (below),
+not resize. Live memory resize is grow-only and needs cgroup delegation (a
+rootful or systemd-delegated host).
 
 ## Moving a session
 
 Pods are disposable compute shells; your workspace and agent state live on named
 volumes. `poddle move <pod> --size strong` (or `--image`) re-homes the session
-onto a fresh, right-sized shell — same workspace, same conversation, fresh
+onto a fresh, right-sized shell: same workspace, same conversation, fresh
 handles, in seconds (the volumes aren't copied). It's how you get more RAM, swap
-the base image, or recover from a dead pod. `poddle down` removes the shell *and*
+the base image, or recover from a dead pod. `poddle down` removes the shell and
 its volumes.
 
-## Self-host & remote
+## Self-host and remote
 
 `PODDLE_HOST=ssh://user@host` runs pods on a remote machine over the same code
 path. The broker binds an owner-only Unix control socket; credentials live in
@@ -157,7 +156,7 @@ memory (memguard), never on disk.
 
 ```
 src/cli/              CLI entry + one vertical slice per command
-src/internal/         private kernel: broker, poddled, l4, connector, podman, …
+src/internal/         private kernel: broker, poddled, l4, connector, podman
 tests/e2e/            end-to-end tests driving the built binary against podman
 woodpecker/           CI pipelines
 Taskfile.yml          all dev commands
@@ -168,10 +167,10 @@ task build    # build the binary
 task test     # unit tests (co-located in src/)
 task arch     # architecture / boundary tests
 task ci       # what CI runs (fmt + vet + test + arch + build)
-task e2e-*    # end-to-end suites (need podman): e2e-up, e2e-connector, e2e-l4, e2e-task, …
+task e2e-*    # end-to-end suites (need podman): e2e-up, e2e-connector, e2e-l4, e2e-task
 ```
 
-Module `github.com/datadir-lab/poddle` — imports carry the `src/` segment.
+Module `github.com/datadir-lab/poddle`; imports carry the `src/` segment.
 
 ## License
 
@@ -179,11 +178,11 @@ poddle's core (this repository) is open source under the
 **[GNU AGPL-3.0](./LICENSE)**. The hosted **poddle cloud** and **poddle
 enterprise** editions are commercial and live in a separate, private repository.
 
-- **[LICENSING.md](./LICENSING.md)** — what's licensed how, and how the
+- **[LICENSING.md](./LICENSING.md)**: what's licensed how, and how the
   proprietary editions coexist with an AGPL core.
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — how to contribute (DCO sign-off).
-- **[docs/design/open-core.md](./docs/design/open-core.md)** — the engineering
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)**: how to contribute (DCO sign-off).
+- **[docs/design/open-core.md](./docs/design/open-core.md)**: the engineering
   boundary between core and cloud.
 
-A commercial license is available if AGPL-3.0 doesn't fit —
+A commercial license is available if AGPL-3.0 doesn't fit:
 [hello@datadir.co](mailto:hello@datadir.co).

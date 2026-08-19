@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] Commits follow **Conventional Commits** (`type(scope): summary`) - commitlint runs in CI
+- [ ] Commits follow **Conventional Commits** (`type(scope): summary`); commitlint runs in CI
 - [ ] Each commit is **signed off** (`git commit -s`) per the [DCO](../CONTRIBUTING.md)
 - [ ] `task ci` passes locally (vet + fmt + test + arch + build)
 - [ ] Tests added or updated for the change
