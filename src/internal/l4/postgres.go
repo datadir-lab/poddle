@@ -88,6 +88,18 @@ func ServePostgres(pod net.Conn, r Resolver) error {
 	return splice(pod, up, podR, upR)
 }
 
+// pgAuthCode reads the Int32 auth-request code from an 'R' (Authentication)
+// message body. readMessage only guarantees a body length >= 0, so a malformed
+// or hostile upstream can send a short 'R' message; the upstream link is
+// plaintext TCP, so this includes a MITM. Return ok=false rather than letting
+// body[:4] slice-panic and crash the daemon for every pod.
+func pgAuthCode(body []byte) (code uint32, ok bool) {
+	if len(body) < 4 {
+		return 0, false
+	}
+	return binary.BigEndian.Uint32(body[:4]), true
+}
+
 // pgClientAuth performs the real startup + authentication to the upstream.
 func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
 	if err := writeStartup(up, user, db); err != nil {
@@ -100,7 +112,11 @@ func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
 		}
 		switch typ {
 		case 'R':
-			switch authType := binary.BigEndian.Uint32(body[:4]); authType {
+			code, ok := pgAuthCode(body)
+			if !ok {
+				return fmt.Errorf("short authentication message (%d bytes)", len(body))
+			}
+			switch code {
 			case 0: // AuthenticationOk
 				return nil
 			case 3: // cleartext
@@ -108,6 +124,9 @@ func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
 					return err
 				}
 			case 5: // md5
+				if len(body) < 8 {
+					return fmt.Errorf("short md5 salt in upstream auth message")
+				}
 				resp := md5Auth(user, pass, body[4:8])
 				if err := writeMessage(up, 'p', append([]byte(resp), 0)); err != nil {
 					return err
@@ -115,7 +134,7 @@ func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
 			case 10: // SASL
 				return pgSCRAM(up, upR, pass, body[4:])
 			default:
-				return fmt.Errorf("unsupported upstream auth type %d", authType)
+				return fmt.Errorf("unsupported upstream auth type %d", code)
 			}
 		case 'E':
 			return fmt.Errorf("upstream refused: %s", pgErrText(body))
@@ -151,7 +170,7 @@ func pgSCRAM(up net.Conn, upR *bufio.Reader, pass string, mechs []byte) error {
 	if err != nil {
 		return err
 	}
-	if typ != 'R' || binary.BigEndian.Uint32(body[:4]) != 11 { // SASLContinue
+	if code, ok := pgAuthCode(body); typ != 'R' || !ok || code != 11 { // SASLContinue
 		return fmt.Errorf("expected SASLContinue")
 	}
 	final, err := sc.finalMessage(string(body[4:]))
@@ -165,13 +184,13 @@ func pgSCRAM(up net.Conn, upR *bufio.Reader, pass string, mechs []byte) error {
 	if typ, body, err = readMessage(upR); err != nil { // SASLFinal
 		return err
 	}
-	if typ != 'R' || binary.BigEndian.Uint32(body[:4]) != 12 {
+	if code, ok := pgAuthCode(body); typ != 'R' || !ok || code != 12 {
 		return fmt.Errorf("expected SASLFinal")
 	}
 	if typ, body, err = readMessage(upR); err != nil { // AuthenticationOk
 		return err
 	}
-	if typ != 'R' || binary.BigEndian.Uint32(body[:4]) != 0 {
+	if code, ok := pgAuthCode(body); typ != 'R' || !ok || code != 0 {
 		return fmt.Errorf("expected AuthenticationOk after SASL")
 	}
 	return nil

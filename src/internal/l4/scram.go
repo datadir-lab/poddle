@@ -39,6 +39,12 @@ func saslName(s string) string {
 // firstMessage is the SASLInitialResponse payload (gs2 header + client-first-bare).
 func (s *scramClient) firstMessage() string { return "n,," + s.firstBare }
 
+// maxSCRAMIterations caps the server-supplied PBKDF2 iteration count. Real
+// servers use a few thousand (Postgres defaults to 4096); an unbounded count
+// from a hostile or MITM'd upstream would spin pbkdf2SHA256 for minutes — a CPU
+// DoS. 1<<20 is far above any real server yet bounds the loop to milliseconds.
+const maxSCRAMIterations = 1 << 20
+
 // finalMessage computes the client-final message (with proof) from the server's
 // server-first message.
 func (s *scramClient) finalMessage(serverFirst string) (string, error) {
@@ -52,7 +58,7 @@ func (s *scramClient) finalMessage(serverFirst string) (string, error) {
 		return "", fmt.Errorf("scram: bad salt: %w", err)
 	}
 	iter, err := strconv.Atoi(attrs["i"])
-	if err != nil || iter < 1 {
+	if err != nil || iter < 1 || iter > maxSCRAMIterations {
 		return "", fmt.Errorf("scram: bad iteration count %q", attrs["i"])
 	}
 

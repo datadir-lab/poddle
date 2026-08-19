@@ -101,10 +101,14 @@ func redisAuth(up net.Conn, upR *bufio.Reader, user, pass string) error {
 	if _, err := up.Write([]byte(cmd)); err != nil {
 		return err
 	}
-	line, err := upR.ReadString('\n')
+	// ReadSlice is bounded by the bufio buffer, so a hostile or MITM'd upstream
+	// that never sends '\n' cannot grow the buffer without limit (the upstream
+	// link is plaintext TCP). The real reply ("+OK\r\n" or a short error) fits.
+	lineB, err := upR.ReadSlice('\n')
 	if err != nil {
 		return err
 	}
+	line := string(lineB)
 	if !strings.HasPrefix(line, "+OK") {
 		return fmt.Errorf("upstream AUTH rejected: %s", strings.TrimSpace(line))
 	}
