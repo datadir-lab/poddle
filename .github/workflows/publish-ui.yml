@@ -1,24 +1,25 @@
 name: Publish @poddle/ui
 
-# Publishes the @poddle/ui design system to npm. Version-gated: it publishes
-# only when src/web/ui/package.json carries a version not yet on npm, so a
-# normal "bump the version, merge to main" flow releases it and re-runs are
-# no-ops. Also runnable on demand.
+# Publishes the @poddle/ui design system to npm via Trusted Publishing (OIDC):
+# no long-lived NPM_TOKEN - each run mints a short-lived, workflow-scoped token,
+# and npm auto-generates a provenance attestation. Configure the trusted
+# publisher once on npmjs.com (@poddle/ui > Settings > Trusted Publisher):
+#   org/user: datadir-lab   repo: poddle   workflow: publish-ui.yml
 #
-# Needs the NPM_TOKEN secret (an automation token with publish rights to the
-# @poddle scope). Skips cleanly when absent, so it never fails a push.
+# Version-gated: publishes only when src/web/ui/package.json carries a version
+# not yet on npm, so a "bump the version, merge to main" flow releases it and
+# re-runs are no-ops. Also runnable on demand.
 
 on:
   push:
     branches: [main]
     paths:
       - 'src/web/ui/**'
-      - '.github/workflows/publish-ui.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write # npm provenance (OIDC signing)
+  id-token: write # Trusted Publishing (OIDC) + provenance signing
 
 concurrency:
   group: publish-ui
@@ -32,23 +33,20 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22 # trusted publishing needs Node >= 22.14
           registry-url: https://registry.npmjs.org
+
+      - name: Use an npm that supports trusted publishing
+        run: npm install -g npm@latest # needs npm >= 11.5.1
 
       - name: Publish if the version is new
         working-directory: src/web/ui
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN not set; skipping publish."
-            exit 0
-          fi
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
           if npm view "$name@$version" version >/dev/null 2>&1; then
             echo "$name@$version is already published; nothing to do."
             exit 0
           fi
-          echo "Publishing $name@$version"
-          npm publish --provenance --access public
+          echo "Publishing $name@$version via trusted publishing (OIDC)"
+          npm publish --access public
