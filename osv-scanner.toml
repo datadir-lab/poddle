@@ -1,0 +1,7 @@
+# OSV ignore list, honored by osv-scanner and the OpenSSF Scorecard
+# Vulnerabilities check. Each entry is an advisory that does not affect poddle,
+# with the reason. Keep this list minimal and revisit it as deps move.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "golang.org/x/crypto/openpgp is a deprecated, unmaintained subpackage with no fixed version. poddle never imports it (govulncheck reports 0 reachable vulnerabilities); x/crypto is pulled in transitively via memguard, which uses only golang.org/x/crypto/blake2b for in-memory secret sealing."
