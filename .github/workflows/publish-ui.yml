@@ -1,0 +1,58 @@
+name: Publish @poddle/ui
+
+# Publishes the @poddle/ui design system to npm via Trusted Publishing (OIDC):
+# no long-lived NPM_TOKEN - each run mints a short-lived, workflow-scoped token,
+# and npm auto-generates a provenance attestation. Configure the trusted
+# publisher once on npmjs.com (@poddle/ui > Settings > Trusted Publisher):
+#   org/user: datadir-lab   repo: poddle   workflow: publish-ui.yml
+#
+# Version-gated: publishes only when src/web/ui/package.json carries a version
+# not yet on npm, so a "bump the version, merge to main" flow releases it and
+# re-runs are no-ops. Also runnable on demand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/web/ui/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Trusted Publishing (OIDC) + provenance signing
+
+concurrency:
+  group: publish-ui
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22 # trusted publishing needs Node >= 22.14
+          registry-url: https://registry.npmjs.org
+
+      - name: Activate a pinned npm (trusted publishing needs >= 11.5.1)
+        # corepack, not `npm install -g`: pins the version without a global
+        # install, which Scorecard flags as an unpinned npmCommand. The
+        # npm --version line fails the job loudly if activation didn't take.
+        run: |
+          corepack prepare npm@11.5.1 --activate
+          corepack enable npm
+          npm --version
+
+      - name: Publish if the version is new
+        working-directory: src/web/ui
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already published; nothing to do."
+            exit 0
+          fi
+          echo "Publishing $name@$version via trusted publishing (OIDC)"
+          npm publish --access public

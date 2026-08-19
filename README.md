@@ -7,6 +7,11 @@
 [![codecov](https://codecov.io/gh/datadir-lab/poddle/branch/main/graph/badge.svg)](https://codecov.io/gh/datadir-lab/poddle)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/datadir-lab/poddle/badge)](https://securityscorecards.dev/viewer/?uri=github.com/datadir-lab/poddle)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
+<!-- After registering at https://www.bestpractices.dev, replace <PROJECT_ID> and
+     uncomment this OpenSSF Best Practices badge (see docs/openssf-best-practices.md):
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<PROJECT_ID>/badge)](https://www.bestpractices.dev/projects/<PROJECT_ID>)
+-->
+
 
 `poddle up` spins an isolated, reproducible pod on your own infra, wired to your
 stack (git host, CI, registries, databases), with **no real secret inside the
@@ -33,8 +38,13 @@ today, a remote SSH host with one flag.
 # Any platform (downloads the signed release binary):
 curl -sSf https://get.poddle.dev | sh
 
-# Homebrew (macOS):
-brew tap datadir-lab/tap && brew install poddle
+# npm (any platform):
+npm i -g @poddle/cli
+
+# Homebrew (macOS or Linuxbrew):
+brew tap datadir-lab/tap
+brew trust datadir-lab/tap   # Homebrew 6.0+: trust the third-party tap once
+brew install poddle
 
 # Scoop (Windows):
 scoop bucket add poddle https://github.com/datadir-lab/scoop-bucket && scoop install poddle

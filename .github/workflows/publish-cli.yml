@@ -1,0 +1,75 @@
+name: Publish @poddle/cli
+
+# Publishes @poddle/cli and its six platform packages to npm via Trusted
+# Publishing (OIDC) - no NPM_TOKEN. Runs after the Release workflow succeeds
+# (goreleaser + all install smoke tests green), so npm never gets a release
+# that failed verification. npm publishes can't be unpublished, so this gate
+# matters. Also runnable on demand against an existing tag.
+#
+# Each of the seven packages needs a trusted publisher configured once on
+# npmjs.com pointing at: org datadir-lab, repo poddle, workflow publish-cli.yml.
+# Version-gated per package, so re-runs are no-ops.
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish (e.g. v0.1.1)'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # Trusted Publishing (OIDC) + provenance
+
+concurrency:
+  group: publish-cli
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    # Manual, or only when the whole Release run (incl. smoke) succeeded on a tag.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22 # trusted publishing needs Node >= 22.14
+          registry-url: https://registry.npmjs.org
+
+      - name: Activate a pinned npm (trusted publishing needs >= 11.5.1)
+        # corepack, not `npm install -g`: pins the version without a global
+        # install, which Scorecard flags as an unpinned npmCommand. The
+        # npm --version line fails the job loudly if activation didn't take.
+        run: |
+          corepack prepare npm@11.5.1 --activate
+          corepack enable npm
+          npm --version
+
+      - name: Build the packages from the release binaries
+        run: sh packaging/npm/build.sh "$TAG" "$RUNNER_TEMP/npm-out"
+
+      - name: Publish any package whose version is new
+        run: |
+          set -eu
+          # Platform packages first, then the main package (so its optional
+          # dependencies already resolve on npm).
+          for dir in "$RUNNER_TEMP"/npm-out/cli-* "$RUNNER_TEMP"/npm-out/cli; do
+            name=$(node -p "require('$dir/package.json').name")
+            version=$(node -p "require('$dir/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already published; skipping."
+              continue
+            fi
+            echo "Publishing $name@$version"
+            ( cd "$dir" && npm publish --access public )
+          done

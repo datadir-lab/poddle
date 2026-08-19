@@ -22,6 +22,9 @@ jobs:
     permissions:
       contents: write # create the GitHub Release
       id-token: write # cosign keyless signing (OIDC)
+    outputs:
+      # base64(checksums.txt): the SLSA subjects the provenance job attests.
+      hashes: ${{ steps.hashes.outputs.hashes }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -44,6 +47,15 @@ jobs:
           # Pushes the Homebrew cask + Scoop manifest to the tap/bucket repos.
           # Absent -> goreleaser skips those uploads (release still succeeds).
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      - name: Hash release artifacts for provenance
+        id: hashes
+        run: |
+          set -euo pipefail
+          # SLSA subjects = the sha256 lines goreleaser already wrote to
+          # checksums.txt. base64 the whole file; the generic generator expects
+          # exactly this format ("<sha256>  <filename>" per line).
+          echo "hashes=$(base64 -w0 < dist/checksums.txt)" >> "$GITHUB_OUTPUT"
 
       # Keep get.poddle.dev (curl | sh) serving the current installer. Skips
       # cleanly if the Bunny storage key is absent, so releases never break.
@@ -163,14 +175,17 @@ jobs:
               ! command -v poddle
               ;;
             brew)
+              # Formula (not cask): formula binaries are not quarantined, so the
+              # unsigned binary runs with no xattr workaround. Homebrew 6.0+ needs
+              # a non-official tap trusted before installing a formula; `brew
+              # trust` is the documented one-time step (older Homebrew lacks the
+              # command and does not require trust, so fall back to the env var).
               brew tap datadir-lab/tap
-              brew install --cask datadir-lab/tap/poddle
-              BIN="$(brew --prefix)/bin/poddle"
-              # The binary is unsigned; clear any Gatekeeper quarantine so CI can
-              # run it. (Real macOS users may need notarization - see caveats.)
-              xattr -d com.apple.quarantine "$BIN" 2>/dev/null || true
-              "$BIN" version | grep -q "poddle $NUM"
-              brew uninstall --cask datadir-lab/tap/poddle
+              brew trust datadir-lab/tap || export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+              brew install poddle
+              poddle version | grep -q "poddle $NUM"
+              BIN="$(command -v poddle)"
+              brew uninstall poddle
               [ ! -e "$BIN" ]
               ;;
           esac
@@ -255,3 +270,33 @@ jobs:
             echo ""
             echo "Fix the issue and cut a new tag."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # --- SLSA build provenance ------------------------------------------------
+  # Attaches a signed SLSA provenance attestation (poddle.intoto.jsonl) to the
+  # release, but only once every install smoke test passes - so provenance is
+  # never left on a release that the rollback job is about to withdraw. This
+  # takes the OpenSSF Scorecard Signed-Releases check to 10/10 (a *.intoto.jsonl
+  # release asset), on top of the existing cosign signature over the checksums.
+  #
+  # The SLSA generator MUST be referenced by version tag, not a commit SHA: it
+  # derives the trusted builder identity recorded in the provenance from the
+  # tag, and a digest reference is unsupported. This is the one intentional
+  # exception to our pin-by-SHA policy for third-party actions.
+  provenance:
+    name: SLSA provenance
+    needs: [goreleaser, smoke-linux, smoke-macos, smoke-windows]
+    if: >-
+      always() && github.event_name == 'push' &&
+      needs.goreleaser.result == 'success' &&
+      needs.smoke-linux.result == 'success' &&
+      needs.smoke-macos.result == 'success' &&
+      needs.smoke-windows.result == 'success'
+    permissions:
+      actions: read # read the workflow run to build the provenance
+      id-token: write # OIDC: keyless signing of the provenance
+      contents: write # upload poddle.intoto.jsonl to the release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.goreleaser.outputs.hashes }}
+      provenance-name: poddle.intoto.jsonl
+      upload-assets: true
