@@ -110,8 +110,23 @@ func DefaultDir() string {
 // ProjectDir is a repo's versioned policy dir: <cwd>/poddle/policies.
 func ProjectDir(cwd string) string { return filepath.Join(cwd, "poddle", "policies") }
 
+// validName rejects policy names that could escape the store directory (path
+// traversal): a name must be a bare filename with no separators or "..".
+func validName(name string) error {
+	if name == "" {
+		return fmt.Errorf("policy has no name")
+	}
+	if name != filepath.Base(name) || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid policy name %q", name)
+	}
+	return nil
+}
+
 // Get loads and parses the named policy (<name>.toml).
 func (s *FileStore) Get(name string) (*Policy, error) {
+	if err := validName(name); err != nil {
+		return nil, err
+	}
 	b, err := os.ReadFile(filepath.Join(s.dir, name+".toml"))
 	if err != nil {
 		return nil, fmt.Errorf("policy %q: %w", name, err)
@@ -146,8 +161,8 @@ func (s *FileStore) List() ([]string, error) {
 
 // Put writes a policy as <name>.toml (creating the dir if needed).
 func (s *FileStore) Put(p *Policy) error {
-	if p.Name == "" {
-		return fmt.Errorf("policy has no name")
+	if err := validName(p.Name); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return err
@@ -161,6 +176,9 @@ func (s *FileStore) Put(p *Policy) error {
 
 // Delete removes the named policy file.
 func (s *FileStore) Delete(name string) error {
+	if err := validName(name); err != nil {
+		return err
+	}
 	err := os.Remove(filepath.Join(s.dir, name+".toml"))
 	if os.IsNotExist(err) {
 		return nil

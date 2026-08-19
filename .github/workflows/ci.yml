@@ -23,7 +23,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
       - name: task ci
         run: task ci
       - name: Race + coverage
@@ -45,7 +45,7 @@ jobs:
           cache: true
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
           govulncheck ./...
 
   golangci-lint:
