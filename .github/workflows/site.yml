@@ -1,0 +1,81 @@
+name: Deploy site
+
+# Builds the Astro marketing site + docs and uploads dist/ to the Bunny storage
+# zone behind poddle.dev (apex + www). Same pattern as the get.poddle.dev
+# installer upload. Runs on pushes to main that touch the site, and on demand.
+#
+# Needs BUNNY_SITE_STORAGE_KEY (write password for the site storage zone).
+# The zone name is BUNNY_SITE_STORAGE_ZONE (repo variable), default below.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/web/site/**'
+      - 'src/web/ui/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: build + upload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/web/site/package-lock.json
+
+      - name: Build the site
+        working-directory: src/web/site
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Upload dist/ to Bunny storage
+        working-directory: src/web/site/dist
+        env:
+          BUNNY_KEY: ${{ secrets.BUNNY_SITE_STORAGE_KEY }}
+          ZONE: ${{ vars.BUNNY_SITE_STORAGE_ZONE || 'datadir-poddle-site' }}
+        run: |
+          if [ -z "$BUNNY_KEY" ]; then
+            echo "BUNNY_SITE_STORAGE_KEY not set; skipping upload."
+            exit 0
+          fi
+          base="https://storage.bunnycdn.com/$ZONE"
+          # Upload every built file, preserving paths. Bunny creates dirs implicitly.
+          find . -type f -print0 | while IFS= read -r -d '' f; do
+            rel=${f#./}
+            code=$(curl -s -o /dev/null -w '%{http_code}' -T "$f" \
+              -H "AccessKey: $BUNNY_KEY" "$base/$rel")
+            if [ "$code" != "201" ] && [ "$code" != "200" ]; then
+              echo "FAILED ($code): $rel" >&2
+              exit 1
+            fi
+          done
+          echo "Uploaded $(find . -type f | wc -l) files to $ZONE."
+
+      - name: Purge the pull zone cache
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+          PULL_ZONE_ID: ${{ vars.BUNNY_SITE_PULLZONE_ID }}
+        run: |
+          if [ -z "$BUNNY_API_KEY" ] || [ -z "$PULL_ZONE_ID" ]; then
+            echo "BUNNY_API_KEY or BUNNY_SITE_PULLZONE_ID not set; skipping cache purge."
+            echo "New content will appear as the edge cache expires."
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "AccessKey: $BUNNY_API_KEY" \
+            "https://api.bunny.net/pullzone/$PULL_ZONE_ID/purgeCache"
+          echo "Purged pull zone $PULL_ZONE_ID."
