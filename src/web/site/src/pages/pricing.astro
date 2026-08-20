@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Button from '../components/Button.astro';
-import pricing from '../data/pricing.json';
+import { pricing } from '../data/pricing';
 
 const { tiers, podCompute, included, faqs } = pricing;
 ---
@@ -45,16 +45,24 @@ const { tiers, podCompute, included, faqs } = pricing;
       <p class="ilabel">Pods &amp; compute</p>
       <div class="pods__grid">
         <div class="pod-card pod-card--managed">
+          {podCompute.managed.comingSoon && <span class="pod-card__badge">Coming soon</span>}
           <h3 class="pod-card__h">{podCompute.managed.heading}</h3>
           <p class="pod-card__sub">{podCompute.managed.sub}</p>
-          <ul class="pod-rates">
-            {podCompute.managed.rates.map((r) => (
-              <li>
-                <span class="pod-rates__size">{r.size} · {r.specs}</span>
-                <span class="pod-rates__price">{r.price}<span>{r.unit}</span></span>
-              </li>
-            ))}
-          </ul>
+          {podCompute.managed.rates && podCompute.managed.rates.length > 0 && (
+            <ul class="pod-rates">
+              {podCompute.managed.rates.map((r) => (
+                <li>
+                  <span class="pod-rates__size">{r.size} · {r.specs}</span>
+                  <span class="pod-rates__price">{r.price}<span>{r.unit}</span></span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {podCompute.managed.cta && (
+            <div class="pod-card__cta">
+              <Button href={podCompute.managed.cta.href} variant={podCompute.managed.cta.variant as 'primary' | 'ghost'}>{podCompute.managed.cta.label}</Button>
+            </div>
+          )}
           <p class="pod-card__note">{podCompute.managed.note}</p>
         </div>
         <div class="pod-card">
@@ -91,8 +99,8 @@ const { tiers, podCompute, included, faqs } = pricing;
   .pr-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 60ch; margin: 1.2rem 0 0; }
   .pr-body { padding-bottom: var(--space-section); }
 
-  .tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4rem; margin-top: 2.6rem; align-items: start; }
-  .tier { position: relative; border: 1px solid var(--border); border-radius: 18px; background: #fff; padding: 1.9rem 1.6rem; display: flex; flex-direction: column; }
+  .tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; margin-top: 2.6rem; align-items: start; }
+  .tier { position: relative; border: 1px solid var(--border); border-radius: 18px; background: #fff; padding: 1.7rem 1.35rem; display: flex; flex-direction: column; }
   .tier--featured { border-color: var(--accent); box-shadow: 0 16px 46px -20px rgba(47, 158, 111, 0.45); }
   .badge { position: absolute; top: -0.72rem; left: 1.6rem; background: var(--accent); color: #fff; font: 700 0.62rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.38rem 0.62rem; border-radius: 999px; }
   .tier__name { font-family: var(--font-serif); font-weight: 400; font-size: 1.7rem; margin: 0; color: var(--ink); }
@@ -120,7 +128,10 @@ const { tiers, podCompute, included, faqs } = pricing;
   .pods { margin-top: 3rem; }
   .pods__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; margin-top: 0.9rem; }
   .pod-card { border: 1px solid var(--border); border-radius: 16px; background: #fff; padding: 1.6rem 1.5rem; }
-  .pod-card--managed { border-color: var(--accent); }
+  .pod-card--managed { position: relative; border-color: var(--accent); }
+  .pod-card__badge { position: absolute; top: -0.72rem; left: 1.5rem; background: var(--accent); color: #fff; font: 700 0.62rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.38rem 0.62rem; border-radius: 999px; }
+  .pod-card__cta { margin: 1.1rem 0 0.2rem; }
+  .pod-card__cta :global(.btn) { display: inline-flex; }
   .pod-card__h { font-family: var(--font-serif); font-weight: 400; font-size: 1.4rem; margin: 0 0 0.45rem; color: var(--ink); }
   .pod-card__sub { color: var(--muted); font-size: 0.9rem; line-height: 1.42; margin: 0 0 1.1rem; }
   .pod-card__note { color: var(--faint); font-size: 0.78rem; line-height: 1.45; margin: 1rem 0 0; }
@@ -131,9 +142,14 @@ const { tiers, podCompute, included, faqs } = pricing;
   .pod-rates__price { font-family: var(--font-serif); font-size: 1.18rem; color: var(--ink); white-space: nowrap; }
   .pod-rates__price span { font-family: var(--font-sans); font-size: 0.72rem; color: var(--faint); }
 
+  @media (max-width: 1080px) {
+    .tiers { grid-template-columns: repeat(2, 1fr); max-width: 42rem; margin-inline: auto; }
+  }
   @media (max-width: 900px) {
-    .tiers { grid-template-columns: 1fr; max-width: 30rem; margin-inline: auto; }
     .pods__grid { grid-template-columns: 1fr; }
     .faq { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .tiers { grid-template-columns: 1fr; max-width: 30rem; }
   }
 </style>

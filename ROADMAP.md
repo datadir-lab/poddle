@@ -74,21 +74,11 @@ injects a secret; Phase 1 replaces that with the secretless broker.
 
 ## Business model (open-core)
 
-Monetize the control plane / governance per seat; keep compute BYO (the
-customer's infra, $0). Don't fight the E2B/Daytona compute-margin war.
+The core is free and open source (AGPL-3.0). The commercial editions - the hosted
+control plane and enterprise governance - are proprietary and live in a separate,
+private repository; see [LICENSING.md](./LICENSING.md) for what is licensed how.
 
-| Tier | Price (est.) | For | Compute |
-|---|---|---|---|
-| **OSS** | $0 | solo self-host, single-user | BYO |
-| **Pro** | ~$12-19/mo | solo convenience (hosted broker + UI) | BYO / small managed |
-| **Team** | ~$25-40/user/mo | teams, SSO, collaboration, attribution, UI | BYO; managed optional |
-| **Enterprise** | ~$30k-150k+/yr | on-prem/air-gapped, governance, compliance, support | BYO |
-
-- Solos are the funnel, not revenue (they self-host free). Orgs are the money:
-  secretless + per-user-ToS-billing + sovereignty lets you price above a plain
-  sandbox tool. You're selling compliant, attributable agent access.
-- Managed pods (optional): thin markup (~$0.10-0.40/hr) + auto-suspend.
-- Numbers are hypotheses; validate with 2-3 paying design-partner teams.
+Pricing and go-to-market are maintained privately and are not part of this repo.
 
 ## Design docs
 
