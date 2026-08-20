@@ -250,6 +250,16 @@ main { width: 100%; max-width: var(--maxw-app); margin-inline: auto; padding: 1.
 
 tr.clickable { cursor: pointer; }
 
+/* ---- destinations (where agents are reaching) ---- */
+td.num, th.num { text-align: right; white-space: nowrap; }
+.dest__host { font-weight: 500; }
+.dest__flag { display: inline-flex; vertical-align: middle; margin-left: 0.45rem; color: var(--deny); }
+.mix { display: inline-flex; align-items: center; gap: 2px; width: 150px; max-width: 40vw; height: 9px; vertical-align: middle; }
+.mix__seg { height: 100%; border-radius: 3px; min-width: 3px; }
+.mix__seg.d-allow { background: var(--allow); }
+.mix__seg.d-redact { background: var(--redact); }
+.mix__seg.d-deny, .mix__seg.d-block { background: var(--deny); }
+
 /* ---- audit table ---- */
 .table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--card); }
 table { width: 100%; border-collapse: collapse; }

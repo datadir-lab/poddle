@@ -250,6 +250,28 @@ test("pod controls: rebinds a policy to a running pod (confirmed, real body POST
   expect(bound?.name).toBe("staging"); // the full policy definition was posted
 });
 
+test("destinations: aggregates egress by host, flags denials, and drills into the audit", async ({ page }) => {
+  await mockAudit(page); // SEED: api.anthropic.com (allow + redact), metadata.google.internal (deny)
+  await mockPods(page);
+  await page.goto("/destinations");
+
+  // Aggregated rows; a deny-listed host carries the flag, an allowed one does not.
+  await expect(page.locator("tbody tr")).toHaveCount(2); // evil.example is kind "block", not a request
+  await expect(page.locator("tr", { hasText: "metadata.google.internal" }).locator(".dest__flag")).toBeVisible();
+  await expect(page.locator("tr", { hasText: "api.anthropic.com" }).locator(".dest__flag")).toHaveCount(0);
+
+  // Filter narrows the list.
+  await page.getByPlaceholder("Filter destinations").fill("metadata");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await page.getByPlaceholder("Filter destinations").fill("");
+
+  // Clicking a destination drills into the audit filtered to that host.
+  await page.locator("tr", { hasText: "api.anthropic.com" }).first().click();
+  await expect(page).toHaveURL(/\/audit\?q=api\.anthropic\.com/);
+  await expect(page.locator("table")).toContainText("api.anthropic.com");
+  await expect(page.locator("table")).not.toContainText("metadata.google.internal");
+});
+
 test("pod controls: revokes credentials on a running pod (confirmed)", async ({ page }) => {
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: RUNNING_POD }));
   await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: TWO_POLICIES }));
