@@ -40,7 +40,7 @@ jobs:
           # Default set: the 17 suites that pass on GitHub's rootless podman.
           # e2e-move and e2e-task are omitted (need rootful podman); pass them
           # explicitly via the `suites` input on a rootful/self-hosted runner.
-          all='["e2e-up","e2e-l4","e2e-connector","e2e-templates","e2e-audit","e2e-policy","e2e-forward","e2e-secure","e2e-poddled","e2e-resize","e2e-resume-move","e2e-autoscale","e2e-ui","e2e-claude","e2e-remote","e2e","integration"]'
+          all='["e2e-up","e2e-l4","e2e-connector","e2e-templates","e2e-audit","e2e-policy","e2e-forward","e2e-secure","e2e-poddled","e2e-resize","e2e-resume-move","e2e-autoscale","e2e-ui","e2e-site","e2e-claude","e2e-remote","e2e","integration"]'
           if [ -n "$REQUESTED" ]; then
             echo "suites=$(printf '%s' "$REQUESTED" | jq -R -c 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           else
