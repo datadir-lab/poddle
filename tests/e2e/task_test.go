@@ -55,7 +55,7 @@ func TestE2E_Task_RunsAgentHeadless(t *testing.T) {
 
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		"XDG_RUNTIME_DIR="+filepath.Join(cfg, "run"),
+		"PODDLE_SOCKET="+filepath.Join(cfg, "poddled.sock"),
 		"PODDLE_ANTHROPIC_BASE_URL="+mock.URL)
 
 	cmd := exec.Command(bin, "task", "ping",
@@ -118,7 +118,7 @@ func TestE2E_Task_DetachRunsInBackground(t *testing.T) {
 
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		"XDG_RUNTIME_DIR="+filepath.Join(cfg, "run"),
+		"PODDLE_SOCKET="+filepath.Join(cfg, "poddled.sock"),
 		"PODDLE_ANTHROPIC_BASE_URL="+mock.URL)
 
 	// --detach returns promptly, leaving the agent running in the background.

@@ -47,9 +47,10 @@ jobs:
         run: |
           mkdir -p "$GOCOVERDIR"
           # The suites that pass on GitHub's rootless podman and drive the Go
-          # binary. e2e-move/e2e-task (need rootful podman) and e2e-ui/e2e-claude
-          # (UI / external harness, no Go-coverage value) are intentionally out.
-          suites="e2e-up e2e-l4 e2e-connector e2e-templates e2e-audit e2e-policy e2e-forward e2e-secure e2e-poddled e2e-resize e2e-resume-move e2e-autoscale e2e-remote e2e integration"
+          # binary. e2e-move/e2e-task isolate poddled's socket via PODDLE_SOCKET
+          # (not XDG_RUNTIME_DIR), so they now run rootless too. e2e-ui/e2e-claude
+          # (UI / external harness, no Go-coverage value) stay out.
+          suites="e2e-up e2e-l4 e2e-connector e2e-templates e2e-audit e2e-policy e2e-forward e2e-secure e2e-poddled e2e-resize e2e-move e2e-task e2e-resume-move e2e-autoscale e2e-remote e2e integration"
           failed=""
           for s in $suites; do
             echo "::group::$s"

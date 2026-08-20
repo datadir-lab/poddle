@@ -29,9 +29,15 @@ func AuditDBPath() string {
 	return filepath.Join(dir, "poddle", "audit.db")
 }
 
-// SocketPath is the default control-socket path: under XDG_RUNTIME_DIR when set
-// (the right home for runtime sockets), else the user config dir, else temp.
+// SocketPath is the control-socket path. PODDLE_SOCKET overrides it outright (so
+// a caller can isolate poddled's socket without repointing XDG_RUNTIME_DIR,
+// which rootless podman also relies on); otherwise it lives under
+// XDG_RUNTIME_DIR when set (the right home for runtime sockets), else the user
+// config dir, else temp.
 func SocketPath() string {
+	if s := os.Getenv("PODDLE_SOCKET"); s != "" {
+		return s
+	}
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" {
 		if cfg, err := os.UserConfigDir(); err == nil {
