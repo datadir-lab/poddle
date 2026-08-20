@@ -966,7 +966,7 @@ function toRows(p: Policy): AllowRow[] {
   return hosts.map((h) => ({ host: h, methods: m[h] || [], open: false }));
 }
 
-function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; events: Event[]; onSaved: (name: string) => void; onDeleted: () => void }) {
+function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { policy: Policy; events: Event[]; scopePods: string[]; onSaved: (name: string) => void; onDeleted: () => void }) {
   const [name, setName] = useState(policy.name);
   const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
@@ -996,7 +996,15 @@ function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; 
   };
 
   // Live dry-run against recent traffic, recomputed as the rules change.
-  const impact = useMemo(() => dryRun(draft(), events), [name, allows, denies, egress, events]);
+  // Scope the dry-run to the traffic of the pods that run this policy. With none
+  // (a new or unused policy) there is nothing to scope to, so preview against all
+  // recent egress instead — and say so.
+  const scoped = scopePods.length > 0;
+  const dryEvents = useMemo(
+    () => (scoped ? events.filter((e) => e.pod && scopePods.includes(e.pod)) : events),
+    [events, scopePods, scoped],
+  );
+  const impact = useMemo(() => dryRun(draft(), dryEvents), [name, allows, denies, egress, dryEvents]);
 
   const save = async () => {
     if (!name.trim()) { setErr("Name is required."); return; }
@@ -1063,16 +1071,16 @@ function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; 
 
       <div class="dryrun">
         <div class="dryrun__head">
-          <span class="dryrun__title">Dry-run against recent traffic</span>
+          <span class="dryrun__title">Dry-run · {scoped ? `${scopePods.length} pod${scopePods.length === 1 ? "" : "s"} on this policy` : "all recent egress"}</span>
           <span class="dryrun__stat">
-            {impact.total} recent request{impact.total === 1 ? "" : "s"} ·{" "}
+            {impact.total} request{impact.total === 1 ? "" : "s"} ·{" "}
             <span class={impact.denied ? "dryrun__deny" : "dryrun__ok"}>{impact.denied} would be denied</span>
           </span>
         </div>
         {impact.total === 0
-          ? <div class="dryrun__empty">No recent egress to evaluate yet.</div>
+          ? <div class="dryrun__empty">{scoped ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."}</div>
           : impact.denied === 0
-            ? <div class="dryrun__pass"><Icon name="check" size={14} /> Every recent request passes these rules.</div>
+            ? <div class="dryrun__pass"><Icon name="check" size={14} /> Every request passes these rules.</div>
             : <ul class="dryrun__list">
                 {impact.rows.slice(0, 8).map((r) => (
                   <li key={r.method + r.upstream}>
@@ -1084,7 +1092,12 @@ function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; 
                 ))}
                 {impact.rows.length > 8 && <li class="dryrun__more">+{impact.rows.length - 8} more destinations</li>}
               </ul>}
-        <p class="dryrun__note">Evaluates allow/deny and method rules against the recent audit trail. Secret redaction depends on request contents and is not simulated.</p>
+        <p class="dryrun__note">
+          {scoped
+            ? "Replays these rules over the recent requests made by the pods that run this policy."
+            : "No pods run this policy yet — previewed against all recent egress."}{" "}
+          Evaluates allow/deny and method rules; secret redaction depends on request contents and is not simulated.
+        </p>
       </div>
 
       {err && <div class="err">{err}</div>}
@@ -1109,6 +1122,12 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const running = pods.filter((p) => p.state === "running");
   const usage = (name: string) => running.filter((p) => p.policy === name).length;
   const ungoverned = running.filter((p) => !p.policy);
+  // Which pods run the selected policy — the dry-run scopes to their traffic so
+  // it answers "what would this do to the pods it governs", not the whole fleet.
+  const usingPods = useMemo(
+    () => (selected && selected !== "new" ? pods.filter((p) => p.policy === selected).map((p) => p.name) : []),
+    [pods, selected],
+  );
 
   // The selected policy is URL-driven (/policies/:name; "new" is the blank draft).
   // Memoize the selected policy so its object identity is stable across the pod
@@ -1152,7 +1171,7 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
           <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
         </div>
         {sel
-          ? <PolicyEditor policy={sel} events={events}
+          ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
               onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
               onDeleted={() => { load(); navigate("/policies"); }} />
           : <div class="editor empty">Select a policy, or create one.</div>}
