@@ -527,16 +527,17 @@ td.perf { text-align: right; white-space: nowrap; }
 
 .editor { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem 1.6rem; background: var(--card); }
 .editor.empty { color: var(--faint); display: flex; align-items: center; justify-content: center; min-height: 180px; }
-.editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); margin: 1.15rem 0 0.4rem; }
+.editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); margin: 1.4rem 0 0.55rem; }
 .editor label:first-of-type { margin-top: 0; }
 .label-hint { text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--faint); margin-left: 0.5rem; }
-.editor .row { display: flex; gap: 1rem; align-items: flex-end; }
+.editor .row { display: flex; gap: 1rem; align-items: flex-start; }
 .editor .row > div { flex: 1; }
 .editor .row > div.narrow { flex: 0 0 auto; }
+.editor .row label { margin-top: 0; } /* keep Name + Egress labels on the same line */
 .editor .row input { width: 100%; }
 
 /* ---- visual policy builder (destination rows + per-host method toggles) ---- */
-.rules { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.35rem; }
+.rules { display: flex; flex-direction: column; gap: 0.5rem; }
 .rules__empty { margin: 0.1rem 0; font-size: 0.84rem; color: var(--faint); }
 .rule { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bone); transition: border-color 0.12s; }
 .rule:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
