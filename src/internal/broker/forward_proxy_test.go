@@ -9,13 +9,29 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
-// recAuditor records every egress decision the proxy emits.
-type recAuditor struct{ records []ProxyRecord }
+// recAuditor records every egress decision the proxy emits. Proxy is called from
+// the proxy's handler goroutine while the test reads the records, so access is
+// mutex-guarded (the -race build flags an unsynchronised slice otherwise).
+type recAuditor struct {
+	mu      sync.Mutex
+	records []ProxyRecord
+}
 
-func (a *recAuditor) Proxy(r ProxyRecord) { a.records = append(a.records, r) }
+func (a *recAuditor) Proxy(r ProxyRecord) {
+	a.mu.Lock()
+	a.records = append(a.records, r)
+	a.mu.Unlock()
+}
+
+func (a *recAuditor) all() []ProxyRecord {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]ProxyRecord(nil), a.records...)
+}
 
 type allowAll struct{}
 
@@ -87,8 +103,8 @@ func TestForwardProxy_TunnelsAllowedConnect(t *testing.T) {
 	if string(buf) != "ping" {
 		t.Errorf("tunnel echo = %q, want ping", buf)
 	}
-	if len(aud.records) == 0 || aud.records[0].Decision != "allow" {
-		t.Errorf("expected an allow audit record for the tunnel, got %+v", aud.records)
+	if recs := aud.all(); len(recs) == 0 || recs[0].Decision != "allow" {
+		t.Errorf("expected an allow audit record for the tunnel, got %+v", recs)
 	}
 }
 
@@ -104,8 +120,8 @@ func TestForwardProxy_BlocksDeniedConnect(t *testing.T) {
 	if !strings.Contains(status, "403") {
 		t.Fatalf("denied CONNECT status = %q, want 403", status)
 	}
-	if len(aud.records) == 0 || aud.records[0].Decision != "deny" {
-		t.Errorf("expected a deny audit record, got %+v", aud.records)
+	if recs := aud.all(); len(recs) == 0 || recs[0].Decision != "deny" {
+		t.Errorf("expected a deny audit record, got %+v", recs)
 	}
 }
 
