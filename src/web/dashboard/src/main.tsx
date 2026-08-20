@@ -38,6 +38,14 @@ const api = {
     }),
   delPolicy: (name: string) =>
     fetch(`${CFG.apiBase}/policies/${encodeURIComponent(name)}`, { method: "DELETE", headers: H }),
+  // Bind a policy to a live pod (the gateway enforces it on the next request).
+  bindPodPolicy: (pod: string, p: Policy) =>
+    fetch(`${CFG.apiBase}/pods/${encodeURIComponent(pod)}/policy`, {
+      method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify(p),
+    }),
+  // Revoke every credential handle the daemon issued to a pod (a kill-switch).
+  revokePod: (pod: string) =>
+    fetch(`${CFG.apiBase}/pods/${encodeURIComponent(pod)}`, { method: "DELETE", headers: H }),
 };
 
 // ---- router ----
@@ -1025,8 +1033,78 @@ function Fact({ label, children }: { label: string; children: any }) {
   return <div><dt>{label}</dt><dd>{children}</dd></div>;
 }
 
+// PodControls are the mutating actions on a live pod, both confirmed inline:
+// rebind its governing policy (POST …/policy) and revoke its credentials
+// (DELETE …). The pod poll (3s) reflects the new binding on its own.
+type Pending = { type: "bind"; name: string } | { type: "revoke" } | null;
+function PodControls({ pod, policies }: { pod: Pod; policies: Policy[] }) {
+  const [pending, setPending] = useState<Pending>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const bind = async (name: string) => {
+    const p = policies.find((x) => x.name === name);
+    if (!p) return;
+    setBusy(true);
+    const res = await api.bindPodPolicy(pod.name, p).catch(() => null);
+    setBusy(false); setPending(null);
+    setStatus(res && res.ok ? { ok: true, msg: `Now governed by ${name}.` } : { ok: false, msg: `Could not bind ${name}.` });
+  };
+  const revoke = async () => {
+    setBusy(true);
+    const res = await api.revokePod(pod.name).catch(() => null);
+    setBusy(false); setPending(null);
+    setStatus(res && res.ok ? { ok: true, msg: "Credentials revoked." } : { ok: false, msg: "Could not revoke credentials." });
+  };
+
+  return (
+    <div class="controls">
+      <div class="controls__row">
+        <div class="controls__label">Governed by</div>
+        <div class="chips">
+          {policies.length === 0
+            ? <span class="faint">No policies defined yet.</span>
+            : policies.map((p) => (
+                <button key={p.name} type="button" disabled={busy || pod.policy === p.name}
+                  class={"chip" + (pod.policy === p.name ? " chip--on" : "")}
+                  onClick={() => { setStatus(null); setPending({ type: "bind", name: p.name }); }}>
+                  {p.name}{pod.policy === p.name && <span class="chip__now"> · current</span>}
+                </button>
+              ))}
+        </div>
+      </div>
+      <div class="controls__row">
+        <div class="controls__label">Credentials</div>
+        <button type="button" class="btn btn--danger btn--sm" disabled={busy}
+          onClick={() => { setStatus(null); setPending({ type: "revoke" }); }}>Revoke credentials</button>
+      </div>
+
+      {pending && (
+        <div class="controls__confirm">
+          <span class="controls__confirmtext">
+            {pending.type === "bind"
+              ? <>Bind policy <strong>{pending.name}</strong> to <strong>{pod.name}</strong>? The gateway enforces it on the pod's next request.</>
+              : <>Revoke every credential issued to <strong>{pod.name}</strong>? Its brokered secrets stop working immediately.</>}
+          </span>
+          <div class="controls__confirmbtns">
+            <button type="button" disabled={busy}
+              class={"btn btn--sm " + (pending.type === "revoke" ? "btn--danger" : "btn--primary")}
+              onClick={() => (pending.type === "bind" ? bind(pending.name) : revoke())}>
+              {busy ? "Working…" : pending.type === "bind" ? "Bind" : "Revoke"}
+            </button>
+            <button type="button" class="btn btn--ghost btn--sm" disabled={busy} onClick={() => setPending(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {status && <div class={"controls__status " + (status.ok ? "ok" : "bad")} role="status">{status.msg}</div>}
+    </div>
+  );
+}
+
 function PodDetailView({ name, events, loading }: { name: string; events: Event[]; loading: boolean }) {
   const { pods, hist } = usePods();
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  useEffect(() => { api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => {}); }, []);
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
   return (
@@ -1052,6 +1130,13 @@ function PodDetailView({ name, events, loading }: { name: string; events: Event[
           <Fact label="cpu"><span class="perf-inline"><Spark data={h.cpu} /><span class="c-mono">{pod.cpu || "—"}</span></span></Fact>
           <Fact label="memory"><span class="perf-inline"><Spark data={h.mem} /><span class="c-mono">{pod.mem || "—"}</span></span></Fact>
         </dl>
+      )}
+
+      {pod && pod.state === "running" && (
+        <>
+          <h2 class="section-title">Controls</h2>
+          <PodControls pod={pod} policies={policies} />
+        </>
       )}
 
       <h2 class="section-title">Audit trail</h2>

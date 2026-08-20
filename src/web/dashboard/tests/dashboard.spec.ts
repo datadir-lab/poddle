@@ -227,3 +227,43 @@ test("audit: the integrity panel surfaces a broken chain at its seq", async ({ p
   await page.goto("/audit");
   await expect(page.locator(".integrity--broken")).toContainText("Chain broken at #42");
 });
+
+const RUNNING_POD = [{ name: "agent1", state: "running", size: "strong", mode: "headless", policy: "prod", autoscale: false, cpu: "10%", memPerc: "20%", mem: "1GB" }];
+const TWO_POLICIES = [
+  { name: "prod", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} },
+  { name: "staging", egress: "block", allow_upstreams: ["api.internal"], deny_upstreams: [], methods: {} },
+];
+
+test("pod controls: rebinds a policy to a running pod (confirmed, real body POSTed)", async ({ page }) => {
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: RUNNING_POD }));
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: TWO_POLICIES }));
+  let bound: { name?: string } | null = null;
+  await page.route("**/v1/pods/agent1/policy", async (r) => { bound = JSON.parse(r.request().postData() || "{}"); return r.fulfill({ status: 204, body: "" }); });
+  await mockAudit(page);
+  await page.goto("/pods/agent1");
+
+  await expect(page.locator(".chip--on")).toContainText("prod"); // current, disabled
+  await page.getByRole("button", { name: "staging" }).click(); // pick a different policy
+  await expect(page.locator(".controls__confirm")).toContainText("Bind policy");
+  await page.getByRole("button", { name: "Bind", exact: true }).click();
+  await expect(page.locator(".controls__status.ok")).toContainText("Now governed by staging");
+  expect(bound?.name).toBe("staging"); // the full policy definition was posted
+});
+
+test("pod controls: revokes credentials on a running pod (confirmed)", async ({ page }) => {
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: RUNNING_POD }));
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: TWO_POLICIES }));
+  let revoked = false;
+  await page.route("**/v1/pods/agent1", async (r) => {
+    if (r.request().method() === "DELETE") { revoked = true; return r.fulfill({ status: 204, body: "" }); }
+    return r.fallback();
+  });
+  await mockAudit(page);
+  await page.goto("/pods/agent1");
+
+  await page.getByRole("button", { name: "Revoke credentials" }).click();
+  await expect(page.locator(".controls__confirm")).toContainText("Revoke every credential");
+  await page.getByRole("button", { name: "Revoke", exact: true }).click();
+  await expect(page.locator(".controls__status.ok")).toContainText("Credentials revoked");
+  expect(revoked).toBe(true);
+});
