@@ -540,3 +540,88 @@ test("resilience: deep-linking a nonexistent pod shows 'not running', not a cras
   await expect(page.locator(".detail-title")).toHaveText("ghost");
   await expect(page.locator(".detail-head")).toContainText("not running");
 });
+
+// ---- more interaction & data-integrity coverage ----
+test("audit: CSV export escapes commas, quotes, and newlines", async ({ page }) => {
+  const evs = [{ seq: 1, time: new Date().toISOString(), pod: "p", kind: "request", decision: "deny", upstream: "x.example", method: "GET", status: 403, detail: 'blocked, "quoted"\nsecond line' }];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await mockPods(page);
+  await page.goto("/audit");
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export CSV" }).click(),
+  ]);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(c as Buffer);
+  const csv = Buffer.concat(chunks).toString("utf8");
+  expect(csv.split("\n")[0]).toContain("seq,time,pod");            // seq leads the header
+  expect(csv).toContain('"blocked, ""quoted""\nsecond line"');    // quoted + doubled quotes + embedded newline
+});
+
+test("command palette: arrow keys move the selection and Enter activates it", async ({ page }) => {
+  await mockAudit(page);
+  await mockPods(page);
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [] }));
+  await page.goto("/overview");
+  await page.keyboard.press("Control+k");
+  await expect(page.locator(".cmdk")).toBeVisible();
+  await page.locator(".cmdk__input").focus();
+  await expect(page.locator(".cmdk__item.on")).toContainText("Overview");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator(".cmdk__item.on")).toContainText("Pods");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/pods$/);
+});
+
+test("audit: the decision filter responds to arrow keys", async ({ page }) => {
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/audit");
+  const group = page.getByRole("radiogroup", { name: "filter by decision" });
+  await group.getByRole("radio", { name: "All", exact: true }).focus();
+  await page.keyboard.press("ArrowRight"); // All -> Allow (moves AND selects)
+  await expect(group.getByRole("radio", { name: "Allow", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("table")).toContainText("api.anthropic.com");
+  await expect(page.locator("table")).not.toContainText("evil.example"); // a block, filtered out
+});
+
+test("policies: the dry-run honours a '.suffix' subdomain allow rule", async ({ page }) => {
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "api.github.com", method: "GET" }, // matches .github.com
+    { seq: 1, time: t, pod: "a", kind: "request", upstream: "evil.example", method: "GET" },    // no match -> denied
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockPods(page);
+  await page.goto("/policies/new");
+  await page.getByRole("button", { name: /Add destination/ }).click();
+  await page.locator(".rule__host").first().fill(".github.com");
+  await expect(page.locator(".dryrun")).toContainText("1 would be denied");
+  await expect(page.locator(".dryrun__list")).toContainText("evil.example");
+  await expect(page.locator(".dryrun__list")).not.toContainText("api.github.com"); // allowed via subdomain
+});
+
+test("pod controls: Cancel dismisses a confirm without mutating", async ({ page }) => {
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
+    { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+  ] }));
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [
+    { name: "prod", egress: "redact", allow_upstreams: [], deny_upstreams: [], methods: {} },
+    { name: "staging", egress: "redact", allow_upstreams: [], deny_upstreams: [], methods: {} },
+  ] }));
+  let called = false;
+  await page.route("**/v1/pods/agent1/policy", (r) => { called = true; return r.fulfill({ status: 204, body: "" }); });
+  await mockAudit(page);
+  await page.goto("/pods/agent1");
+  await page.getByRole("button", { name: "staging" }).click();
+  await expect(page.locator(".controls__confirm")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator(".controls__confirm")).toHaveCount(0);
+  expect(called).toBe(false);
+});
