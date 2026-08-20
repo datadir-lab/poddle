@@ -238,6 +238,23 @@ test("policies: the dry-run applies allow-list, deny-list, per-method, and defau
   await expect(list).toContainText("unlisted.example");         // not allow-listed
 });
 
+test("policies: the new-policy form is not wiped by background polls", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockAudit(page);
+  await mockPods(page); // polled every 3s -> re-renders the policy view
+  await page.goto("/policies/new");
+
+  await page.locator("#pol-name").fill("keepme");
+  await page.getByRole("button", { name: /Add destination/ }).click();
+  await page.locator(".rule__host").first().fill("api.example.com");
+
+  // Cross the 3s pod-poll boundary: the draft must survive the re-render.
+  await page.waitForTimeout(3600);
+  await expect(page.locator("#pol-name")).toHaveValue("keepme");
+  await expect(page.locator(".rule__host")).toHaveCount(1);
+  await expect(page.locator(".rule__host").first()).toHaveValue("api.example.com");
+});
+
 test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
   // A running pod with no policy (ungoverned) + one governed by "prod".
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
