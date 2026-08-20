@@ -208,3 +208,22 @@ test("policies: flags ungoverned pods and dry-runs the rules against recent traf
   await expect(page.locator(".dryrun__list")).toContainText("metadata.google.internal");
   await expect(page.locator(".dryrun__list")).not.toContainText("api.anthropic.com"); // allowed
 });
+
+test("audit: the integrity panel verifies the chain and re-verifies on demand", async ({ page }) => {
+  await mockAudit(page); // verify -> { ok: true }
+  await mockPods(page);
+  await page.goto("/audit");
+  await expect(page.locator(".integrity--intact")).toContainText("Audit chain intact");
+  await expect(page.locator(".integrity__meta")).toContainText("Last verified");
+  await page.getByRole("button", { name: "Re-verify" }).click();
+  await expect(page.locator(".integrity--intact")).toBeVisible(); // still intact after a manual re-check
+});
+
+test("audit: the integrity panel surfaces a broken chain at its seq", async ({ page }) => {
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: false, brokenAt: 42 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: SEED }));
+  await mockPods(page);
+  await page.goto("/audit");
+  await expect(page.locator(".integrity--broken")).toContainText("Chain broken at #42");
+});
