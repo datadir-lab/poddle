@@ -191,7 +191,7 @@ const flows = [
 
   <Section eyebrow="Providers &amp; harnesses" title="Bring your provider. Bring your harness.">
     <p class="prose">
-      poddle wires your coding agent to your model provider through the broker - the harness
+      Poddle wires your coding agent to your model provider through the broker - the harness
       installs itself in the pod, and authentication syncs to your identity. No keys to copy,
       nothing to configure: a remote dev environment that just works.
     </p>
@@ -256,7 +256,7 @@ const flows = [
         {flows.map((f, i) => (
           <button class:list={['flows__tab', i === 0 && 'is-active']} type="button" role="tab" id={`flowtab-${i}`} aria-controls={`flowpanel-${i}`} aria-selected={i === 0 ? 'true' : 'false'} data-i={i}>
             <span>{f.key}</span>
-            <span class="flows__bar" aria-hidden="true"><span class="flows__fill"></span></span>
+            <span class="flows__bar" aria-hidden="true"></span>
           </button>
         ))}
       </div>
@@ -271,9 +271,22 @@ const flows = [
     </div>
   </Section>
 
+  <Section eyebrow="Dashboard" title="Provable after the fact.">
+    <p class="prose">
+      Every brokered request, redaction, and handle lands in a tamper-evident, hash-chained log -
+      secret-free by construction (no bodies, no keys). Watch it live, filter by pod or decision,
+      and verify the whole chain in one click.
+    </p>
+    <figure class="shot">
+      <img class="shot__img" src="/dashboard-audit.png" width="1240" height="800" loading="lazy" decoding="async"
+        alt="poddle dashboard audit view: a hash-chained table of brokered requests, each tagged allow, redact, deny, or block per pod and destination" />
+      <figcaption class="shot__cap">The audit view in the built-in dashboard - self-host it or use the managed cloud.</figcaption>
+    </figure>
+  </Section>
+
   <Section eyebrow="How poddle compares" title="Why not just isolate, or just store the key?">
     <p class="prose">
-      Isolation and secret managers each solve half of it. poddle is the only approach that keeps
+      Isolation and secret managers each solve half of it. Poddle is the only approach that keeps
       the real secret out of the workload entirely - injected on the wire, scrubbed from outbound
       traffic, and provable after the fact.
     </p>
@@ -313,26 +326,20 @@ const flows = [
       if (!root) return;
       const tabs = Array.from(root.querySelectorAll('.flows__tab'));
       const panels = Array.from(root.querySelectorAll('.flows__panel'));
-      const fills = tabs.map((t) => t.querySelector('.flows__fill'));
-      const DUR = 6500;
-      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      let i = 0, timer = null, paused = false;
-      function paint(n) {
-        i = n;
+      function show(n) {
         tabs.forEach((t, k) => { const a = k === n; t.classList.toggle('is-active', a); t.setAttribute('aria-selected', a ? 'true' : 'false'); });
         panels.forEach((p, k) => p.classList.toggle('is-active', k === n));
-        fills.forEach((f) => { f.style.transition = 'none'; f.style.width = '0%'; });
-        if (!reduce && !paused) { const f = fills[n]; void f.offsetWidth; f.style.transition = 'width ' + DUR + 'ms linear'; f.style.width = '100%'; }
       }
-      function schedule() { clearTimeout(timer); if (reduce || paused) return; timer = setTimeout(() => go((i + 1) % tabs.length), DUR); }
-      function go(n) { paint(n); schedule(); }
-      tabs.forEach((t, k) => t.addEventListener('click', () => go(k)));
-      // Pause auto-rotation while the section is hovered or keyboard-focused.
-      root.addEventListener('mouseenter', () => { paused = true; clearTimeout(timer); const f = fills[i]; f.style.transition = 'none'; f.style.width = getComputedStyle(f).width; });
-      root.addEventListener('mouseleave', () => { paused = false; go(i); });
-      root.addEventListener('focusin', () => { paused = true; clearTimeout(timer); });
-      root.addEventListener('focusout', (e) => { if (!root.contains(e.relatedTarget)) { paused = false; go(i); } });
-      go(0);
+      tabs.forEach((t, k) => t.addEventListener('click', () => show(k)));
+      // Standard tablist keyboard nav; no auto-rotation - the reader drives it.
+      root.addEventListener('keydown', (e) => {
+        const i = tabs.indexOf(document.activeElement);
+        if (i === -1 || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+        e.preventDefault();
+        const n = (i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+        tabs[n].focus();
+        show(n);
+      });
     })();
   </script>
 </Base>
@@ -348,9 +355,8 @@ const flows = [
   .flows__tab { position: relative; border: 0; background: none; cursor: pointer; padding: 0.5rem 0 0.85rem; font: 600 0.95rem/1 var(--font-sans); color: var(--faint); transition: color 0.12s; }
   .flows__tab:hover { color: var(--muted); }
   .flows__tab.is-active { color: var(--ink); }
-  .flows__bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; }
-  .flows__tab.is-active .flows__bar { background: var(--border); }
-  .flows__fill { display: block; height: 100%; width: 0; background: var(--accent); }
+  .flows__bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; }
+  .flows__tab.is-active .flows__bar { background: var(--accent); }
   .flows__panel { display: none; }
   .flows__panel.is-active { display: block; animation: flowin 0.35s ease-out; }
   .flows__panel:focus-visible { outline: none; }
@@ -368,6 +374,15 @@ const flows = [
   .cmp-card__h { font-size: 1rem; margin: 0 0 0.5rem; color: var(--ink); }
   .cmp-card__p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; margin: 0; }
   .prose { color: var(--muted); max-width: 60ch; }
+
+  /* Dashboard screenshot - a dark app shot framed against the cream page. */
+  .shot { margin: 1.9rem 0 0; }
+  .shot__img {
+    width: 100%; height: auto; border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: 0 34px 60px -34px rgba(21, 20, 15, 0.5), 0 8px 22px -14px rgba(21, 20, 15, 0.3);
+  }
+  .shot__cap { margin-top: 0.9rem; font-size: 0.85rem; color: var(--faint); }
   .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 1.8rem 0 0.7rem; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }
   .chip { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.85rem 0.4rem 0.4rem; border: 1px solid var(--border); border-radius: 999px; background: #fff; color: var(--ink); font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: border-color 0.12s, transform 0.12s; }
@@ -417,18 +432,19 @@ const flows = [
   .fnode__top { display: inline-flex; align-items: center; gap: 0.4rem; }
   .fnode__i { width: 18px; height: 18px; object-fit: contain; }
   .provx { position: relative; display: inline-block; width: 18px; height: 18px; }
-  .provx img { position: absolute; inset: 0; width: 18px; height: 18px; object-fit: contain; opacity: 0; animation: provcycle 16s ease-in-out infinite; }
-  @keyframes provcycle { 0% { opacity: 0; } 1.5% { opacity: 1; } 11% { opacity: 1; } 12.5% { opacity: 0; } 100% { opacity: 0; } }
+  .provx img { position: absolute; inset: 0; width: 18px; height: 18px; object-fit: contain; opacity: 0; }
+  .provx img:first-child { opacity: 1; }
   .fpod__i { width: 18px; height: 18px; object-fit: contain; }
   .meter { display: inline-block; width: 44px; height: 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
-  .meter__bar { display: block; height: 100%; width: 15%; background: var(--accent); border-radius: 999px; animation: crunch 2.4s ease-in-out infinite; }
-  .meter__bar--b { animation-delay: 0.8s; }
-  .meter__bar--c { animation-delay: 1.6s; }
-  @keyframes crunch { 0%, 100% { width: 15%; } 20% { width: 92%; } 46% { width: 92%; } 64% { width: 22%; } }
+  /* Pods breathe: a slow, smooth memory oscillation, each pod out of phase. */
+  .meter__bar { display: block; height: 100%; width: 60%; background: var(--accent); border-radius: 999px; animation: podmem 8s ease-in-out infinite; }
+  .meter__bar--b { animation-delay: -2.7s; }
+  .meter__bar--c { animation-delay: -5.3s; }
+  @keyframes podmem { 0% { width: 34%; } 50% { width: 84%; } 100% { width: 34%; } }
   .size { position: relative; display: inline-block; min-width: 3.9em; height: 1.15em; }
-  .size > span { position: absolute; left: 0; top: 0; opacity: 0; font: 600 0.6rem/1 var(--font-sans); padding: 0.14rem 0.42rem; border-radius: 999px; background: var(--surface); color: var(--accent); animation: sizecycle var(--d, 12s) linear infinite; }
-  .size > span:nth-child(2) { animation-delay: calc(var(--d, 12s) / 2); }
-  @keyframes sizecycle { 0%, 50% { opacity: 1; } 55%, 100% { opacity: 0; } }
+  .size > span { position: absolute; left: 0; top: 0; opacity: 0; font: 600 0.6rem/1 var(--font-sans); padding: 0.14rem 0.42rem; border-radius: 999px; background: var(--surface); color: var(--accent); animation-name: sizecycle; animation-duration: calc(var(--d, 10s) * 2); animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+  .size > span:nth-child(2) { animation-delay: calc(var(--d, 10s) * -1); }
+  @keyframes sizecycle { 0% { opacity: 1; } 40% { opacity: 1; } 50% { opacity: 0; } 90% { opacity: 0; } 100% { opacity: 1; } }
   .fcluster { flex: none; position: relative; align-self: center; display: flex; flex-direction: column; align-items: center; }
   .fcirc { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; }
   .fcirc img { width: 14px; height: 14px; object-fit: contain; }
@@ -466,7 +482,11 @@ const flows = [
   .picon--ticket { --i: url(/icons/ticket.svg); }
   .picon--msg { --i: url(/icons/message-square.svg); }
   @keyframes ldotflow { 0% { left: 1%; opacity: 0; } 14% { opacity: 1; } 86% { opacity: 1; } 100% { left: 99%; opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .meter__bar { animation: none; width: 60%; } .provx img { animation: none; opacity: 0; } .provx img:first-child { opacity: 1; } .size > span { animation: none; opacity: 0; } .size > span:nth-child(2) { opacity: 1; } .ldot { animation: none; opacity: 0; } .sig { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .ldot { animation: none; opacity: 0; } .sig { animation: none; }
+    .meter__bar { animation: none; width: 60%; } .meter__bar--b { width: 40%; } .meter__bar--c { width: 80%; }
+    .size > span { animation: none; opacity: 0; } .size > span:nth-child(2) { opacity: 1; }
+  }
   @media (max-width: 1080px) { .fmap__track { zoom: 0.9; } }
   @media (max-width: 940px) { .fmap__track { zoom: 0.8; } }
   @media (max-width: 840px) { .fmap { display: none; } .fcompare { display: grid; } }

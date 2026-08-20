@@ -1,7 +1,10 @@
 import { render } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import "@fontsource-variable/inter";
-import "@fontsource/instrument-serif";
+import "@fontsource-variable/fraunces/full.css";
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
 
 // Runtime data-source config: the SAME bundle serves local (defaults) and the
@@ -376,7 +379,7 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
   return (
     <div>
       <div class="toolbar">
-        <input class="grow" placeholder="Filter by pod, kind, or upstream…" value={q}
+        <input class="grow" aria-label="Filter events by pod, kind, or upstream" placeholder="Filter by pod, kind, or upstream…" value={q}
           onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
         <Segmented value={decision} options={DECISION_FILTER} onChange={setDecision} ariaLabel="filter by decision" />
         <span class="count">{shown.length} events</span>
@@ -443,20 +446,20 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
     <div class="editor">
       <div class="row">
         <div>
-          <label>Name</label>
-          <input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+          <label for="pol-name">Name</label>
+          <input id="pol-name" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </div>
         <div class="narrow">
           <label>Egress mode</label>
           <Segmented value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
-      <label>Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
-      <textarea value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
-      <label>Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
-      <textarea value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
-      <label>Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
-      <textarea value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
+      <label for="pol-allow">Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
+      <textarea id="pol-allow" value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
+      <label for="pol-deny">Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
+      <textarea id="pol-deny" value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
+      <label for="pol-methods">Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
+      <textarea id="pol-methods" value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
       {err && <div class="err">{err}</div>}
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
@@ -542,6 +545,29 @@ function PodDetailView({ name, events }: { name: string; events: Event[] }) {
   );
 }
 
+// ThemeToggle flips light/dark and persists the choice. The initial attribute is
+// set by an inline script in index.html (before paint), so there is no flash.
+function ThemeToggle() {
+  const [theme, setTheme] = useState(
+    () => (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "light",
+  );
+  const apply = (t: string) => {
+    document.documentElement.setAttribute("data-theme", t);
+    try { localStorage.setItem("poddle-theme", t); } catch {}
+    setTheme(t);
+  };
+  const dark = theme === "dark";
+  return (
+    <button class="theme-toggle" type="button" aria-pressed={dark} title={dark ? "Light theme" : "Dark theme"}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      onClick={() => apply(dark ? "light" : "dark")}>
+      {dark
+        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>}
+    </button>
+  );
+}
+
 function App() {
   const route = useRoute();
   const events = useAudit();
@@ -561,6 +587,7 @@ function App() {
           <NavLink to="/policies" active={active === "policies"}>Policies</NavLink>
         </nav>
         <VerifyBadge v={v} />
+        <ThemeToggle />
       </header>
       <main>
         {route.view === "overview" && <OverviewView events={events} onPod={goPod} />}

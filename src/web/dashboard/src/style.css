@@ -7,6 +7,27 @@
   --redact: #8a5a00;
   --deny: #a02929;
   --maxw-app: 1240px;
+  --card: #fff;          /* raised surface: cards, panels, tables, inputs */
+  color-scheme: light;
+}
+
+/* Dark theme - default for developers (system preference), opt-in via the header
+   toggle; light stays the default for enterprise/buyer surfaces. The @poddle/ui
+   tokens are overridden here so every component adapts through the same vars. */
+:root[data-theme="dark"] {
+  --bone: #0f1613;        /* app background - warm near-black forest */
+  --surface: #182320;     /* alt fill: table headers, row hover */
+  --card: #151f1b;        /* raised surface */
+  --ink: #e9efe9;         /* primary text */
+  --muted: #a7b4ab;       /* secondary text */
+  --faint: #879a8d;       /* tertiary text - WCAG-AA on --bone and --card */
+  --accent: #5cc08a;      /* brighter forest-mint reads on dark */
+  --accent-ink: #7fd3a4;
+  --border: #28332d;      /* hairlines */
+  --ink-strong: #ffffff;
+  --redact: #d7a34a;      /* brighter amber for dark */
+  --deny: #e0736b;        /* brighter red for dark */
+  color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -29,7 +50,7 @@ body {
 
 input, select, textarea {
   font: inherit;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -76,6 +97,16 @@ nav a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 11
 .badge.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .badge.bad { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 45%, var(--border)); background: color-mix(in srgb, var(--deny) 6%, transparent); }
 
+/* light/dark toggle - sits at the far right of the header */
+.theme-toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  background: var(--card); color: var(--faint);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; transition: color 0.12s, border-color 0.12s;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--faint); }
+
 /* ---- content ---- */
 main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 3rem; }
 
@@ -84,7 +115,7 @@ main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 
 .toolbar .count { color: var(--faint); font-size: 0.82rem; white-space: nowrap; }
 
 /* ---- segmented control (replaces native <select>) ---- */
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: #fff; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--card); }
 .seg__opt {
   font: 600 0.8rem/1 var(--font-sans);
   background: transparent; border: 0; border-left: 1px solid var(--border);
@@ -101,7 +132,7 @@ main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 
 
 /* ---- overview ---- */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 0.9rem; margin-bottom: 0.5rem; }
-.card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; padding: 1rem 1.15rem; }
+.card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); padding: 1rem 1.15rem; }
 .card__num { font-family: var(--font-serif); font-size: 2.1rem; line-height: 1; color: var(--ink); }
 .card__label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); margin-top: 0.45rem; }
 .card--flag .card__num, .card--flag .card__label { color: var(--deny); }
@@ -110,7 +141,7 @@ main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 
 
 .section-title { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 400; letter-spacing: -0.01em; margin: 1.75rem 0 0.75rem; color: var(--ink); }
 
-.panel { border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; overflow: hidden; }
+.panel { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); overflow: hidden; }
 .panel.empty { color: var(--faint); padding: 1.25rem 1.1rem; text-align: left; }
 
 .attn {
@@ -128,7 +159,7 @@ main { max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 
 tr.clickable { cursor: pointer; }
 
 /* ---- audit table ---- */
-.table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: #fff; }
+.table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--card); }
 table { width: 100%; border-collapse: collapse; }
 th {
   text-align: left; font: 600 0.68rem/1 var(--font-sans);
@@ -178,7 +209,7 @@ td.perf { text-align: right; white-space: nowrap; }
 .spark { vertical-align: middle; height: 20px; }
 .spark--empty { display: inline-block; width: 80px; text-align: center; }
 .spark__line { stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.spark__dot { stroke: #fff; stroke-width: 0.6; }
+.spark__dot { stroke: var(--card); stroke-width: 0.6; }
 .spark__area { stroke: none; opacity: 0.13; }
 .spark--cool .spark__line { stroke: var(--allow); }
 .spark--cool .spark__dot { fill: var(--allow); }
@@ -194,7 +225,7 @@ td.perf { text-align: right; white-space: nowrap; }
 .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
 
-.list { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: #fff; }
+.list { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--card); }
 .list a {
   display: block; width: 100%; text-align: left; text-decoration: none;
   background: transparent; border: 0; border-bottom: 1px solid var(--border);
@@ -218,7 +249,7 @@ td.perf { text-align: right; white-space: nowrap; }
 
 .facts {
   display: flex; flex-wrap: wrap; gap: 1.25rem 2.5rem; margin: 0 0 1.75rem;
-  padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff;
+  padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card);
 }
 .facts > div { display: flex; flex-direction: column; gap: 0.35rem; }
 .facts dt { font: 600 0.66rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
@@ -228,11 +259,11 @@ td.perf { text-align: right; white-space: nowrap; }
 .fact-link { color: var(--accent); text-decoration: none; }
 .fact-link:hover { text-decoration: underline; }
 
-.editor { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem 1.6rem; background: #fff; }
+.editor { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem 1.6rem; background: var(--card); }
 .editor.empty { color: var(--faint); display: flex; align-items: center; justify-content: center; min-height: 180px; }
 .editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); margin: 1.15rem 0 0.4rem; }
 .editor label:first-of-type { margin-top: 0; }
-.label-hint { text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--faint); opacity: 0.9; margin-left: 0.5rem; }
+.label-hint { text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--faint); margin-left: 0.5rem; }
 .editor .row { display: flex; gap: 1rem; align-items: flex-end; }
 .editor .row > div { flex: 1; }
 .editor .row > div.narrow { flex: 0 0 auto; }

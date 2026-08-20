@@ -3,29 +3,65 @@ import Button from './Button.astro';
 ---
 <section class="hero">
   <div class="container hero__inner">
-    <h1 class="hero__title">A sandbox your coding agent <em>can’t</em> leak out of.</h1>
-    <p class="hero__sub">
-      Full access, zero secrets. Spin up an isolated, reproducible pod - your agent fully authed,
-      and not one vendor secret inside it.
-    </p>
-    <p class="hero__wit">Every secret stays out of the pod - especially the ones you forgot you had.</p>
-    <div class="hero__cta">
-      <Button href="/cloud" variant="primary">Start free</Button>
-      <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">→</span></Button>
+    <div class="hero__copy">
+      <h1 class="hero__title">A sandbox your coding agent <em>can’t</em> leak out of.</h1>
+      <p class="hero__sub">
+        Full access, zero secrets. Spin up an isolated, reproducible pod - your agent fully authed,
+        and not one vendor secret inside it.
+      </p>
+      <p class="hero__wit">Every secret stays out of the pod - especially the ones you forgot you had.</p>
+      <div class="hero__cta">
+        <Button href="/cloud" variant="primary">Start free</Button>
+        <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">→</span></Button>
+      </div>
+      <p class="hero__meta">
+        <strong>We run it all in the cloud</strong> - broker, vault, and pods, nothing for you to
+        operate. Or self-host the open source; the same guarantee either way.
+      </p>
     </div>
-    <p class="hero__meta">
-      <strong>We run it all in the cloud</strong> - broker, vault, and pods, nothing for you to
-      operate. Or self-host the open source; the same guarantee either way.
-    </p>
+
+    <div class="hero__demo">
+      <div
+        class="term"
+        role="img"
+        aria-label="Terminal: poddle spins up a pod with no secret inside it, brokers the agent's real key on the wire, scrubs a stray secret from the request, then revokes the handle on teardown."
+      >
+        <div class="term__bar" aria-hidden="true">
+          <span class="term__glyph">&gt;_</span><span class="term__title">zsh</span>
+        </div>
+        <pre class="term__body" aria-hidden="true"><code><span class="cmd">poddle up my-sandbox --identity work</span>
+<span class="ok">✓ pod running · not one secret inside it</span>
+<span class="ok">✓ agent authed · handle poddle_a91f…</span>
+<span class="cmd">claude "add tests for parseConfig"</span>
+<span class="out">→ real key injected at the broker, on the wire</span>
+<span class="out">→ 1 stray secret scrubbed from the request body</span>
+<span class="cmd">poddle down my-sandbox</span>
+<span class="ok">✓ handle revoked · pod gone</span></code></pre>
+      </div>
+    </div>
   </div>
 </section>
 <style>
-  .hero { padding-block: clamp(3.5rem, 8vw, 6.5rem) var(--space-section); }
-  .hero__title { font-size: var(--fs-hero); max-width: 16ch; margin: 1rem 0 0; }
+  .hero { padding-block: clamp(3rem, 7vw, 5.5rem) var(--space-section); }
+  .hero__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    align-items: center;
+  }
+  .hero__title { font-size: var(--fs-hero); max-width: 13ch; margin: 0; }
   .hero__title em { font-style: italic; color: var(--accent); }
-  .hero__sub { font-size: var(--fs-lead); color: var(--muted); max-width: 52ch; margin: 1.4rem 0 0; }
+  .hero__sub { font-size: var(--fs-lead); color: var(--muted); max-width: 46ch; margin: 1.4rem 0 0; }
   .hero__wit { font-family: var(--font-serif); font-style: italic; font-size: 1.35rem; color: var(--accent); margin: 1.1rem 0 0; }
   .hero__cta { display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 2rem; }
-  .hero__meta { color: var(--muted); font-size: 0.95rem; line-height: 1.5; max-width: 54ch; margin: 1.3rem 0 0; }
+  .hero__meta { color: var(--muted); font-size: 0.95rem; line-height: 1.5; max-width: 46ch; margin: 1.3rem 0 0; }
   .hero__meta strong { color: var(--ink); font-weight: 600; }
+
+  .hero__demo { min-width: 0; }
+
+  @media (max-width: 900px) {
+    .hero__inner { grid-template-columns: 1fr; gap: 2.4rem; }
+    .hero__title { max-width: 18ch; }
+    .hero__demo { max-width: 34rem; }
+  }
 </style>

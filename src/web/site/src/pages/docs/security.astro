@@ -91,7 +91,7 @@ const scan: [string, string, string][] = [
     </ul>
 
     <Callout type="note" title="What poddle does not claim">
-      <p>The real credential is present on the broker→provider hop - that is unavoidable, since the provider must authenticate you. poddle’s guarantee is narrower and exact: the raw secret is never materialized inside the pod, and never rides in a body it shouldn’t. Revoke a handle at the broker and the pod is locked out immediately.</p>
+      <p>The real credential is present on the broker→provider hop - that is unavoidable, since the provider must authenticate you. Poddle’s guarantee is narrower and exact: the raw secret is never materialized inside the pod, and never rides in a body it shouldn’t. Revoke a handle at the broker and the pod is locked out immediately.</p>
     </Callout>
   </section>
 

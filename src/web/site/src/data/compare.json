@@ -41,7 +41,7 @@
     "Dev sandboxes and agent code sandboxes isolate execution, but your credentials still run inside the box - that is where the agent uses them.",
     "Secret managers store and rotate secrets, then hand the plaintext credential to the workload; they audit secret access, not what the agent does with it once issued.",
     "Some sandboxes offer network allowlists, but none broker the credential itself or enforce policy per authenticated request.",
-    "Open source and managed availability vary by product; Daytona moved its core closed-source in 2026. poddle is open source with a managed cloud."
+    "Open source and managed availability vary by product; Daytona moved its core closed-source in 2026. Poddle is open source with a managed cloud."
   ],
   "summary": [
     {
