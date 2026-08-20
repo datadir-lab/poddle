@@ -3,7 +3,7 @@
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
-    <img src=".github/assets/logo.svg" alt="" height="52" align="middle">
+    <img src=".github/assets/logo.svg" alt="" height="92" align="middle">
   </picture>
   &nbsp;poddle
 </h1>
