@@ -39,7 +39,7 @@ strategies:
 
 | Placement | Broker runs on | Pod reaches it via | Exposure | Best for |
 |---|---|---|---|---|
-| `colocated` | the pod's own host | host route | none (loopback/bridge) | trusted host / your own always-on server — fire-and-forget |
+| `colocated` | the pod's own host (as a dual-homed container) | its peer IP on the pod's internal net | none (internal bridge) | trusted host / your own always-on server — fire-and-forget |
 | `direct` | a routable trusted host (VPS / poddle-cloud) | its address | **network → needs TLS** | managed always-on broker |
 | `tunnel` | your laptop / NAT'd box | reverse SSH tunnel (`ssh -R`) | none (inside ssh + loopback) | attached "I'm working now" sessions |
 
@@ -126,6 +126,71 @@ argv unit tests pass, but a real brokered pod would be cut off from its broker.
 realization is redirected to the relay-container mechanism above and Task 6's
 adversarial e2e proves it end-to-end on CI.
 
+## Realization (RESOLVED): containerized shared broker
+
+The spike settles the mechanism; this is the authoritative realization for Step 1,
+**superseding** the "colocated host-route" assumption in *The lockdown mechanism*
+and *Component design* (poddled is no longer "unchanged for step 1").
+
+**Topology — one shared broker container.** `poddle up` starts (once, then reuses)
+a single long-lived `poddle-broker` container in place of today's auto-spawned
+host subprocess (`poddle daemon`). It holds the one in-memory vault and is the
+single writer of the hash-chained audit log. It is **dual-homed**:
+
+- `poddle-egress` — a normal internet-capable podman network, attached
+  **primary** so the broker's default route reaches upstreams (the spike's relay
+  leg);
+- `poddle-lock-<pod>` — each pod's `--internal` network, `podman network connect`ed
+  on `up` and `disconnect`ed on `down`.
+
+The **pod** joins only `poddle-lock-<pod>` (`--internal`): no default route, no
+external DNS, no egress except to the broker peer on that net.
+
+**Control plane stays host-only (untouchable by construction).** poddled keeps
+serving its control API (mint / revoke / bind-policy / audit) over a **Unix
+socket**, now on a host directory (`$XDG_RUNTIME_DIR/poddle/`) **bind-mounted**
+into the broker container. The host CLI (`up`/`down`/`daemon`/`dashboard`) dials
+that host path exactly as today. A pod gets **neither that mount nor any network
+route** to the socket — so it cannot mint a handle, revoke, rebind policy, or read
+the vault. The property holds because the control path is a filesystem socket the
+pod was never handed, not because a rule forbids it.
+
+**Secrets never touch the broker's disk.** The vault stays in-memory; the CLI
+reads local token files on the host and feeds credentials over the control socket
+(`POST /pods/{pod}/handles`), as today. Only the audit log and the control socket
+are host-bind-mounted, so the audit timeline persists across broker restarts.
+
+**Data plane.** The gateway, forward proxy, and L4 Redis/Postgres listeners bind
+`0.0.0.0` inside the container; the pod reaches them at the broker's
+`poddle-lock-<pod>` IP. `brokerendpoint` becomes a **peer resolver**: `Addr(ch)`
+returns `<broker-internal-ip>:<port>` and `AllowList()` pins to exactly those.
+
+**Packaging.** poddle is a single Go binary. Recommended MVP: build it **static**
+(`CGO_ENABLED=0`) and **mount the host binary** read-only into a minimal stock
+image, running `poddle daemon --socket /run/poddle/poddled.sock`. No
+image-publish pipeline needed. *Feasibility sub-check (blocking, cheap):* confirm
+the static poddle binary runs `daemon` inside a stock container on the CI runner
+before building Task 4 on it. A dedicated published `poddle-broker` image is later
+hardening.
+
+**Lifecycle / fail-closed.**
+
+- `up`: ensure `poddle-egress` exists; ensure the `poddle-broker` container runs
+  (start it dual-homed if absent); create `poddle-lock-<pod>` (`--internal`);
+  connect the broker to it; resolve the broker's IP on that net; run the pod on
+  it. **Any step failing → refuse to create the pod** (never an open-egress
+  fallback).
+- `down`: revoke handles (as today); disconnect the broker from
+  `poddle-lock-<pod>`; remove that network. The shared broker container and
+  `poddle-egress` persist for other pods.
+
+**Revised Step-1 build order:** (0) static-binary-in-container feasibility
+sub-check; (2) `brokerendpoint` **peer** resolver [supersedes `colocated`]; (3)
+`Spec.Network` [done]; (4) podman provider — `poddle-egress` + broker-container
+lifecycle + per-pod connect/disconnect + `--internal` pod, fail-closed [redirect];
+(5) `buildSpec` wires the peer resolver's IP + allow-list [redirect]; (6)
+adversarial e2e [unchanged].
+
 ## Per-placement egress + control separation
 
 - **`colocated`** — pod internal network; broker binds the internal bridge
@@ -163,8 +228,10 @@ adversarial e2e proves it end-to-end on CI.
   the hardcoded `podBrokerHost():port`) and pass the derived allow-list into the
   `Spec`. Keeps the existing `apply*Datastore`/`applyIdentity`/`applyConnector`
   shape; only the *source* of the address changes.
-- poddled: unchanged for step 1 (`colocated` uses the existing host binding); the
-  tunnel/direct owners land in later steps.
+- poddled: **containerized** for step 1 — see *Realization (RESOLVED)* above. The
+  daemon code is unchanged; only its *launch* moves from a host subprocess to a
+  dual-homed `podman run`, with the control socket + audit log on host bind
+  mounts. The tunnel/direct owners land in later steps.
 
 ## Build order (decomposition)
 
