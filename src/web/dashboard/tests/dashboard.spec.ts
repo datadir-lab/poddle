@@ -26,7 +26,8 @@ async function mockPods(page: Page) {
 
 test("loads the console with overview, pods, audit, and policies tabs", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".brand__name")).toContainText("poddle");
+  // The brand mark is logo-only now; its accessible name still says "poddle".
+  await expect(page.getByRole("link", { name: "poddle" })).toBeVisible();
   for (const t of ["Overview", "Pods", "Audit", "Policies"]) {
     await expect(page.getByRole("link", { name: t })).toBeVisible();
   }
@@ -117,6 +118,24 @@ test("overview: live pod count, attention on denials, secrets ledger", async ({ 
   // copy while denials exist.
   await expect(page.locator("main")).not.toContainText("no egress blocked");
   await expect(page.locator(".card", { hasText: "secrets redacted" }).locator(".card__num")).toHaveText("1");
+});
+
+test("overview: left sidebar nav, section title, and the charts render", async ({ page }) => {
+  await mockPods(page);
+  await mockAudit(page);
+  await page.goto("/overview");
+
+  // Nav lives in the left rail now, with the active item marked.
+  await expect(page.locator(".sidebar .nav__i.on")).toHaveText(/Overview/);
+  // The top bar names the current section.
+  await expect(page.locator(".topbar__title")).toHaveText("Overview");
+  // The three overview charts render: egress columns, decision mix, fleet load.
+  await expect(page.locator(".chart .plot")).toBeVisible();
+  await expect(page.locator(".posture__bar")).toBeVisible();
+  await expect(page.locator(".fleet")).toBeVisible();
+  // Global controls moved to the sidebar foot.
+  await expect(page.locator(".sidebar__foot .badge")).toBeVisible();
+  await expect(page.locator(".sidebar__foot .theme-toggle")).toBeVisible();
 });
 
 test("audit feed: text filter + segmented decision filter (no native select)", async ({ page }) => {
