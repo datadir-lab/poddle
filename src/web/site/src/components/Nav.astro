@@ -8,18 +8,20 @@ import GhStars from './GhStars.astro';
       <img class="nav__logo" src="/logo.svg" alt="" width="46" height="46" />
       <span>poddle</span>
     </a>
-    <button class="nav__toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
-      <span class="nav__bars"></span>
-    </button>
     <nav class="nav__links" id="nav-links" aria-label="Primary">
       <a href="/cloud">Cloud</a>
       <a href="/connectors">Connectors</a>
       <a href="/pricing">Pricing</a>
       <a href="/docs">Docs</a>
       <a href="/blog">Blog</a>
+    </nav>
+    <div class="nav__actions">
       <GhStars />
       <Button href="/cloud" variant="primary">Start free</Button>
-    </nav>
+      <button class="nav__toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
+        <span class="nav__bars"></span>
+      </button>
+    </div>
   </div>
 </header>
 <script is:inline>
@@ -38,32 +40,39 @@ import GhStars from './GhStars.astro';
 </script>
 <style>
   .nav { border-bottom: 1px solid var(--border); position: relative; }
-  .nav__inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; padding-block: 0.65rem; }
-  .nav__brand { display: inline-flex; align-items: center; gap: 0.55rem; font-family: var(--font-serif); font-size: 1.6rem; color: var(--ink); letter-spacing: -0.01em; }
+  .nav__inner { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; padding-block: 0.65rem; }
+  .nav__brand { display: inline-flex; align-items: center; gap: 0.55rem; font-family: var(--font-serif); font-size: 1.6rem; color: var(--ink); letter-spacing: -0.01em; flex: none; }
   .nav__logo { width: 46px; height: 46px; display: block; margin-block: -6px; }
-  .nav__links { display: flex; align-items: center; gap: 1.5rem; }
+  .nav__links { display: flex; align-items: center; gap: 1.5rem; margin-left: auto; }
   .nav__links > a { color: var(--muted); font-size: 0.95rem; text-decoration: none; }
   .nav__links > a:hover { color: var(--ink); }
+  .nav__actions { display: flex; align-items: center; gap: 0.7rem; flex: none; }
 
-  /* Hamburger - hidden on desktop */
-  .nav__toggle { display: none; width: 42px; height: 42px; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
+  /* Hamburger - hidden on desktop, sits with the header actions on mobile */
+  .nav__toggle { display: none; width: 40px; height: 40px; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: border-color 0.12s; }
+  .nav__toggle:hover { border-color: var(--accent); }
   .nav__bars, .nav__bars::before, .nav__bars::after { display: block; width: 18px; height: 2px; border-radius: 2px; background: var(--ink); transition: transform 0.2s ease, opacity 0.2s ease; }
   .nav__bars { position: relative; }
   .nav__bars::before, .nav__bars::after { content: ''; position: absolute; left: 0; }
   .nav__bars::before { top: -6px; }
   .nav__bars::after { top: 6px; }
 
-  @media (max-width: 760px) {
+  @media (max-width: 860px) {
     .nav__toggle { display: inline-flex; }
     .nav__links {
       order: 3; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0;
-      display: none; padding: 0.4rem 0 0.7rem;
+      display: none; margin-left: 0; padding: 0.4rem 0 0.7rem;
     }
     .nav--open .nav__links { display: flex; }
     .nav__links > a { padding: 0.72rem 0.2rem; font-size: 1rem; border-top: 1px solid var(--border); }
-    .nav__links > :global(.btn) { margin-top: 0.7rem; justify-content: center; }
+    .nav__actions { margin-left: auto; }
     .nav--open .nav__bars { background: transparent; }
     .nav--open .nav__bars::before { transform: translateY(6px) rotate(45deg); }
     .nav--open .nav__bars::after { transform: translateY(-6px) rotate(-45deg); }
+  }
+  @media (max-width: 420px) {
+    .nav__brand { font-size: 1.35rem; }
+    .nav__logo { width: 38px; height: 38px; }
+    .nav__actions { gap: 0.5rem; }
   }
 </style>
