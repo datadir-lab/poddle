@@ -38,7 +38,7 @@ credential and swaps it in on the wire. Revoke a pod and its access dies at once
 
 <p align="center">
   <img src=".github/assets/demo.svg" width="820"
-       alt="Terminal demo: poddle identity add stores a login on your host; poddle task runs a coding agent headless in a fresh pod with no secrets mounted; poddle ls shows the running pod; poddled audit shows each brokered request allowed or denied by policy, with an intact hash-chained audit log." />
+       alt="Terminal demo in three scenes: poddle up --detach and poddle attach open a pod, where env shows Claude Code is authed with a poddle handle rather than your key; a fullscreen Claude Code session then edits a file, runs the tests, and git-pushes, while poddle blocks an off-policy fetch to pastebin.com; finally poddled audit lists every brokered request with its decision - allow, redact (a secret scrubbed), and deny - and an intact tamper-evident chain, so the real secrets never leave the host." />
 </p>
 
 ```bash
