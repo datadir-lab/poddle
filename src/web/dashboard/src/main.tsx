@@ -55,7 +55,8 @@ type Route =
   | { view: "overview" }
   | { view: "pods" }
   | { view: "pod"; name: string }
-  | { view: "audit"; pod?: string }
+  | { view: "audit"; pod?: string; q?: string }
+  | { view: "destinations" }
   | { view: "policies"; name?: string };
 
 function parseRoute(path: string): Route {
@@ -66,7 +67,9 @@ function parseRoute(path: string): Route {
     case "pods":
       return seg[1] ? { view: "pod", name: decodeURIComponent(seg[1]) } : { view: "pods" };
     case "audit":
-      return { view: "audit", pod: query.get("pod") || undefined };
+      return { view: "audit", pod: query.get("pod") || undefined, q: query.get("q") || undefined };
+    case "destinations":
+      return { view: "destinations" };
     case "policies":
       return { view: "policies", name: seg[1] ? decodeURIComponent(seg[1]) : undefined };
     default:
@@ -713,11 +716,11 @@ const TIME_RANGES: SegOption[] = [
 ];
 const RANGE_MS: Record<string, number> = { "15m": 900000, "1h": 3600000, "24h": 86400000 };
 
-function AuditView({ events, initialPod, loading }: { events: Event[]; initialPod?: string; loading: boolean }) {
-  const [q, setQ] = useState(initialPod || "");
+function AuditView({ events, initialPod, initialQ, loading }: { events: Event[]; initialPod?: string; initialQ?: string; loading: boolean }) {
+  const [q, setQ] = useState(initialPod || initialQ || "");
   const [decision, setDecision] = useState("");
   const [range, setRange] = useState("");
-  useEffect(() => { if (initialPod) setQ(initialPod); }, [initialPod]);
+  useEffect(() => { if (initialPod) setQ(initialPod); else if (initialQ) setQ(initialQ); }, [initialPod, initialQ]);
 
   // Narrow by search + time range first; the decision filter is applied last so
   // the per-decision counts reflect everything else the user has narrowed to.
@@ -780,6 +783,81 @@ function AuditView({ events, initialPod, loading }: { events: Event[]; initialPo
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ---- destinations (where the agents are reaching, derived from the audit) ----
+type Dest = { upstream: string; total: number; allow: number; redact: number; deny: number; block: number; secrets: number; pods: Set<string> };
+function destinations(events: Event[]): Dest[] {
+  const m = new Map<string, Dest>();
+  for (const e of events) {
+    if (e.kind !== "request" || !e.upstream) continue;
+    const d = m.get(e.upstream) || { upstream: e.upstream, total: 0, allow: 0, redact: 0, deny: 0, block: 0, secrets: 0, pods: new Set<string>() };
+    d.total++;
+    if (e.pod) d.pods.add(e.pod);
+    switch (e.decision) {
+      case "allow": d.allow++; break;
+      case "redact": d.redact++; d.secrets += secretsFrom(e.detail); break;
+      case "deny": d.deny++; break;
+      case "block": d.block++; break;
+    }
+    m.set(e.upstream, d);
+  }
+  return [...m.values()].sort((a, b) => b.total - a.total);
+}
+
+// MixBar draws a destination's decision split as a compact proportional bar.
+function MixBar({ d }: { d: Dest }) {
+  const segs = ([["allow", d.allow], ["redact", d.redact], ["deny", d.deny], ["block", d.block]] as const).filter(([, n]) => n > 0);
+  return (
+    <span class="mix" role="img" aria-label={segs.map(([k, n]) => `${n} ${k}`).join(", ")}>
+      {segs.map(([k, n]) => <span key={k} class={"mix__seg d-" + k} style={`flex-grow:${n}`} title={`${k}: ${n}`} />)}
+    </span>
+  );
+}
+
+const goAuditFor = (upstream: string) => navigate("/audit?q=" + encodeURIComponent(upstream));
+
+function DestinationsView({ events, loading }: { events: Event[]; loading: boolean }) {
+  const [q, setQ] = useState("");
+  const all = useMemo(() => destinations(events), [events]);
+  const s = q.toLowerCase();
+  const shown = useMemo(() => (q ? all.filter((d) => d.upstream.toLowerCase().includes(s)) : all), [all, q, s]);
+  const podCount = useMemo(() => { const p = new Set<string>(); all.forEach((d) => d.pods.forEach((x) => p.add(x))); return p.size; }, [all]);
+
+  const toolbar = (
+    <div class="toolbar">
+      <input class="grow" aria-label="Filter destinations" placeholder="Filter destinations…" value={q}
+        onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+      <span class="count">{all.length} destination{all.length === 1 ? "" : "s"} · {podCount} pod{podCount === 1 ? "" : "s"}</span>
+    </div>
+  );
+  if (loading) return <div>{toolbar}<SkelTable rows={6} /></div>;
+
+  return (
+    <div>
+      {toolbar}
+      {shown.length === 0
+        ? <div class="panel empty">{q ? "No destinations match your filter." : "No egress recorded yet — destinations appear as your agents make requests."}</div>
+        : <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th scope="col">destination</th><th scope="col" class="num">requests</th><th scope="col">decision mix</th><th scope="col" class="num">pods</th><th scope="col" class="num">secrets</th></tr>
+              </thead>
+              <tbody>
+                {shown.map((d) => (
+                  <tr key={d.upstream} class="clickable" tabIndex={0} onClick={() => goAuditFor(d.upstream)} onKeyDown={rowKey(() => goAuditFor(d.upstream))}>
+                    <td class="c-mono dest__host">{d.upstream}{(d.deny || d.block) > 0 && <span class="dest__flag" aria-hidden="true" title="denied or blocked here"><Icon name="ban" size={12} /></span>}</td>
+                    <td class="num c-mono">{d.total}</td>
+                    <td><MixBar d={d} /></td>
+                    <td class="num c-mono" title={[...d.pods].join(", ")}>{d.pods.size}</td>
+                    <td class="num c-mono">{d.secrets || <span class="faint">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>}
     </div>
   );
 }
@@ -993,6 +1071,7 @@ const NAV = [
   { to: "/overview", key: "overview", label: "Overview", icon: "overview" },
   { to: "/pods", key: "pods", label: "Pods", icon: "pods" },
   { to: "/audit", key: "audit", label: "Audit", icon: "audit" },
+  { to: "/destinations", key: "destinations", label: "Destinations", icon: "globe" },
   { to: "/policies", key: "policies", label: "Policies", icon: "policies" },
 ];
 // Each section names itself in the top bar, in the product's own voice.
@@ -1000,6 +1079,7 @@ const PAGE: Record<string, { title: string; sub: string }> = {
   overview: { title: "Overview", sub: "Every agent, every request, accounted for." },
   pods: { title: "Pods", sub: "Live sandboxes and what they are using." },
   audit: { title: "Audit", sub: "The tamper-evident log of every egress decision." },
+  destinations: { title: "Destinations", sub: "Where your agents are reaching, and how the broker ruled." },
   policies: { title: "Policies", sub: "The egress rules your pods run under." },
 };
 
@@ -1193,9 +1273,10 @@ function App() {
           {route.view === "audit" && (
             <>
               <IntegrityPanel verify={vf.verify} checkedAt={vf.checkedAt} recheck={vf.recheck} count={events.length} />
-              <AuditView events={events} initialPod={route.pod} loading={eventsLoading} />
+              <AuditView events={events} initialPod={route.pod} initialQ={route.q} loading={eventsLoading} />
             </>
           )}
+          {route.view === "destinations" && <DestinationsView events={events} loading={eventsLoading} />}
           {route.view === "policies" && <PolicyView selected={route.name} events={events} />}
         </main>
       </div>
