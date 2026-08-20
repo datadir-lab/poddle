@@ -73,7 +73,7 @@ textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--m
 ::placeholder { color: var(--faint); }
 
 /* ---- app shell: a fixed left rail beside a scrolling content column ---- */
-.app { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; }
+.app { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns 0.2s ease; }
 .icon { flex: none; display: inline-block; vertical-align: middle; }
 
 .sidebar {
@@ -129,6 +129,21 @@ textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--m
   transition: opacity 0.14s ease, transform 0.14s ease;
 }
 .badge:hover::after, .badge:focus-visible::after { opacity: 1; transform: translateY(0); }
+/* compact (icon-only) verify badge for the collapsed rail */
+.badge--icon { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; }
+
+/* ---- collapsed rail (desktop only; mobile keeps its top-bar layout) ---- */
+@media (min-width: 881px) {
+  .app--collapsed { grid-template-columns: 68px minmax(0, 1fr); }
+  .app--collapsed .sidebar { padding-inline: 0.5rem; }
+  .app--collapsed .brand { justify-content: center; gap: 0; padding: 0.3rem 0 0.95rem; }
+  .app--collapsed .brand__name { display: none; }
+  .app--collapsed .nav__i { justify-content: center; gap: 0; padding: 0.6rem 0; }
+  .app--collapsed .nav__i span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .app--collapsed .nav__i.on::before { display: none; }
+  .app--collapsed .sidebar__foot { flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.85rem 0 0.15rem; }
+  .app--collapsed .badge::after { display: none; } /* compact badge uses a native title instead */
+}
 .badge.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .badge.ok:hover { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .badge.bad { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 45%, var(--border)); background: color-mix(in srgb, var(--deny) 6%, transparent); }
@@ -144,18 +159,26 @@ textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--m
 }
 .theme-toggle:hover { color: var(--ink); border-color: var(--faint); background: color-mix(in srgb, var(--ink) 5%, transparent); }
 
-/* ---- top bar: names the current section + carries the live-stream status ---- */
+/* ---- top bar: rail toggle + section name + live-stream status ---- */
 .content { min-width: 0; display: flex; flex-direction: column; }
 .topbar {
-  display: flex; align-items: flex-start; gap: 1rem;
-  padding: 1.15rem 1.75rem 0.95rem;
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.8rem 1.5rem 0.8rem 1.15rem;
   border-bottom: 1px solid var(--border); background: var(--bone);
   position: sticky; top: 0; z-index: 5;
 }
+.rail-toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.rail-toggle:hover { color: var(--ink); border-color: var(--faint); background: color-mix(in srgb, var(--ink) 5%, transparent); }
 .topbar__head { min-width: 0; }
-.topbar__title { font-family: var(--font-serif); font-size: 1.5rem; font-weight: 400; line-height: 1.1; letter-spacing: -0.01em; color: var(--ink); margin: 0; }
-.topbar__sub { margin: 0.22rem 0 0; font-size: 0.84rem; color: var(--faint); }
-.topbar .live { margin-left: auto; margin-top: 0.35rem; }
+.topbar__title { font-family: var(--font-serif); font-size: 1.3rem; font-weight: 400; line-height: 1.15; letter-spacing: -0.01em; color: var(--ink); margin: 0; }
+.topbar__sub { margin: 0.08rem 0 0; font-size: 0.82rem; color: var(--faint); }
+.topbar .live { margin-left: auto; }
 
 /* ---- content ---- */
 main { width: 100%; max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 3rem; }
@@ -545,6 +568,7 @@ tr.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -
 /* below this width the left rail becomes a horizontal top bar */
 @media (max-width: 880px) {
   .app { grid-template-columns: 1fr; }
+  .rail-toggle { display: none; }
   .sidebar {
     flex-direction: row; align-items: center; gap: 0.4rem;
     height: auto; overflow-x: auto; z-index: 6;
