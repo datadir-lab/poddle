@@ -185,3 +185,26 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
 });
+
+test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
+  // A running pod with no policy (ungoverned) + one governed by "prod".
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
+    { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "10%", memPerc: "20%", mem: "" },
+    { name: "loose", state: "running", size: "weak", mode: "interactive", policy: "", autoscale: false, cpu: "5%", memPerc: "9%", mem: "" },
+  ] }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [
+    { name: "prod", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: ["metadata.google.internal"], methods: {} },
+  ] }));
+  await mockAudit(page); // SEED requests: api.anthropic.com (allowed) x2, metadata.google.internal (deny-listed)
+  await page.goto("/policies/prod");
+
+  // Ungoverned banner names the unpoliced running pod; the governed one is not listed.
+  await expect(page.locator(".insight")).toContainText("loose");
+  await expect(page.locator(".insight")).not.toContainText("agent1");
+  // Per-policy usage badge: prod governs 1 running pod.
+  await expect(page.locator(".list__meta").first()).toContainText("1 pod");
+  // Dry-run replays prod over the audit tail: the deny-listed host is caught.
+  await expect(page.locator(".dryrun")).toContainText("would be denied");
+  await expect(page.locator(".dryrun__list")).toContainText("metadata.google.internal");
+  await expect(page.locator(".dryrun__list")).not.toContainText("api.anthropic.com"); // allowed
+});

@@ -744,13 +744,72 @@ function AuditView({ events, initialPod, loading }: { events: Event[]; initialPo
 const lines = (a?: string[]) => (a || []).join("\n");
 const parseLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
-function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved: (name: string) => void; onDeleted: () => void }) {
+// ---- client-side policy evaluation ----
+// A faithful port of policy.Decide (Go): the deny-list wins, then the allow-list
+// (default-deny when non-empty), then per-host method rules; otherwise allow. A
+// ".suffix" pattern matches that domain and any subdomain. Keeping this in lock-
+// step with the daemon is what makes the dry-run trustworthy.
+function matchHost(host: string, patterns: string[]): boolean {
+  for (const p of patterns) {
+    if (p === host) return true;
+    if (p.startsWith(".") && (host.endsWith(p) || host === p.slice(1))) return true;
+  }
+  return false;
+}
+function methodsFor(methods: Record<string, string[]> | undefined, host: string): string[] | null {
+  if (!methods) return null;
+  if (host in methods) return methods[host];
+  for (const k in methods) {
+    if (k.startsWith(".") && (host.endsWith(k) || host === k.slice(1))) return methods[k];
+  }
+  return null;
+}
+function decide(pol: Policy, host: string, method: string): { allow: boolean; reason: string } {
+  if (matchHost(host, pol.deny_upstreams || [])) return { allow: false, reason: "on the deny-list" };
+  if ((pol.allow_upstreams || []).length > 0 && !matchHost(host, pol.allow_upstreams || []))
+    return { allow: false, reason: "not allow-listed" };
+  const allowed = methodsFor(pol.methods, host);
+  if (allowed && method && method !== "CONNECT" && !allowed.some((m) => m.toUpperCase() === method.toUpperCase()))
+    return { allow: false, reason: method + " not allowed here" };
+  return { allow: true, reason: "" };
+}
+
+// dryRun replays a (possibly unsaved) policy over the recent request stream and
+// reports what its allow/deny rules would decide. Secret redaction depends on
+// request payloads, so it is deliberately out of scope — this is access control.
+type DryRow = { upstream: string; method: string; reason: string; count: number };
+function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; rows: DryRow[] } {
+  const reqs = events.filter((e) => e.kind === "request" && e.upstream);
+  const m = new Map<string, DryRow>();
+  let denied = 0;
+  for (const e of reqs) {
+    const d = decide(pol, e.upstream as string, e.method || "");
+    if (d.allow) continue;
+    denied++;
+    const key = `${e.method || ""}|${e.upstream}`;
+    const row = m.get(key) || { upstream: e.upstream as string, method: e.method || "", reason: d.reason, count: 0 };
+    row.count++;
+    m.set(key, row);
+  }
+  return { total: reqs.length, denied, rows: [...m.values()].sort((a, b) => b.count - a.count) };
+}
+
+function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; events: Event[]; onSaved: (name: string) => void; onDeleted: () => void }) {
   const [name, setName] = useState(policy.name);
   const [allow, setAllow] = useState(lines(policy.allow_upstreams));
   const [deny, setDeny] = useState(lines(policy.deny_upstreams));
   const [egress, setEgress] = useState(policy.egress || "redact");
   const [methods, setMethods] = useState(JSON.stringify(policy.methods || {}, null, 2));
   const [err, setErr] = useState("");
+
+  // Live dry-run: re-evaluate the (unsaved) form against recent traffic on every
+  // keystroke, so the impact of an allow/deny edit is visible before saving.
+  const impact = useMemo(() => {
+    let m: Record<string, string[]> = {};
+    try { m = methods.trim() ? JSON.parse(methods) : {}; } catch { m = {}; }
+    const draft: Policy = { name: name.trim(), allow_upstreams: parseLines(allow), deny_upstreams: parseLines(deny), methods: m, egress };
+    return dryRun(draft, events);
+  }, [name, allow, deny, methods, egress, events]);
 
   useEffect(() => {
     setName(policy.name); setAllow(lines(policy.allow_upstreams)); setDeny(lines(policy.deny_upstreams));
@@ -789,6 +848,33 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
       <textarea id="pol-deny" value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
       <label for="pol-methods">Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
       <textarea id="pol-methods" value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
+
+      <div class="dryrun">
+        <div class="dryrun__head">
+          <span class="dryrun__title">Dry-run against recent traffic</span>
+          <span class="dryrun__stat">
+            {impact.total} recent request{impact.total === 1 ? "" : "s"} ·{" "}
+            <span class={impact.denied ? "dryrun__deny" : "dryrun__ok"}>{impact.denied} would be denied</span>
+          </span>
+        </div>
+        {impact.total === 0
+          ? <div class="dryrun__empty">No recent egress to evaluate yet.</div>
+          : impact.denied === 0
+            ? <div class="dryrun__pass"><Icon name="check" size={14} /> Every recent request passes these rules.</div>
+            : <ul class="dryrun__list">
+                {impact.rows.slice(0, 8).map((r) => (
+                  <li key={r.method + r.upstream}>
+                    <span class="decision d-deny">deny</span>
+                    <span class="c-mono dryrun__dest">{r.method ? r.method + " " : ""}{r.upstream}</span>
+                    <span class="dryrun__reason">{r.reason}</span>
+                    <span class="dryrun__n">×{r.count}</span>
+                  </li>
+                ))}
+                {impact.rows.length > 8 && <li class="dryrun__more">+{impact.rows.length - 8} more destinations</li>}
+              </ul>}
+        <p class="dryrun__note">Evaluates allow/deny and method rules against the recent audit trail. Secret redaction depends on request contents and is not simulated.</p>
+      </div>
+
       {err && <div class="err">{err}</div>}
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
@@ -799,11 +885,18 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
   );
 }
 
-function PolicyView({ selected }: { selected?: string }) {
+function PolicyView({ selected, events }: { selected?: string; events: Event[] }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
+  const { pods } = usePods();
   const load = () => api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => setPolicies([])).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
+
+  // Fleet governance: how many running pods each policy governs, and which run
+  // with none (a real risk — an unpoliced pod's egress is unrestricted).
+  const running = pods.filter((p) => p.state === "running");
+  const usage = (name: string) => running.filter((p) => p.policy === name).length;
+  const ungoverned = running.filter((p) => !p.policy);
 
   // The selected policy is URL-driven (/policies/:name; "new" is the blank draft).
   const sel: Policy | null =
@@ -812,21 +905,41 @@ function PolicyView({ selected }: { selected?: string }) {
         : null;
 
   return (
-    <div class="layout">
-      <div class="list">
-        {loading
-          ? [0, 1, 2].map((i) => <span class="list__skel skel" key={i} aria-hidden="true" />)
-          : policies.map((p) => (
-              <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
-                class={selected === p.name ? "on" : ""}>{p.name}</a>
+    <div>
+      {ungoverned.length > 0 && (
+        <div class="insight insight--warn">
+          <span class="insight__icon" aria-hidden="true"><Icon name="ban" size={16} /></span>
+          <span class="insight__text">
+            <strong>{ungoverned.length} running pod{ungoverned.length === 1 ? "" : "s"} with no policy.</strong>{" "}
+            {ungoverned.length === 1 ? "Its" : "Their"} egress is unrestricted. Bind a policy to govern {ungoverned.length === 1 ? "it" : "them"}:{" "}
+            {ungoverned.map((p, i) => (
+              <span key={p.name}>{i > 0 ? ", " : ""}<a class="insight__pod" href={`/pods/${encodeURIComponent(p.name)}`} onClick={linkTo(`/pods/${encodeURIComponent(p.name)}`)}>{p.name}</a></span>
             ))}
-        <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
+          </span>
+        </div>
+      )}
+      <div class="layout">
+        <div class="list">
+          {loading
+            ? [0, 1, 2].map((i) => <span class="list__skel skel" key={i} aria-hidden="true" />)
+            : policies.map((p) => {
+                const n = usage(p.name);
+                return (
+                  <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
+                    class={"list__row" + (selected === p.name ? " on" : "")}>
+                    <span>{p.name}</span>
+                    {n > 0 && <span class="list__meta" title={`${n} running pod${n === 1 ? "" : "s"} use this policy`}>{n} pod{n === 1 ? "" : "s"}</span>}
+                  </a>
+                );
+              })}
+          <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
+        </div>
+        {sel
+          ? <PolicyEditor policy={sel} events={events}
+              onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
+              onDeleted={() => { load(); navigate("/policies"); }} />
+          : <div class="editor empty">Select a policy, or create one.</div>}
       </div>
-      {sel
-        ? <PolicyEditor policy={sel}
-            onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
-            onDeleted={() => { load(); navigate("/policies"); }} />
-        : <div class="editor empty">Select a policy, or create one.</div>}
     </div>
   );
 }
@@ -958,7 +1071,7 @@ function App() {
           {route.view === "pods" && <PodsView onPod={goPod} />}
           {route.view === "pod" && <PodDetailView name={route.name} events={events} loading={eventsLoading} />}
           {route.view === "audit" && <AuditView events={events} initialPod={route.pod} loading={eventsLoading} />}
-          {route.view === "policies" && <PolicyView selected={route.name} />}
+          {route.view === "policies" && <PolicyView selected={route.name} events={events} />}
         </main>
       </div>
     </div>

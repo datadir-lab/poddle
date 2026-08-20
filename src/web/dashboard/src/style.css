@@ -319,7 +319,8 @@ td.perf { text-align: right; white-space: nowrap; }
 
 .list { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--card); }
 .list a {
-  display: block; width: 100%; text-align: left; text-decoration: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  width: 100%; text-align: left; text-decoration: none;
   background: transparent; border: 0; border-bottom: 1px solid var(--border);
   color: var(--ink); font: 500 0.9rem/1.4 var(--mono);
   padding: 0.6rem 0.9rem; cursor: pointer; transition: background 0.12s, color 0.12s;
@@ -328,6 +329,38 @@ td.perf { text-align: right; white-space: nowrap; }
 .list a:hover { background: var(--surface); }
 .list a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); font-weight: 600; }
 .list .new { color: var(--faint); font-family: var(--font-sans); font-weight: 500; }
+.list__meta { flex: none; font: 500 0.68rem/1 var(--font-sans); color: var(--faint); background: var(--surface); border-radius: 999px; padding: 0.2rem 0.5rem; }
+.list a.on .list__meta { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* governance insight banner (e.g. running pods with no policy) */
+.insight {
+  display: flex; align-items: flex-start; gap: 0.6rem; margin-bottom: 1.25rem;
+  padding: 0.8rem 1rem; border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--redact) 40%, var(--border));
+  background: color-mix(in srgb, var(--redact) 8%, transparent);
+  font-size: 0.88rem; color: var(--ink);
+}
+.insight__icon { flex: none; color: var(--redact); margin-top: 0.05rem; }
+.insight__text { line-height: 1.5; }
+.insight__pod { color: var(--accent); text-decoration: none; font-family: var(--mono); font-size: 0.85rem; }
+.insight__pod:hover { text-decoration: underline; }
+
+/* policy dry-run: live impact of the (unsaved) rules on recent traffic */
+.dryrun { margin-top: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bone); padding: 0.9rem 1rem; }
+.dryrun__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.3rem 1rem; }
+.dryrun__title { font: 600 0.72rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); }
+.dryrun__stat { font-size: 0.84rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dryrun__deny { color: var(--deny); font-weight: 600; }
+.dryrun__ok { color: var(--accent); font-weight: 600; }
+.dryrun__empty { margin-top: 0.6rem; font-size: 0.84rem; color: var(--faint); }
+.dryrun__pass { margin-top: 0.6rem; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.84rem; color: var(--accent); }
+.dryrun__list { list-style: none; margin: 0.7rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.dryrun__list li { display: flex; align-items: center; gap: 0.55rem; font-size: 0.84rem; }
+.dryrun__dest { color: var(--ink); }
+.dryrun__reason { color: var(--faint); font-size: 0.8rem; }
+.dryrun__n { margin-left: auto; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dryrun__more { color: var(--faint); font-size: 0.8rem; }
+.dryrun__note { margin: 0.75rem 0 0; font-size: 0.76rem; line-height: 1.5; color: var(--faint); }
 
 /* ---- drill-down header ---- */
 .detail-head { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.25rem; }
