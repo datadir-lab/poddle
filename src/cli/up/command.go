@@ -14,6 +14,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/brokerendpoint"
 	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/connector"
 	"github.com/datadir-lab/poddle/src/internal/harness"
@@ -125,6 +126,15 @@ type buildOpts struct {
 	withVolumes                                                            bool // mount session state on named volumes (up/move; not ephemeral task pods)
 	skipClone                                                              bool // don't clone the repo (move: the workspace volume already has it)
 	autoscale                                                              bool // opt in to the daemon's reactive memory-grow autoscaler
+}
+
+// hostPort splits a "host:port" broker address into an allow-list entry.
+func hostPort(addr string) (brokerendpoint.HostPort, bool) {
+	h, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		return brokerendpoint.HostPort{}, false
+	}
+	return brokerendpoint.HostPort{Host: h, Port: p}, true
 }
 
 // stateVolName is the deterministic volume name for a pod's harness state dir,
@@ -257,6 +267,10 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 			return fail(fmt.Errorf("broker address %q: %w", addr, err))
 		}
 		podBrokerAddr := net.JoinHostPort(podBrokerHost(), port)
+		lockAllow := []brokerendpoint.HostPort{}
+		if hp, ok := hostPort(podBrokerAddr); ok {
+			lockAllow = append(lockAllow, hp)
+		}
 
 		if identityName != "" {
 			if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
@@ -281,12 +295,18 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 				if err := applyRedisDatastore(b, conn, def, o.name, redisPodAddr, &spec); err != nil {
 					return fail(err)
 				}
+				if hp, ok := hostPort(redisPodAddr); ok {
+					lockAllow = append(lockAllow, hp)
+				}
 			case "l4-postgres":
 				if pgPodAddr, err = podL4Addr(pgPodAddr, b.PostgresAddr); err != nil {
 					return fail(err)
 				}
 				if err := applyPostgresDatastore(b, conn, def, o.name, pgPodAddr, &spec); err != nil {
 					return fail(err)
+				}
+				if hp, ok := hostPort(pgPodAddr); ok {
+					lockAllow = append(lockAllow, hp)
 				}
 			default:
 				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, &spec); err != nil {
@@ -320,9 +340,11 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 					}
 					spec.Env["NO_PROXY"] = podBrokerHost()
 					spec.Env["no_proxy"] = podBrokerHost()
+					lockAllow = append(lockAllow, brokerendpoint.HostPort{Host: podBrokerHost(), Port: port})
 				}
 			}
 		}
+		spec.Network = &sandbox.Network{AllowList: lockAllow}
 	}
 	return spec, h, tpl, nil
 }
