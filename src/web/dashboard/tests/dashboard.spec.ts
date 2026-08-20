@@ -250,6 +250,30 @@ test("pod controls: rebinds a policy to a running pod (confirmed, real body POST
   expect(bound?.name).toBe("staging"); // the full policy definition was posted
 });
 
+test("command palette: opens with ctrl+k, filters, navigates, and closes on escape", async ({ page }) => {
+  await mockAudit(page);
+  await mockPods(page);
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [] }));
+  await page.goto("/overview");
+
+  await page.keyboard.press("Control+k");
+  await expect(page.locator(".cmdk")).toBeVisible();
+
+  // Filter to a view and activate it -> navigates and closes.
+  await page.locator(".cmdk__input").fill("audit");
+  const item = page.locator(".cmdk__item", { hasText: "Audit" });
+  await expect(item).toBeVisible();
+  await item.click();
+  await expect(page).toHaveURL(/\/audit$/);
+  await expect(page.locator(".cmdk")).toHaveCount(0);
+
+  // Reopen and Escape closes it.
+  await page.keyboard.press("Control+k");
+  await expect(page.locator(".cmdk")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".cmdk")).toHaveCount(0);
+});
+
 test("chrome: sidebar collapses/expands (persisted) and the tab title tracks the route", async ({ page }) => {
   await mockAudit(page);
   await mockPods(page);
