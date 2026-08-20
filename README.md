@@ -4,10 +4,9 @@
 
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
-    <img src=".github/assets/logo.svg" alt="" height="92" align="middle">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-wordmark-dark.png">
+    <img src=".github/assets/logo-wordmark.png" alt="poddle" width="440">
   </picture>
-  &nbsp;poddle
 </h1>
 
 **Self-hostable, secret-safe dev sandboxes for coding agents.**
