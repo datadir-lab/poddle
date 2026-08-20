@@ -36,6 +36,10 @@ src/web/dashboard/test-results/
 src/web/dashboard/playwright-report/
 src/web/dashboard/.last-run.json
 
+# @poddle/ui deps (the views/dist build output IS committed, like the
+# dashboard's embedded bundle, so consumers don't need to build it)
+src/web/ui/node_modules/
+
 # Agent scratch / parallel git worktrees
 .claude/worktrees/
 

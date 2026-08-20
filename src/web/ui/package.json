@@ -1,15 +1,31 @@
 {
   "name": "@poddle/ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "poddle design system — shared tokens and CSS primitives for all poddle UI.",
   "license": "MIT",
   "type": "module",
-  "files": ["tokens.css", "base.css"],
+  "files": ["tokens.css", "base.css", "views/dist"],
   "exports": {
     "./tokens.css": "./tokens.css",
-    "./base.css": "./base.css"
+    "./base.css": "./base.css",
+    "./views": {
+      "types": "./views/dist/index.d.ts",
+      "import": "./views/dist/index.js"
+    }
   },
   "sideEffects": ["*.css"],
+  "scripts": {
+    "build:views": "vite build --config views/vite.config.ts && tsc -p views/tsconfig.json --emitDeclarationOnly"
+  },
+  "peerDependencies": {
+    "preact": ">=10"
+  },
+  "devDependencies": {
+    "preact": "^10.24.3",
+    "typescript": "^5.6.3",
+    "vite": "^8.2.1",
+    "@preact/preset-vite": "^2.10.6"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/datadir-lab/poddle.git",
