@@ -1,0 +1,81 @@
+name: Spike - egress lockdown feasibility
+
+# One-off feasibility probe for the non-bypassable egress lockdown (Task 1 of
+# docs/design/egress-lockdown-and-broker-placement.md): does a rootless pod on a
+# podman --internal network (no internet) still reach a host-side broker? Manual
+# only. Fails the job if the mechanism doesn't hold, so the answer is unambiguous.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Route docker.io through the ECR mirror (dodge Hub rate limit)
+        run: |
+          sudo mkdir -p /etc/containers/registries.conf.d
+          printf '%s\n' '[[registry]]' 'location = "docker.io"' '[[registry.mirror]]' 'location = "public.ecr.aws/docker"' | sudo tee /etc/containers/registries.conf.d/aws-mirror.conf > /dev/null
+      - name: Engine version
+        run: podman version
+
+      - name: Start a host-side broker stand-in (0.0.0.0:18080)
+        run: |
+          nohup python3 -m http.server 18080 --bind 0.0.0.0 >/tmp/broker.log 2>&1 &
+          sleep 2
+          curl -sf http://127.0.0.1:18080/ >/dev/null && echo "host broker up"
+
+      - name: Create the internal (no-internet) network
+        run: podman network create --internal poddle-lock-test
+
+      - name: CHECK 1 — internet must be BLOCKED from the internal network
+        run: |
+          set +e
+          OUT=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
+            sh -c 'wget -T 4 -qO- http://1.1.1.1/ 2>/dev/null; echo "rc=$?"')
+          echo "$OUT"
+          if echo "$OUT" | grep -q "rc=0"; then
+            echo "::error::pod reached the internet (1.1.1.1); --internal did NOT block egress"
+            echo "INTERNET_BLOCKED=no" >> "$GITHUB_ENV"
+          else
+            echo "PASS — internet blocked"
+            echo "INTERNET_BLOCKED=yes" >> "$GITHUB_ENV"
+          fi
+
+      - name: CHECK 2 — the host broker must be REACHABLE from the internal network
+        run: |
+          set +e
+          echo "--- via host.containers.internal ---"
+          A=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
+            sh -c 'wget -T 4 -qO- http://host.containers.internal:18080/ 2>/dev/null; echo "rc=$?"')
+          echo "$A"
+          GW=$(podman network inspect poddle-lock-test -f '{{ (index .Subnets 0).Gateway }}')
+          echo "--- via bridge gateway $GW ---"
+          B=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
+            sh -c "wget -T 4 -qO- http://$GW:18080/ 2>/dev/null; echo rc=\$?")
+          echo "$B"
+          REACH=no; FORM=""
+          if echo "$A" | grep -q "rc=0"; then REACH=yes; FORM="host.containers.internal"; fi
+          if [ "$REACH" = no ] && echo "$B" | grep -q "rc=0"; then REACH=yes; FORM="gateway($GW)"; fi
+          echo "BROKER_REACH=$REACH" >> "$GITHUB_ENV"
+          echo "BROKER_FORM=$FORM" >> "$GITHUB_ENV"
+          [ "$REACH" = yes ] && echo "PASS — broker reachable via $FORM" \
+            || echo "::warning::broker unreachable via host.containers.internal or the gateway on the internal network"
+
+      - name: Verdict
+        run: |
+          echo "internet_blocked=$INTERNET_BLOCKED  broker_reachable=$BROKER_REACH  form=$BROKER_FORM"
+          if [ "$INTERNET_BLOCKED" = yes ] && [ "$BROKER_REACH" = yes ]; then
+            echo "FEASIBLE — --internal blocks the internet AND the broker is reachable via $BROKER_FORM"
+          else
+            echo "::error::NOT feasible with --internal alone (blocked=$INTERNET_BLOCKED reach=$BROKER_REACH); evaluate pasta/nftables fallbacks"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: podman network rm poddle-lock-test || true
