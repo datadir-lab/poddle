@@ -179,6 +179,201 @@ function Spark({ data }: { data: number[] }) {
   );
 }
 
+// ---- icons ----
+// A small inline-SVG set (lucide-style, matching the theme-toggle glyphs) so the
+// nav, stat cards, and chart legends carry meaning by shape as well as label -
+// and it keeps the bundle dependency-free for go:embed. Each entry is a render
+// fn (not a shared vnode) so the same icon can be drawn in many places safely.
+const ICONS: Record<string, () => any> = {
+  overview: () => (<><rect x="3" y="3" width="7" height="7" rx="1.4" /><rect x="14" y="3" width="7" height="7" rx="1.4" /><rect x="14" y="14" width="7" height="7" rx="1.4" /><rect x="3" y="14" width="7" height="7" rx="1.4" /></>),
+  pods: () => (<><path d="M21 8v8a2 2 0 0 1-1 1.73l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.73l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></>),
+  audit: () => (<path d="M22 12h-4l-3 9L9 3l-3 9H2" />),
+  policies: () => (<><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z" /><path d="m9 12 2 2 4-4" /></>),
+  globe: () => (<><circle cx="12" cy="12" r="10" /><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20M2 12h20" /></>),
+  eyeoff: () => (<><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A11 11 0 0 1 12 5c7 0 10 7 10 7a13 13 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13 13 0 0 0 2 12s3 7 10 7a11 11 0 0 0 5.39-1.39" /><line x1="2" y1="2" x2="22" y2="22" /></>),
+  ban: () => (<><circle cx="12" cy="12" r="10" /><path d="m4.9 4.9 14.2 14.2" /></>),
+  check: () => (<path d="M20 6 9 17l-5-5" />),
+  octagon: () => (<><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>),
+};
+function Icon({ name, size = 16 }: { name: string; size?: number }) {
+  const draw = ICONS[name];
+  if (!draw) return null;
+  return (
+    <svg class="icon" width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      {draw()}
+    </svg>
+  );
+}
+
+// PoddleMark is the real product mark (the isometric pod cube from the site
+// favicon). The two side faces ride on currentColor (= --ink) so the logo reads
+// on both the cream and the near-black rails; the top face and the prompt glyph
+// keep the fixed brand green.
+function PoddleMark({ size = 30 }: { size?: number }) {
+  return (
+    <svg class="pmark" width={size} height={size} viewBox="382.0 134.1 435.9 435.9" aria-hidden="true">
+      <path d="M769.71,450.00 L769.71,254.04 L600.00,352.02 L600.00,547.98 Z" fill="currentColor" />
+      <path d="M600.00,547.98 L600.00,352.02 L430.29,254.04 L430.29,450.00 Z" fill="currentColor" />
+      <path d="M769.71,254.04 L600.00,156.06 L430.29,254.04 L600.00,352.02 Z" fill="#2f9e6f" />
+      <g transform="matrix(169.7056,97.9787,0.0000,195.9601,430.29,254.04)" fill="#2f9e6f">
+        <path d="M0.19,0.31 L0.29,0.31 L0.44,0.50 L0.29,0.69 L0.19,0.69 L0.34,0.50 Z" />
+        <path d="M0.50,0.605 L0.72,0.605 L0.72,0.685 L0.50,0.685 Z" />
+      </g>
+    </svg>
+  );
+}
+
+// The four egress decisions, in fixed order, each with its status glyph. These
+// are *status* colours (reserved, in tokens.css) so they always ship with a
+// label + icon, never colour alone.
+const DECISIONS = [
+  { key: "allow", label: "Allow", icon: "check" },
+  { key: "redact", label: "Redact", icon: "eyeoff" },
+  { key: "deny", label: "Deny", icon: "ban" },
+  { key: "block", label: "Block", icon: "octagon" },
+] as const;
+
+// ---- charts (hand-rolled SVG/HTML, no chart lib — keeps the go:embed bundle small) ----
+function decisionCounts(events: Event[]): Record<string, number> {
+  const c: Record<string, number> = { allow: 0, redact: 0, deny: 0, block: 0 };
+  for (const e of events) if (e.decision && e.decision in c) c[e.decision]++;
+  return c;
+}
+
+// bucketEvents lays the request stream onto an even time grid so it can be drawn
+// as a volume line. `req` is total requests in the bin; `intervened` is the slice
+// that was redacted, denied, or blocked (same unit — one y-axis, never two).
+type TBucket = { t0: number; req: number; intervened: number };
+function bucketEvents(events: Event[], n = 24): TBucket[] {
+  const reqs = events.filter((e) => e.kind === "request" && e.time);
+  if (reqs.length < 2) return [];
+  let min = Infinity, max = -Infinity;
+  const ts = reqs.map((e) => { const t = new Date(e.time).getTime(); if (t < min) min = t; if (t > max) max = t; return t; });
+  if (max <= min) max = min + 1;
+  const width = (max - min) / n;
+  const bk: TBucket[] = Array.from({ length: n }, (_, i) => ({ t0: min + i * width, req: 0, intervened: 0 }));
+  reqs.forEach((e, i) => {
+    let idx = Math.floor((ts[i] - min) / width);
+    if (idx < 0) idx = 0; else if (idx >= n) idx = n - 1;
+    bk[idx].req++;
+    if (e.decision === "redact" || e.decision === "deny" || e.decision === "block") bk[idx].intervened++;
+  });
+  return bk;
+}
+
+// EgressChart: request volume over time as stacked columns — the allowed share
+// (accent, anchored to the baseline) with the redacted/blocked share (amber)
+// stacked on top, so each column's height is the total and its split is the
+// posture. Per-column hover tooltip, per the dataviz interaction default; the
+// raw rows live in the Audit tab, which is the table view.
+function EgressChart({ events }: { events: Event[] }) {
+  const [hi, setHi] = useState<number | null>(null);
+  const bk = useMemo(() => bucketEvents(events, 14), [events]);
+  if (bk.length === 0) return <div class="chart-empty">No egress yet. Requests chart here as your agents run.</div>;
+
+  const W = 1000, H = 172, padT = 14, padB = 22, padX = 8;
+  const plotH = H - padT - padB, plotW = W - padX * 2, n = bk.length;
+  const y0 = padT + plotH;
+  const max = Math.max(1, ...bk.map((b) => b.req));
+  const step = plotW / n;
+  const barw = Math.min(46, step * 0.6);
+  const cx = (i: number) => padX + (i + 0.5) * step;
+  const hpx = (v: number) => (v / max) * plotH;
+  const total = bk.reduce((s, b) => s + b.req, 0);
+  const totalInt = bk.reduce((s, b) => s + b.intervened, 0);
+  const active = hi != null ? bk[hi] : null;
+
+  return (
+    <div class="chart">
+      <svg class="plot" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img"
+        aria-label={`Egress over time: ${total} requests, ${totalInt} redacted or blocked, across ${n} intervals`}>
+        <line class="grid grid--soft" x1={padX} y1={padT} x2={padX + plotW} y2={padT} vector-effect="non-scaling-stroke" />
+        <text class="axtick" x={padX} y={padT - 4}>{max}</text>
+        <line class="grid" x1={padX} y1={y0} x2={padX + plotW} y2={y0} vector-effect="non-scaling-stroke" />
+        {bk.map((b, i) => {
+          const allow = b.req - b.intervened;
+          const aH = hpx(allow), iH = hpx(b.intervened);
+          const x = cx(i) - barw / 2;
+          const dim = hi != null && hi !== i ? " bar--dim" : "";
+          const gap = b.intervened > 0 && allow > 0 ? 2 : 0;
+          return (
+            <g key={i}>
+              {allow > 0 && <rect class={"bar bar--allow" + dim} x={x} y={y0 - aH} width={barw} height={aH} rx="3" />}
+              {b.intervened > 0 && <rect class={"bar bar--int" + dim} x={x} y={y0 - aH - gap - iH} width={barw} height={iH} rx="3" />}
+              <rect x={cx(i) - step / 2} y={padT} width={step} height={plotH} fill="transparent"
+                onMouseEnter={() => setHi(i)} onMouseLeave={() => setHi(null)} />
+            </g>
+          );
+        })}
+        <text class="axlabel" x={padX} y={H - 6} text-anchor="start">{relTime(new Date(bk[0].t0).toISOString())}</text>
+        <text class="axlabel" x={padX + plotW} y={H - 6} text-anchor="end">now</text>
+      </svg>
+      {active && (
+        <div class="tip" style={`left:${(((hi! + 0.5) / n) * 100).toFixed(2)}%`} aria-hidden="true">
+          <div class="tip__t">{relTime(new Date(active.t0).toISOString())} · {active.req} total</div>
+          <div class="tip__row"><span class="tip__k"><span class="dotmark dotmark--req" />Allowed</span><span class="tip__v">{active.req - active.intervened}</span></div>
+          <div class="tip__row"><span class="tip__k"><span class="dotmark dotmark--int" />Intervened</span><span class="tip__v">{active.intervened}</span></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// PostureBar: the decision mix as a single proportional bar + a labelled legend.
+// Segments carry a status colour, a glyph, and a count — identity never rests on
+// colour alone (deny and block share the red, told apart by their icons/labels).
+function PostureBar({ counts }: { counts: Record<string, number> }) {
+  const total = DECISIONS.reduce((s, d) => s + (counts[d.key] || 0), 0);
+  if (total === 0) return <div class="chart-empty">No decisions recorded yet.</div>;
+  const pct = (v: number) => Math.round((v / total) * 100);
+  return (
+    <div class="posture">
+      <div class="posture__bar" role="img"
+        aria-label={"Decision mix: " + DECISIONS.map((d) => `${counts[d.key] || 0} ${d.label}`).join(", ")}>
+        {DECISIONS.filter((d) => (counts[d.key] || 0) > 0).map((d) => (
+          <div key={d.key} class={"posture__seg d-" + d.key} style={`flex-grow:${counts[d.key]}`}
+            title={`${d.label}: ${counts[d.key]} (${pct(counts[d.key])}%)`} />
+        ))}
+      </div>
+      <ul class="legend">
+        {DECISIONS.map((d) => (
+          <li key={d.key} class="legend__i">
+            <span class={"legend__mk d-" + d.key}><Icon name={d.icon} size={13} /></span>
+            <span class="legend__lb">{d.label}</span>
+            <span class="legend__v">{counts[d.key] || 0}</span>
+            <span class="legend__pc">{pct(counts[d.key] || 0)}%</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// FleetLoad: a compact per-pod CPU bar (threshold-toned, like the sparklines) so
+// the running fleet's load reads at a glance without leaving the overview.
+function FleetLoad({ pods }: { pods: Pod[] }) {
+  const running = pods.filter((p) => p.state === "running");
+  if (running.length === 0) return <div class="chart-empty">No pods running right now.</div>;
+  return (
+    <div class="fleet">
+      {running.map((p) => {
+        const cpu = parseFloat(p.cpu) || 0;
+        return (
+          <div key={p.name} class="fleet__row" title={`${p.name}: CPU ${p.cpu}, memory ${p.memPerc}`}>
+            <span class="fleet__name">{p.name}</span>
+            <span class="fleet__track" aria-hidden="true">
+              <span class={"fleet__fill fleet__fill--" + threshTone(cpu)} style={`width:${Math.min(100, cpu)}%`} />
+            </span>
+            <span class="fleet__val c-mono">{p.cpu || "—"}</span>
+            <span class="fleet__mem c-mono" title="memory in use">{p.memPerc || "—"}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---- aggregations (derived client-side from the audit events) ----
 const secretsFrom = (detail?: string) => { const m = (detail || "").match(/redacted (\d+)/); return m ? +m[1] : 1; };
 
@@ -234,9 +429,10 @@ function VerifyBadge({ v }: { v: Verify }) {
     : <span class="badge bad">chain broken @{v.brokenAt} ✗</span>;
 }
 
-function Card({ n, label, tone }: { n: number | string; label: string; tone?: string }) {
+function Card({ n, label, icon, tone }: { n: number | string; label: string; icon?: string; tone?: string }) {
   return (
     <div class={"card" + (tone ? " card--" + tone : "")}>
+      {icon && <span class="card__icon" aria-hidden="true"><Icon name={icon} size={17} /></span>}
       <div class="card__num">{n}</div>
       <div class="card__label">{label}</div>
     </div>
@@ -344,6 +540,7 @@ const EGRESS_MODES: SegOption[] = [
 function OverviewView({ events, loading, onPod }: { events: Event[]; loading: boolean; onPod: (pod: string) => void }) {
   const { pods: livePods, loading: podsLoading } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
+  const counts = useMemo(() => decisionCounts(events), [events]);
   const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
   const redactions = useMemo(() => group(events, ["redact"]).slice(0, 12), [events]);
 
@@ -362,10 +559,39 @@ function OverviewView({ events, loading, onPod }: { events: Event[]; loading: bo
   return (
     <div>
       <div class="cards">
-        <Card n={livePods.length} label="pods active" />
-        <Card n={s.requests} label="requests" />
-        <Card n={s.secrets} label="secrets redacted" tone={s.secrets ? "warn" : undefined} />
-        <Card n={s.blocked + s.denied} label="blocked / denied" tone={s.blocked + s.denied ? "flag" : undefined} />
+        <Card n={livePods.length} label="pods active" icon="pods" />
+        <Card n={s.requests} label="requests" icon="globe" />
+        <Card n={s.secrets} label="secrets redacted" icon="eyeoff" tone={s.secrets ? "warn" : undefined} />
+        <Card n={s.blocked + s.denied} label="blocked / denied" icon="ban" tone={s.blocked + s.denied ? "flag" : undefined} />
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <h2 class="chart-title">Egress over time</h2>
+          <p class="chart-sub">Requests per interval, split by how the broker handled them.</p>
+          <ul class="legend legend--inline">
+            <li class="legend__i"><span class="legend__mk mk--req" /><span class="legend__lb">Allowed</span></li>
+            <li class="legend__i"><span class="legend__mk mk--int" /><span class="legend__lb">Intervened</span></li>
+          </ul>
+        </div>
+        <EgressChart events={events} />
+      </div>
+
+      <div class="grid-2">
+        <div class="chart-card">
+          <div class="chart-head">
+            <h2 class="chart-title">Decision mix</h2>
+            <p class="chart-sub">How the broker handled every request.</p>
+          </div>
+          <PostureBar counts={counts} />
+        </div>
+        <div class="chart-card">
+          <div class="chart-head">
+            <h2 class="chart-title">Fleet load</h2>
+            <p class="chart-sub">Live CPU across running pods.</p>
+          </div>
+          <FleetLoad pods={livePods} />
+        </div>
       </div>
 
       <h2 class="section-title">Attention</h2>
@@ -444,7 +670,7 @@ const TIME_RANGES: SegOption[] = [
 ];
 const RANGE_MS: Record<string, number> = { "15m": 900000, "1h": 3600000, "24h": 86400000 };
 
-function AuditView({ events, initialPod, loading, status }: { events: Event[]; initialPod?: string; loading: boolean; status: Conn }) {
+function AuditView({ events, initialPod, loading }: { events: Event[]; initialPod?: string; loading: boolean }) {
   const [q, setQ] = useState(initialPod || "");
   const [decision, setDecision] = useState("");
   const [range, setRange] = useState("");
@@ -477,7 +703,6 @@ function AuditView({ events, initialPod, loading, status }: { events: Event[]; i
         onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
       <Segmented value={range} options={TIME_RANGES} onChange={setRange} ariaLabel="time range" />
       <Segmented value={decision} options={decisionOpts} onChange={setDecision} ariaLabel="filter by decision" />
-      <LiveDot status={status} />
       <button type="button" class="btn btn--ghost btn--sm" disabled={!shown.length} onClick={() => downloadCsv(shown)}>Export CSV</button>
       <span class="count">{shown.length} events</span>
     </div>
@@ -606,8 +831,43 @@ function PolicyView({ selected }: { selected?: string }) {
   );
 }
 
-function NavLink({ to, active, children }: { to: string; active: boolean; children: any }) {
-  return <a href={to} class={active ? "on" : ""} onClick={linkTo(to)}>{children}</a>;
+// The primary nav lives in the left rail; each item is a real <a> (deep-links,
+// middle-click opens a tab) paired with its glyph.
+const NAV = [
+  { to: "/overview", key: "overview", label: "Overview", icon: "overview" },
+  { to: "/pods", key: "pods", label: "Pods", icon: "pods" },
+  { to: "/audit", key: "audit", label: "Audit", icon: "audit" },
+  { to: "/policies", key: "policies", label: "Policies", icon: "policies" },
+];
+// Each section names itself in the top bar, in the product's own voice.
+const PAGE: Record<string, { title: string; sub: string }> = {
+  overview: { title: "Overview", sub: "Every agent, every request, accounted for." },
+  pods: { title: "Pods", sub: "Live sandboxes and what they are using." },
+  audit: { title: "Audit", sub: "The tamper-evident log of every egress decision." },
+  policies: { title: "Policies", sub: "The egress rules your pods run under." },
+};
+
+function Sidebar({ active, v }: { active: string; v: Verify }) {
+  return (
+    <aside class="sidebar">
+      <a class="brand" href="/overview" onClick={linkTo("/overview")}>
+        <PoddleMark size={27} />
+        <span class="brand__name">poddle</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        {NAV.map((it) => (
+          <a key={it.key} href={it.to} class={"nav__i" + (active === it.key ? " on" : "")}
+            aria-current={active === it.key ? "page" : undefined} onClick={linkTo(it.to)}>
+            <Icon name={it.icon} size={17} /><span>{it.label}</span>
+          </a>
+        ))}
+      </nav>
+      <div class="sidebar__foot">
+        <VerifyBadge v={v} />
+        <ThemeToggle />
+      </div>
+    </aside>
+  );
 }
 
 // goPod routes to a pod's drill-down page.
@@ -617,7 +877,7 @@ function Fact({ label, children }: { label: string; children: any }) {
   return <div><dt>{label}</dt><dd>{children}</dd></div>;
 }
 
-function PodDetailView({ name, events, loading, status }: { name: string; events: Event[]; loading: boolean; status: Conn }) {
+function PodDetailView({ name, events, loading }: { name: string; events: Event[]; loading: boolean }) {
   const { pods, hist } = usePods();
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
@@ -647,7 +907,7 @@ function PodDetailView({ name, events, loading, status }: { name: string; events
       )}
 
       <h2 class="section-title">Audit trail</h2>
-      <AuditView events={events} initialPod={name} loading={loading} status={status} />
+      <AuditView events={events} initialPod={name} loading={loading} />
     </div>
   );
 }
@@ -680,29 +940,27 @@ function App() {
   const { events, loading: eventsLoading, status: liveStatus } = useAudit();
   const v = useVerify();
   const active = route.view === "pod" ? "pods" : route.view;
+  const page = PAGE[active] || PAGE.overview;
 
   return (
-    <div>
-      <header>
-        <a class="brand" href="/overview" onClick={linkTo("/overview")}>
-          <span class="brand__name">poddle</span>
-        </a>
-        <nav>
-          <NavLink to="/overview" active={active === "overview"}>Overview</NavLink>
-          <NavLink to="/pods" active={active === "pods"}>Pods</NavLink>
-          <NavLink to="/audit" active={active === "audit"}>Audit</NavLink>
-          <NavLink to="/policies" active={active === "policies"}>Policies</NavLink>
-        </nav>
-        <VerifyBadge v={v} />
-        <ThemeToggle />
-      </header>
-      <main>
-        {route.view === "overview" && <OverviewView events={events} loading={eventsLoading} onPod={goPod} />}
-        {route.view === "pods" && <PodsView onPod={goPod} />}
-        {route.view === "pod" && <PodDetailView name={route.name} events={events} loading={eventsLoading} status={liveStatus} />}
-        {route.view === "audit" && <AuditView events={events} initialPod={route.pod} loading={eventsLoading} status={liveStatus} />}
-        {route.view === "policies" && <PolicyView selected={route.name} />}
-      </main>
+    <div class="app">
+      <Sidebar active={active} v={v} />
+      <div class="content">
+        <header class="topbar">
+          <div class="topbar__head">
+            <h1 class="topbar__title">{page.title}</h1>
+            <p class="topbar__sub">{page.sub}</p>
+          </div>
+          <LiveDot status={liveStatus} />
+        </header>
+        <main>
+          {route.view === "overview" && <OverviewView events={events} loading={eventsLoading} onPod={goPod} />}
+          {route.view === "pods" && <PodsView onPod={goPod} />}
+          {route.view === "pod" && <PodDetailView name={route.name} events={events} loading={eventsLoading} />}
+          {route.view === "audit" && <AuditView events={events} initialPod={route.pod} loading={eventsLoading} />}
+          {route.view === "policies" && <PolicyView selected={route.name} />}
+        </main>
+      </div>
     </div>
   );
 }
