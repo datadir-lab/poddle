@@ -91,6 +91,41 @@ environment — a pod on the internal network can reach the broker gateway and
 to evaluate: pod attached to the internal bridge with the broker as a peer;
 pasta outbound filtering; nftables in the pod netns. The spike decides.
 
+### Spike outcome (RESOLVED, 2026-08-20)
+
+Two CI `workflow_dispatch` probes (`.github/workflows/spike-egress-lockdown.yml`)
+settled the crux:
+
+- **`--internal` + host-side broker → NOT viable.** internet is blocked ✅, but a
+  pod on the `--internal` net **cannot** reach a broker listening on the host
+  (neither `host.containers.internal` nor the bridge gateway routes to it). Run
+  32420912388: `internet_blocked=yes broker_reachable=no`.
+- **`--internal` + broker as a dual-homed container PEER → FEASIBLE.** Run
+  (peer-v2): **`peer=yes isolated=yes relay=yes`**. The pod joins only
+  `poddle-lock-<pod>` (`--internal`); the broker peer is attached to **two**
+  networks — an internet-capable net as its **primary** (so its default route
+  reaches upstreams) and `poddle-lock-<pod>` as a second interface (so the pod
+  reaches it). Result: pod→broker works, pod→internet is cut off, broker→internet
+  relays. All three legs green.
+
+**Resolved mechanism:** the broker must sit **on the pod's internal network as a
+dual-homed peer**, not on the host. Because `poddled` runs today as an
+**in-process host daemon** (binds host listeners; pod reaches it via
+`host.containers.internal`), realizing this needs a per-pod **dual-homed relay
+container**: attached internet-primary + `poddle-lock-<pod>`-secondary, forwarding
+the pod's four data channels to the host `poddled` (which it can still reach via
+the host route). The pod talks only to the relay's internal-net IP; it has no
+direct route anywhere else. This keeps `poddled` unchanged and is per-pod
+disposable, torn down with the lock network. (Alternative — containerize
+`poddled` itself as the dual-homed peer — is larger and defers to a later step.)
+
+**Consequence for the foundation branch:** commit `26138d0` puts the *pod* on
+`--internal` but leaves the broker host-side — the V1 (non-viable) shape. Its
+argv unit tests pass, but a real brokered pod would be cut off from its broker.
+`spec/broker-placement-egress-lockdown` must **not** merge until Task 4's network
+realization is redirected to the relay-container mechanism above and Task 6's
+adversarial e2e proves it end-to-end on CI.
+
 ## Per-placement egress + control separation
 
 - **`colocated`** — pod internal network; broker binds the internal bridge
@@ -172,7 +207,9 @@ arg-building (fake `exec.Runner`), and fail-closed when the primitive is absent.
 
 ## Open questions / risks
 
-- **Feasibility spike (blocking):** internal-network → host-broker reachability in
-  rootless nested podman on the CI runner. Everything else assumes it holds.
+- ~~**Feasibility spike (blocking):** internal-network → host-broker reachability
+  in rootless nested podman on the CI runner.~~ **RESOLVED** — see "Spike outcome"
+  above. Host-side broker is unreachable from `--internal`; a dual-homed broker
+  peer (relay container) is the proven mechanism.
 - Rootful support (later).
 - Whether `direct`-mode TLS reuses the connectors' cert story or a new one (step 4).
