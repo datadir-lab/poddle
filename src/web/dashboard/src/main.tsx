@@ -609,10 +609,17 @@ const EGRESS_MODES: SegOption[] = [
 
 function OverviewView({ events, loading, onPod }: { events: Event[]; loading: boolean; onPod: (pod: string) => void }) {
   const { pods: livePods, loading: podsLoading } = usePods(); // live fleet, not audit history
-  const s = useMemo(() => summarise(events), [events]);
-  const counts = useMemo(() => decisionCounts(events), [events]);
-  const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
-  const redactions = useMemo(() => group(events, ["redact"]).slice(0, 12), [events]);
+  const [range, setRange] = useState("");
+  // The egress-derived cards, charts, and panels reflect the selected window; the
+  // live pod count stays "now".
+  const win = useMemo(() => {
+    const cutoff = range && RANGE_MS[range] ? Date.now() - RANGE_MS[range] : 0;
+    return cutoff ? events.filter((e) => e.time && new Date(e.time).getTime() >= cutoff) : events;
+  }, [events, range]);
+  const s = useMemo(() => summarise(win), [win]);
+  const counts = useMemo(() => decisionCounts(win), [win]);
+  const attention = useMemo(() => group(win, ["deny", "block"]).slice(0, 8), [win]);
+  const redactions = useMemo(() => group(win, ["redact"]).slice(0, 12), [win]);
 
   if (loading && podsLoading) {
     return (
@@ -628,6 +635,10 @@ function OverviewView({ events, loading, onPod }: { events: Event[]; loading: bo
 
   return (
     <div>
+      <div class="ov-head">
+        <span class="ov-head__label">Egress window</span>
+        <Segmented value={range} options={TIME_RANGES} onChange={setRange} ariaLabel="overview time range" />
+      </div>
       <div class="cards">
         <Card n={livePods.length} label="pods active" icon="pods" />
         <Card n={s.requests} label="requests" icon="globe" />
@@ -644,7 +655,7 @@ function OverviewView({ events, loading, onPod }: { events: Event[]; loading: bo
             <li class="legend__i"><span class="legend__mk mk--int" /><span class="legend__lb">Intervened</span></li>
           </ul>
         </div>
-        <EgressChart events={events} />
+        <EgressChart events={win} />
       </div>
 
       <div class="grid-2">
