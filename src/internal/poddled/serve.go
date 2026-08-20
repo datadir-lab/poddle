@@ -90,11 +90,13 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 	}
 	_ = os.Chmod(sockPath, 0o600) // owner-only: the control API is the authz boundary
 
-	srv := &http.Server{Handler: d.Handler()}
+	srv := &http.Server{Handler: d.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		_ = srv.Close()
-		_ = d.Stop(context.Background())
+		// Shutdown must run to completion even though ctx is now cancelled;
+		// WithoutCancel keeps ctx's values but drops its cancellation.
+		_ = d.Stop(context.WithoutCancel(ctx))
 		_ = store.Close()
 		_ = os.Remove(sockPath)
 	}()

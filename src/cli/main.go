@@ -1,5 +1,6 @@
 //go:build !docgen
 
+// Command poddle is poddle's command-line interface.
 package main
 
 import (
