@@ -1250,15 +1250,9 @@ function ThemeToggle() {
     () => (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "light",
   );
   const apply = (t: string) => {
-    // Enable a brief global colour transition only for the switch itself (not on
-    // load, and not for every hover), then remove it so normal interactions stay
-    // snappy. Reduced-motion users get an instant flip (the CSS guards it).
-    const root = document.documentElement;
-    root.classList.add("theming");
-    root.setAttribute("data-theme", t);
+    document.documentElement.setAttribute("data-theme", t);
     try { localStorage.setItem("poddle-theme", t); } catch {}
     setTheme(t);
-    window.setTimeout(() => root.classList.remove("theming"), 360);
   };
   const dark = theme === "dark";
   return (
