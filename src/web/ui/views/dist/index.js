@@ -404,15 +404,15 @@ function S({ pods: e, hist: t, onPod: n, emptyState: r }) {
 }
 //#endregion
 //#region views/PodDetailPanel.tsx
-function C({ name: e, pod: t, hist: n, events: r, onBack: i, onPolicyClick: a }) {
+function C({ name: e, pod: t, hist: n, events: r, backHref: i, onBack: a, policyHref: o, onPolicyClick: s }) {
 	return /* @__PURE__ */ p("div", { children: [
 		/* @__PURE__ */ p("div", {
 			class: "detail-head",
 			children: [
 				/* @__PURE__ */ p("a", {
-					href: "/pods",
+					href: i,
 					class: "back",
-					onClick: i,
+					onClick: a,
 					children: "← Pods"
 				}),
 				/* @__PURE__ */ p("h1", {
@@ -453,8 +453,8 @@ function C({ name: e, pod: t, hist: n, events: r, onBack: i, onPolicyClick: a })
 					label: "policy",
 					children: t.policy ? /* @__PURE__ */ p("a", {
 						class: "fact-link c-mono",
-						href: `/policies/${encodeURIComponent(t.policy)}`,
-						onClick: a,
+						href: o,
+						onClick: s,
 						children: t.policy
 					}) : /* @__PURE__ */ p("span", {
 						class: "faint",
@@ -597,21 +597,17 @@ function E({ redactions: t, onPod: n }) {
 }
 //#endregion
 //#region views/PolicyList.tsx
-function D({ policies: e, selectedName: t, onSelect: n, onNew: r }) {
+function D({ policies: e, selectedName: t, hrefFor: n, newHref: r, linkTo: i }) {
 	return /* @__PURE__ */ p("div", {
 		class: "list",
 		children: [e.map((e) => /* @__PURE__ */ p("a", {
-			href: `/policies/${encodeURIComponent(e.name)}`,
-			onClick: (t) => {
-				t.preventDefault(), n(e.name);
-			},
+			href: n(e.name),
+			onClick: i(n(e.name)),
 			class: t === e.name ? "on" : "",
 			children: e.name
 		}, e.name)), /* @__PURE__ */ p("a", {
-			href: "/policies/new",
-			onClick: (e) => {
-				e.preventDefault(), r();
-			},
+			href: r,
+			onClick: i(r),
 			class: "new",
 			children: "＋ New policy"
 		})]

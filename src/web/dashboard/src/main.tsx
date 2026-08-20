@@ -190,8 +190,9 @@ function PolicyView({ selected }: { selected?: string }) {
   return (
     <div class="layout">
       <PolicyList policies={policies} selectedName={selected}
-        onSelect={(n) => navigate("/policies/" + encodeURIComponent(n))}
-        onNew={() => navigate("/policies/new")} />
+        hrefFor={(n) => "/policies/" + encodeURIComponent(n)}
+        newHref="/policies/new"
+        linkTo={linkTo} />
       {sel
         ? <PolicyEditor policy={sel}
             hint={<>Reference from a pod: <code>poddle up --policy {sel.name || "&lt;name&gt;"}</code>, or <code>policy = "{sel.name || "&lt;name&gt;"}"</code> in a template.</>}
@@ -218,7 +219,8 @@ function PodDetailView({ name, events }: { name: string; events: Event[] }) {
   const h = hist[name] || { cpu: [], mem: [] };
   return (
     <PodDetailPanel name={name} pod={pod} hist={h} events={events}
-      onBack={linkTo("/pods")}
+      backHref="/pods" onBack={linkTo("/pods")}
+      policyHref={pod?.policy ? `/policies/${encodeURIComponent(pod.policy)}` : undefined}
       onPolicyClick={pod?.policy ? linkTo(`/policies/${encodeURIComponent(pod.policy)}`) : undefined} />
   );
 }

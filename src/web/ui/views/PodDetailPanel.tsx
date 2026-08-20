@@ -6,20 +6,24 @@ import { cap1 } from "./aggregate";
 
 // PodDetailPanel is the pure render half of the pod drill-down: the container
 // resolves the pod (usePods() + find(name)) and its rolling cpu/mem history;
-// this component only renders. `onBack`/`onPolicyClick` are already-bound click
-// handlers from the container's router (so no navigation code lives here).
-export function PodDetailPanel({ name, pod, hist, events, onBack, onPolicyClick }: {
+// this component only renders. `backHref`/`policyHref` build the visible hrefs
+// (so a consumer's own org-scoped routes render correctly), and
+// `onBack`/`onPolicyClick` are already-bound, modifier-aware click handlers
+// from the container's router (so no navigation code lives here).
+export function PodDetailPanel({ name, pod, hist, events, backHref, onBack, policyHref, onPolicyClick }: {
   name: string;
   pod?: Pod;
   hist: { cpu: number[]; mem: number[] };
   events: Event[];
+  backHref: string;
   onBack: (e: MouseEvent) => void;
+  policyHref?: string;
   onPolicyClick?: (e: MouseEvent) => void;
 }) {
   return (
     <div>
       <div class="detail-head">
-        <a href="/pods" class="back" onClick={onBack}>← Pods</a>
+        <a href={backHref} class="back" onClick={onBack}>← Pods</a>
         <h1 class="detail-title">{name}</h1>
         {pod
           ? <span class={"state state--" + pod.state}>{pod.state}</span>
@@ -33,7 +37,7 @@ export function PodDetailPanel({ name, pod, hist, events, onBack, onPolicyClick 
           <Fact label="mode"><span class="c-mono">{pod.mode ? cap1(pod.mode) : "—"}</span></Fact>
           <Fact label="policy">
             {pod.policy
-              ? <a class="fact-link c-mono" href={`/policies/${encodeURIComponent(pod.policy)}`} onClick={onPolicyClick}>{pod.policy}</a>
+              ? <a class="fact-link c-mono" href={policyHref} onClick={onPolicyClick}>{pod.policy}</a>
               : <span class="faint">none</span>}
           </Fact>
           <Fact label="cpu"><span class="perf-inline"><Sparkline data={hist.cpu} /><span class="c-mono">{pod.cpu || "—"}</span></span></Fact>
