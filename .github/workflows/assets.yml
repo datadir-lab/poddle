@@ -1,0 +1,32 @@
+name: Assets
+
+# Keep the README + marketing-site visual assets in sync with their sources:
+# the terminal demo SVG (docs/demo/gen-svg.js) and the dashboard screenshot
+# (rendered from the real dashboard). Regenerate locally with `task assets`.
+on:
+  pull_request:
+    paths:
+      - "docs/demo/**"
+      - "src/web/dashboard/src/**"
+      - ".github/assets/demo.svg"
+      - ".github/assets/dashboard-audit.png"
+      - "src/web/site/public/demo.svg"
+      - "src/web/site/public/dashboard-audit.png"
+      - "scripts/check-assets.sh"
+      - ".github/workflows/assets.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Assets up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # need the base commit for the change-coupling diff
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: sh scripts/check-assets.sh "origin/${{ github.base_ref }}"

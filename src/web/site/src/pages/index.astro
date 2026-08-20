@@ -271,6 +271,19 @@ const flows = [
     </div>
   </Section>
 
+  <Section eyebrow="See it work" title="Attach, run your agent, keep the receipts.">
+    <p class="prose">
+      Open a secretless pod and run Claude Code inside it. The agent works with a revocable handle,
+      never your key - poddle brokers every request on your host, refusing off-policy egress,
+      redacting secrets, and logging all of it in a tamper-evident chain.
+    </p>
+    <figure class="shot">
+      <img class="shot__img" src="/demo.svg" width="884" height="610" loading="lazy" decoding="async"
+        alt="Terminal: poddle up and poddle attach open a pod where env shows a poddle handle instead of your Anthropic key; a fullscreen Claude Code session fixes a parseConfig crash while poddle blocks an off-policy fetch to pastebin; then poddled audit lists brokered requests as allow, redact, and deny with an intact chain." />
+      <figcaption class="shot__cap">poddle up, attach, and run Claude Code - every egress brokered, governed, and audited.</figcaption>
+    </figure>
+  </Section>
+
   <Section eyebrow="Dashboard" title="Provable after the fact.">
     <p class="prose">
       Every brokered request, redaction, and handle lands in a tamper-evident, hash-chained log -
@@ -278,7 +291,7 @@ const flows = [
       and verify the whole chain in one click.
     </p>
     <figure class="shot">
-      <img class="shot__img" src="/dashboard-audit.png" width="1240" height="800" loading="lazy" decoding="async"
+      <img class="shot__img" src="/dashboard-audit.png" width="1240" height="883" loading="lazy" decoding="async"
         alt="poddle dashboard audit view: a hash-chained table of brokered requests, each tagged allow, redact, deny, or block per pod and destination" />
       <figcaption class="shot__cap">The audit view in the built-in dashboard - self-host it or use the managed cloud.</figcaption>
     </figure>
