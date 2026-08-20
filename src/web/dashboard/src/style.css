@@ -48,6 +48,16 @@ body {
   *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
 }
 
+/* Smooth cross-fade between light/dark — enabled by the toggle only for the
+   duration of the switch (see ThemeToggle), so hovers/clicks stay instant and
+   there is no transition on first paint. */
+@media (prefers-reduced-motion: no-preference) {
+  :root.theming, :root.theming *, :root.theming *::before, :root.theming *::after {
+    transition: background-color 0.32s ease, border-color 0.32s ease, color 0.32s ease,
+      fill 0.32s ease, stroke 0.32s ease, box-shadow 0.32s ease !important;
+  }
+}
+
 input, select, textarea {
   font: inherit;
   background: var(--card);
@@ -99,12 +109,26 @@ textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--m
 }
 
 .badge {
+  position: relative;
   font: 600 0.72rem/1 var(--font-sans);
   padding: 0.36rem 0.7rem; border-radius: 999px;
   border: 1px solid var(--border); color: var(--faint); white-space: nowrap;
   text-decoration: none; transition: border-color 0.12s, background 0.12s;
 }
 .badge:hover { border-color: var(--faint); }
+
+/* styled tooltip: explains the hash-chain, shown on hover/focus (fits the rail) */
+.badge::after {
+  content: attr(data-tip) / ""; /* empty alt text: decorative, not in the a11y name */
+  position: absolute; bottom: calc(100% + 8px); left: 0; width: 200px;
+  background: var(--ink); color: var(--bone);
+  font: 500 0.72rem/1.45 var(--font-sans); letter-spacing: normal; text-align: left; white-space: normal;
+  padding: 0.55rem 0.65rem; border-radius: var(--radius-sm);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  opacity: 0; transform: translateY(4px); pointer-events: none; z-index: 30;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.badge:hover::after, .badge:focus-visible::after { opacity: 1; transform: translateY(0); }
 .badge.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .badge.ok:hover { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .badge.bad { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 45%, var(--border)); background: color-mix(in srgb, var(--deny) 6%, transparent); }

@@ -445,13 +445,15 @@ function relTime(iso: string): string {
 // the short version on hover.
 function VerifyBadge({ v }: { v: Verify }) {
   const cls = v == null ? "badge" : v.ok ? "badge ok" : "badge bad";
-  const label = v == null ? "verifying…" : v.ok ? "chain intact ✓" : `chain broken @${v.brokenAt} ✗`;
-  const title = v == null
+  const label = v == null ? "Verifying…" : v.ok ? "Chain intact ✓" : `Chain broken @${v.brokenAt} ✗`;
+  const tip = v == null
     ? "Checking the audit hash-chain…"
     : v.ok
-      ? "Every audit event is hash-linked to the one before it, so any edit or deletion is detectable. Intact = nothing was tampered with. Click for details."
-      : `The audit hash-chain is broken at event #${v.brokenAt}: a row was altered or removed. Click for details.`;
-  return <a class={cls} href="/audit" title={title} onClick={linkTo("/audit")}>{label}</a>;
+      ? "Every audit event is hash-linked to the one before it, so any edit or deletion is detectable. Intact means nothing was tampered with. Click to open the audit trail."
+      : `The audit hash-chain is broken at event #${v.brokenAt}: a row was altered or removed. Click to open the audit trail.`;
+  // aria-label pins the accessible name (the CSS tooltip's ::after text would
+  // otherwise fold into it); the visual tooltip carries the fuller explanation.
+  return <a class={cls} href="/audit" data-tip={tip} aria-label={label} onClick={linkTo("/audit")}>{label}</a>;
 }
 
 // IntegrityPanel is the provenance centerpiece of the Audit view: it states the
@@ -1239,9 +1241,15 @@ function ThemeToggle() {
     () => (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "light",
   );
   const apply = (t: string) => {
-    document.documentElement.setAttribute("data-theme", t);
+    // Enable a brief global colour transition only for the switch itself (not on
+    // load, and not for every hover), then remove it so normal interactions stay
+    // snappy. Reduced-motion users get an instant flip (the CSS guards it).
+    const root = document.documentElement;
+    root.classList.add("theming");
+    root.setAttribute("data-theme", t);
     try { localStorage.setItem("poddle-theme", t); } catch {}
     setTheme(t);
+    window.setTimeout(() => root.classList.remove("theming"), 360);
   };
   const dark = theme === "dark";
   return (
