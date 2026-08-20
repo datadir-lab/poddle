@@ -113,15 +113,22 @@ function useAudit(): { events: Event[]; loading: boolean; status: Conn } {
 }
 
 type Verify = { ok: boolean; brokenAt: number } | null;
-function useVerify(): Verify {
-  const [v, setV] = useState<Verify>(null);
+// useVerify polls the hash-chain check, tracks when it last ran, and exposes a
+// manual re-verify (bumping `nonce` re-runs the effect for an immediate check).
+function useVerify(): { verify: Verify; checkedAt: number; recheck: () => void } {
+  const [verify, setVerify] = useState<Verify>(null);
+  const [checkedAt, setCheckedAt] = useState(0);
+  const [nonce, setNonce] = useState(0);
   useEffect(() => {
-    const tick = () => api.verify().then(setV).catch(() => setV(null));
+    let alive = true;
+    const tick = () => api.verify()
+      .then((r) => { if (alive) { setVerify(r); setCheckedAt(Date.now()); } })
+      .catch(() => { if (alive) setVerify(null); });
     tick();
     const id = setInterval(tick, 15000);
-    return () => clearInterval(id);
-  }, []);
-  return v;
+    return () => { alive = false; clearInterval(id); };
+  }, [nonce]);
+  return { verify, checkedAt, recheck: () => setNonce((n) => n + 1) };
 }
 
 // usePods polls /v1/pods and keeps a rolling CPU/mem history per pod for the
@@ -429,6 +436,34 @@ function VerifyBadge({ v }: { v: Verify }) {
     : <span class="badge bad">chain broken @{v.brokenAt} ✗</span>;
 }
 
+// IntegrityPanel is the provenance centerpiece of the Audit view: it states the
+// hash-chain verdict in plain language, shows when it was last checked, and lets
+// the operator re-verify on demand. A broken chain names the first bad seq.
+function IntegrityPanel({ verify, checkedAt, recheck, count }: { verify: Verify; checkedAt: number; recheck: () => void; count: number }) {
+  const state = verify == null ? "verifying" : verify.ok ? "intact" : "broken";
+  const headline = state === "verifying" ? "Verifying chain…"
+    : state === "intact" ? "Audit chain intact"
+      : `Chain broken at #${verify!.brokenAt}`;
+  return (
+    <div class={"integrity integrity--" + state}>
+      <span class="integrity__icon" aria-hidden="true"><Icon name={state === "broken" ? "octagon" : "policies"} size={22} /></span>
+      <div class="integrity__body">
+        <div class="integrity__status">{headline}</div>
+        <p class="integrity__desc">
+          {state === "broken"
+            ? "An event was altered or removed after it was written — everything from that point on is suspect."
+            : "Every event is hash-linked to the one before it, so any edit or deletion is detectable after the fact."}
+        </p>
+      </div>
+      <dl class="integrity__meta">
+        <div><dt>Events</dt><dd>{count}</dd></div>
+        <div><dt>Last verified</dt><dd>{checkedAt ? relTime(new Date(checkedAt).toISOString()) : "…"}</dd></div>
+      </dl>
+      <button type="button" class="btn btn--ghost btn--sm integrity__btn" onClick={recheck}>Re-verify</button>
+    </div>
+  );
+}
+
 function Card({ n, label, icon, tone }: { n: number | string; label: string; icon?: string; tone?: string }) {
   return (
     <div class={"card" + (tone ? " card--" + tone : "")}>
@@ -470,7 +505,7 @@ function LiveDot({ status }: { status: Conn }) {
 
 // CSV export of the (already filtered) audit rows - the "provable, exportable" story.
 function toCsv(rows: Event[]): string {
-  const cols: (keyof Event)[] = ["time", "pod", "kind", "decision", "upstream", "method", "status", "detail"];
+  const cols: (keyof Event)[] = ["seq", "time", "pod", "kind", "decision", "upstream", "method", "status", "detail"];
   const esc = (v: unknown) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const lines = rows.map((e) => cols.map((c) => esc(e[c])).join(","));
   return [cols.join(","), ...lines].join("\n");
@@ -1051,13 +1086,13 @@ function ThemeToggle() {
 function App() {
   const route = useRoute();
   const { events, loading: eventsLoading, status: liveStatus } = useAudit();
-  const v = useVerify();
+  const vf = useVerify();
   const active = route.view === "pod" ? "pods" : route.view;
   const page = PAGE[active] || PAGE.overview;
 
   return (
     <div class="app">
-      <Sidebar active={active} v={v} />
+      <Sidebar active={active} v={vf.verify} />
       <div class="content">
         <header class="topbar">
           <div class="topbar__head">
@@ -1070,7 +1105,12 @@ function App() {
           {route.view === "overview" && <OverviewView events={events} loading={eventsLoading} onPod={goPod} />}
           {route.view === "pods" && <PodsView onPod={goPod} />}
           {route.view === "pod" && <PodDetailView name={route.name} events={events} loading={eventsLoading} />}
-          {route.view === "audit" && <AuditView events={events} initialPod={route.pod} loading={eventsLoading} />}
+          {route.view === "audit" && (
+            <>
+              <IntegrityPanel verify={vf.verify} checkedAt={vf.checkedAt} recheck={vf.recheck} count={events.length} />
+              <AuditView events={events} initialPod={route.pod} loading={eventsLoading} />
+            </>
+          )}
           {route.view === "policies" && <PolicyView selected={route.name} events={events} />}
         </main>
       </div>
