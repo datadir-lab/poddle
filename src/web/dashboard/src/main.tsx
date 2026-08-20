@@ -902,8 +902,11 @@ function DestinationsView({ events, loading }: { events: Event[]; loading: boole
   );
 }
 
-const lines = (a?: string[]) => (a || []).join("\n");
-const parseLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+// A single allow-list row in the visual builder: a host plus an optional set of
+// methods it is restricted to (empty = any method). `open` reveals the method
+// toggles even before any are picked.
+type AllowRow = { host: string; methods: string[]; open: boolean };
 
 // ---- client-side policy evaluation ----
 // A faithful port of policy.Decide (Go): the deny-list wins, then the allow-list
@@ -955,38 +958,50 @@ function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; 
   return { total: reqs.length, denied, rows: [...m.values()].sort((a, b) => b.count - a.count) };
 }
 
+// toRows expands a stored policy into builder rows (union of the allow-list and
+// any hosts that carry method restrictions, so nothing is lost on a round-trip).
+function toRows(p: Policy): AllowRow[] {
+  const m = p.methods || {};
+  const hosts = [...new Set([...(p.allow_upstreams || []), ...Object.keys(m)])];
+  return hosts.map((h) => ({ host: h, methods: m[h] || [], open: (m[h] || []).length > 0 }));
+}
+
 function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; events: Event[]; onSaved: (name: string) => void; onDeleted: () => void }) {
   const [name, setName] = useState(policy.name);
-  const [allow, setAllow] = useState(lines(policy.allow_upstreams));
-  const [deny, setDeny] = useState(lines(policy.deny_upstreams));
+  const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
+  const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
   const [egress, setEgress] = useState(policy.egress || "redact");
-  const [methods, setMethods] = useState(JSON.stringify(policy.methods || {}, null, 2));
   const [err, setErr] = useState("");
 
-  // Live dry-run: re-evaluate the (unsaved) form against recent traffic on every
-  // keystroke, so the impact of an allow/deny edit is visible before saving.
-  const impact = useMemo(() => {
-    let m: Record<string, string[]> = {};
-    try { m = methods.trim() ? JSON.parse(methods) : {}; } catch { m = {}; }
-    const draft: Policy = { name: name.trim(), allow_upstreams: parseLines(allow), deny_upstreams: parseLines(deny), methods: m, egress };
-    return dryRun(draft, events);
-  }, [name, allow, deny, methods, egress, events]);
-
   useEffect(() => {
-    setName(policy.name); setAllow(lines(policy.allow_upstreams)); setDeny(lines(policy.deny_upstreams));
-    setEgress(policy.egress || "redact"); setMethods(JSON.stringify(policy.methods || {}, null, 2)); setErr("");
+    setName(policy.name); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
+    setEgress(policy.egress || "redact"); setErr("");
   }, [policy]);
 
+  const patchAllow = (i: number, patch: Partial<AllowRow>) => setAllows((a) => a.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const toggleMethod = (i: number, m: string) => setAllows((a) => a.map((r, j) => j === i ? { ...r, methods: r.methods.includes(m) ? r.methods.filter((x) => x !== m) : [...r.methods, m] } : r));
+  const addAllow = () => setAllows((a) => [...a, { host: "", methods: [], open: false }]);
+  const removeAllow = (i: number) => setAllows((a) => a.filter((_, j) => j !== i));
+  const patchDeny = (i: number, v: string) => setDenies((d) => d.map((x, j) => (j === i ? v : x)));
+  const addDeny = () => setDenies((d) => [...d, ""]);
+  const removeDeny = (i: number) => setDenies((d) => d.filter((_, j) => j !== i));
+
+  // Assemble the (unsaved) policy from the builder rows — shared by save + dry-run.
+  const draft = (): Policy => {
+    const allow_upstreams = allows.map((r) => r.host.trim()).filter(Boolean);
+    const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
+    const methods: Record<string, string[]> = {};
+    for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
+    return { name: name.trim(), allow_upstreams, deny_upstreams, methods, egress };
+  };
+
+  // Live dry-run against recent traffic, recomputed as the rules change.
+  const impact = useMemo(() => dryRun(draft(), events), [name, allows, denies, egress, events]);
+
   const save = async () => {
-    let parsedMethods: Record<string, string[]> = {};
-    try { parsedMethods = methods.trim() ? JSON.parse(methods) : {}; }
-    catch { setErr("methods must be valid JSON, e.g. {\"git.internal\":[\"GET\"]}"); return; }
-    if (!name.trim()) { setErr("name is required"); return; }
-    const res = await api.putPolicy({
-      name: name.trim(), allow_upstreams: parseLines(allow), deny_upstreams: parseLines(deny),
-      methods: parsedMethods, egress,
-    });
-    if (!res.ok) { setErr("save failed: " + res.status); return; }
+    if (!name.trim()) { setErr("Name is required."); return; }
+    const res = await api.putPolicy(draft());
+    if (!res.ok) { setErr("Save failed: " + res.status); return; }
     onSaved(name.trim());
   };
   const del = async () => { await api.delPolicy(policy.name); onDeleted(); };
@@ -1003,12 +1018,47 @@ function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; 
           <Segmented value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
-      <label for="pol-allow">Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
-      <textarea id="pol-allow" value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
-      <label for="pol-deny">Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
-      <textarea id="pol-deny" value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
-      <label for="pol-methods">Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
-      <textarea id="pol-methods" value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
+
+      <label>Allowed destinations <span class="label-hint">Default-deny once any are set · ".example.com" matches any subdomain</span></label>
+      <div class="rules">
+        {allows.length === 0 && <p class="rules__empty">No destinations yet — every host is allowed, subject to the blocked list and egress mode.</p>}
+        {allows.map((r, i) => (
+          <div class="rule" key={i}>
+            <div class="rule__row">
+              <input class="rule__host" value={r.host} placeholder="api.example.com" aria-label="Allowed host"
+                onInput={(e) => patchAllow(i, { host: (e.target as HTMLInputElement).value })} />
+              {!r.open && r.methods.length === 0
+                ? <button type="button" class="rule__limit" onClick={() => patchAllow(i, { open: true })}>＋ limit methods</button>
+                : <span class="rule__msum">{r.methods.length ? r.methods.join(", ") : "any method"}</span>}
+              <button type="button" class="rule__rm" aria-label="Remove destination" onClick={() => removeAllow(i)}>×</button>
+            </div>
+            {(r.open || r.methods.length > 0) && (
+              <div class="rule__methods">
+                <span class="rule__mlabel">Allow only:</span>
+                {HTTP_METHODS.map((m) => (
+                  <button type="button" key={m} class={"mchip" + (r.methods.includes(m) ? " on" : "")} aria-pressed={r.methods.includes(m)} onClick={() => toggleMethod(i, m)}>{m}</button>
+                ))}
+                <button type="button" class="rule__mclear" onClick={() => patchAllow(i, { methods: [], open: false })}>Any method</button>
+              </div>
+            )}
+          </div>
+        ))}
+        <button type="button" class="addrow" onClick={addAllow}>＋ Add destination</button>
+      </div>
+
+      <label>Always blocked <span class="label-hint">Wins over the allow-list</span></label>
+      <div class="rules">
+        {denies.map((h, i) => (
+          <div class="rule" key={i}>
+            <div class="rule__row">
+              <input class="rule__host" value={h} placeholder="metadata.google.internal" aria-label="Blocked host"
+                onInput={(e) => patchDeny(i, (e.target as HTMLInputElement).value)} />
+              <button type="button" class="rule__rm" aria-label="Remove blocked host" onClick={() => removeDeny(i)}>×</button>
+            </div>
+          </div>
+        ))}
+        <button type="button" class="addrow" onClick={addDeny}>＋ Add blocked host</button>
+      </div>
 
       <div class="dryrun">
         <div class="dryrun__head">

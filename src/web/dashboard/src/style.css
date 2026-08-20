@@ -535,6 +535,28 @@ td.perf { text-align: right; white-space: nowrap; }
 .editor .row > div.narrow { flex: 0 0 auto; }
 .editor .row input { width: 100%; }
 
+/* ---- visual policy builder (destination rows + per-host method toggles) ---- */
+.rules { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.35rem; }
+.rules__empty { margin: 0.1rem 0; font-size: 0.84rem; color: var(--faint); }
+.rule { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bone); }
+.rule__row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.4rem 0.3rem 0.55rem; }
+.rule__host { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.85rem; border: 0; background: transparent; padding: 0.32rem 0.2rem; }
+.rule__host:focus { outline: none; border: 0; }
+.rule__limit { flex: none; font: 500 0.76rem/1 var(--font-sans); color: var(--faint); background: transparent; border: 0; cursor: pointer; white-space: nowrap; }
+.rule__limit:hover { color: var(--accent); }
+.rule__msum { flex: none; font: 500 0.74rem/1 var(--mono); color: var(--accent); white-space: nowrap; }
+.rule__rm { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.15rem; line-height: 1; color: var(--faint); background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; }
+.rule__rm:hover { color: var(--deny); background: color-mix(in srgb, var(--deny) 9%, transparent); }
+.rule__methods { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem; padding: 0 0.5rem 0.5rem 0.55rem; }
+.rule__mlabel { font: 600 0.64rem/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); margin-right: 0.15rem; }
+.mchip { font: 600 0.72rem/1 var(--mono); color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 0.28rem 0.55rem; cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s; }
+.mchip:hover { border-color: var(--faint); color: var(--ink); }
+.mchip.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.rule__mclear { font: 500 0.72rem/1 var(--font-sans); color: var(--faint); background: transparent; border: 0; cursor: pointer; margin-left: 0.2rem; }
+.rule__mclear:hover { color: var(--ink); }
+.addrow { align-self: flex-start; font: 600 0.82rem/1 var(--font-sans); color: var(--accent); background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: var(--radius-sm); padding: 0.5rem 0.8rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.addrow:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: var(--accent); }
+
 .actions { display: flex; gap: 0.6rem; margin-top: 1.5rem; }
 .btn {
   font: 600 0.9rem/1 var(--font-sans);

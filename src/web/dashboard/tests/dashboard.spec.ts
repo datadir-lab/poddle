@@ -171,8 +171,9 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await expect(page.locator("select")).toHaveCount(0); // segmented egress, no native select
   await expect(page.getByText("Allowed destinations")).toBeVisible(); // human label, not allow_upstreams
 
-  await page.locator(".editor input").first().fill("e2e-pol");
-  await page.locator(".editor textarea").first().fill("api.anthropic.com\ngit.internal");
+  await page.locator("#pol-name").fill("e2e-pol");
+  await page.getByRole("button", { name: /Add destination/ }).click(); // block builder, not a textarea
+  await page.locator(".rule__host").first().fill("api.anthropic.com");
   await page.getByRole("radio", { name: "Block", exact: true }).click(); // egress = block
   await page.getByRole("button", { name: "Save" }).click();
 
@@ -184,6 +185,26 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await expect(page.getByRole("radio", { name: "Block", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
+});
+
+test("policy builder: per-destination method toggles round-trip through the store", async ({ page }) => {
+  await page.goto("/policies/new");
+  await page.locator("#pol-name").fill("methpol");
+  await page.getByRole("button", { name: /Add destination/ }).click();
+  await page.locator(".rule__host").first().fill("api.github.com");
+  await page.getByRole("button", { name: /limit methods/ }).click(); // reveal the method toggles (no JSON)
+  await page.getByRole("button", { name: "GET", exact: true }).click(); // restrict to GET
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(/\/policies\/methpol$/);
+
+  // Reopened from the file store: GET is pressed, and the row summarises it.
+  await expect(page.locator(".mchip", { hasText: "GET" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".mchip", { hasText: "POST" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".rule__msum")).toContainText("GET");
+
+  // Scope to the actions bar: a "DELETE" method chip is also on screen.
+  await page.locator(".actions").getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator(".list")).not.toContainText("methpol");
 });
 
 test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
