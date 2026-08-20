@@ -21,7 +21,9 @@ func TestE2E_Move_KeepsStateResizesShell(t *testing.T) {
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/debian:stable-slim\"\nsize = \"weak\"\n")
 
-	env := append(os.Environ(), "XDG_RUNTIME_DIR="+filepath.Join(proj, "run"))
+	// Isolate poddled's control socket per test without repointing
+	// XDG_RUNTIME_DIR (which rootless podman needs to find its own socket).
+	env := append(os.Environ(), "PODDLE_SOCKET="+filepath.Join(proj, "poddled.sock"))
 	pod := "poddle-move-e2e"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
