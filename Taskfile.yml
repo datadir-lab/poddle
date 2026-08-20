@@ -177,10 +177,12 @@ tasks:
 
   dashboard-build:
     desc: Build the Preact dashboard SPA into the embedded bundle (src/cli/dashboard/dist, committed)
-    dir: src/web/dashboard
     cmds:
-      - npm ci
-      - npm run build
+      # @poddle/ui/views must be built first — the dashboard depends on it via file:../ui.
+      - npm --prefix src/web/ui ci
+      - npm --prefix src/web/ui run build:views
+      - npm --prefix src/web/dashboard ci
+      - npm --prefix src/web/dashboard run build
 
   e2e-ui:
     desc: Dashboard UI e2e (Playwright) — drives the real `poddle dashboard` binary in a real browser
