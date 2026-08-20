@@ -4,8 +4,12 @@
 an isolated, reproducible pod on your own infra, wired to your self-hosted stack,
 with your coding agent authed and no vendor secret ever inside the pod.
 
-**Status (2026-08-16):** Phase 0 shipped. Identities MVP built but currently
-injects a secret; Phase 1 replaces that with the secretless broker.
+**Status (2026-08-20):** Phases 0-2 shipped. The secretless broker (Phase 1) and
+persistent `poddled` with reattach, the L4 datastore broker, tamper-evident
+audit, policy-governed egress, and dynamic autoscale/`resize`/`move` (Phase 2)
+all run and are verified end-to-end against real podman. A local observability
+dashboard is in active development. The remaining Phase 2 gap is reverse-tunnel
+egress for remote pods. Next: Phase 3 (collaboration).
 
 ## Phase 0 - Local MVP (done)
 
@@ -14,7 +18,7 @@ injects a secret; Phase 1 replaces that with the secretless broker.
 - Vertical slices (`src/cli/*`) + shared kernel (`src/internal/*`).
 - 4-tier tests (unit, architecture, integration, e2e), CI green on Woodpecker.
 
-## Phase 1 - Harness + secretless broker (local, single-user)
+## Phase 1 - Harness + secretless broker (local, single-user) (shipped)
 
 - **Harness** (pod-side runtime): `claude-code`. Points the harness at the broker
   (base-url + handle).
@@ -26,7 +30,7 @@ injects a secret; Phase 1 replaces that with the secretless broker.
   `down` revokes.
 - Spec: `docs/design/secretless-identity.md`.
 
-## Phase 2 - poddled (persistent) + reattach + assigned identity
+## Phase 2 - poddled (persistent) + reattach + assigned identity (shipped)
 
 - `poddled` service on the pod host; the broker runs in poddled (persistent,
   outlives the client).
