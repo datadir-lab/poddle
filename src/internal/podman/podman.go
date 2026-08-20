@@ -50,6 +50,14 @@ func (p *Provider) List() ([]sandbox.Sandbox, error) {
 // `tail -f /dev/null` (portable across busybox/coreutils) to stay alive so it
 // can be attached to.
 func (p *Provider) Create(s sandbox.Spec) (string, error) {
+	netName := ""
+	if s.Network != nil {
+		netName = "poddle-lock-" + s.Name
+		if err := p.ensureLockNetwork(netName); err != nil {
+			return "", fmt.Errorf("egress lockdown: %w", err) // FAIL-CLOSED: no pod created
+		}
+	}
+
 	args := p.podman("run", "-d",
 		"--name", s.Name,
 		"--label", "poddle.managed=true",
@@ -65,6 +73,9 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		"--label", "poddle.harness="+s.Harness,
 		"--label", "poddle.policy="+s.PolicyName,
 	)
+	if netName != "" {
+		args = append(args, "--network", netName)
+	}
 	if s.CPUs > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
 	}
@@ -107,6 +118,19 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		}
 	}
 	return id, nil
+}
+
+// ensureLockNetwork creates the internal (no-internet) network a locked pod's
+// egress is pinned to. Idempotent: an already-existing network is fine.
+func (p *Provider) ensureLockNetwork(name string) error {
+	res, err := p.Runner.Run("podman", p.podman("network", "create", "--internal", name)...)
+	if err != nil {
+		if strings.Contains(res.Stderr, "already exists") {
+			return nil
+		}
+		return fmt.Errorf("podman network create --internal: %w: %s", err, res.Stderr)
+	}
+	return nil
 }
 
 // Attach opens an interactive shell inside the sandbox (bash if present, else sh).
@@ -297,12 +321,13 @@ func (p *Provider) RemoveVolumesForPod(pod string) error {
 		return fmt.Errorf("podman volume ls: %w: %s", err, res.Stderr)
 	}
 	names := strings.Fields(res.Stdout)
-	if len(names) == 0 {
-		return nil
+	if len(names) > 0 {
+		if r, err := p.Runner.Run("podman", p.podman(append([]string{"volume", "rm"}, names...)...)...); err != nil {
+			return fmt.Errorf("podman volume rm: %w: %s", err, r.Stderr)
+		}
 	}
-	if r, err := p.Runner.Run("podman", p.podman(append([]string{"volume", "rm"}, names...)...)...); err != nil {
-		return fmt.Errorf("podman volume rm: %w: %s", err, r.Stderr)
-	}
+	// Best-effort: remove the pod's egress-lockdown network, if any.
+	_, _ = p.Runner.Run("podman", p.podman("network", "rm", "poddle-lock-"+pod)...)
 	return nil
 }
 
