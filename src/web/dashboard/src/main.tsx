@@ -1111,10 +1111,15 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const ungoverned = running.filter((p) => !p.policy);
 
   // The selected policy is URL-driven (/policies/:name; "new" is the blank draft).
-  const sel: Policy | null =
-    selected === "new" ? { name: "", egress: "redact" }
+  // Memoize the selected policy so its object identity is stable across the pod
+  // poll and audit-stream re-renders — otherwise a fresh "new" draft (or a new
+  // find result) would remount the editor and wipe what the user is typing.
+  const sel: Policy | null = useMemo(
+    () => selected === "new" ? { name: "", egress: "redact" }
       : selected ? (policies.find((p) => p.name === selected) || null)
-        : null;
+        : null,
+    [selected, policies],
+  );
 
   return (
     <div>
