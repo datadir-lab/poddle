@@ -33,6 +33,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
+          flags: unit
           fail_ci_if_error: false
 
   govulncheck:
