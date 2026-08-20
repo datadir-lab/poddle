@@ -250,6 +250,25 @@ test("pod controls: rebinds a policy to a running pod (confirmed, real body POST
   expect(bound?.name).toBe("staging"); // the full policy definition was posted
 });
 
+test("overview: the egress-window filter narrows the cards", async ({ page }) => {
+  const iso = (secAgo: number) => new Date(Date.now() - secAgo * 1000).toISOString();
+  const evs = [
+    { seq: 3, time: iso(60), pod: "a", kind: "request", upstream: "api.anthropic.com", decision: "allow" },
+    { seq: 2, time: iso(120), pod: "a", kind: "request", upstream: "api.github.com", decision: "redact", detail: "redacted 1 secret" },
+    { seq: 1, time: iso(3000), pod: "a", kind: "request", upstream: "api.anthropic.com", decision: "allow" }, // > 15m ago
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await mockPods(page);
+  await page.goto("/overview");
+
+  const requests = page.locator(".card", { hasText: "requests" }).locator(".card__num");
+  await expect(requests).toHaveText("3"); // All
+  await page.getByRole("radiogroup", { name: "overview time range" }).getByRole("radio", { name: "15m", exact: true }).click();
+  await expect(requests).toHaveText("2"); // only the two recent ones remain
+});
+
 test("command palette: opens with ctrl+k, filters, navigates, and closes on escape", async ({ page }) => {
   await mockAudit(page);
   await mockPods(page);
