@@ -250,6 +250,20 @@ test("pod controls: rebinds a policy to a running pod (confirmed, real body POST
   expect(bound?.name).toBe("staging"); // the full policy definition was posted
 });
 
+test("toasts: a live deny streams in as an alert linking to the audit", async ({ page }) => {
+  const ev = JSON.stringify({ seq: 999, time: new Date().toISOString(), pod: "agent1", kind: "request", decision: "deny", upstream: "metadata.google.internal" });
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 200, headers: { "content-type": "text/event-stream", "cache-control": "no-cache" }, body: `data: ${ev}\n\n` }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockPods(page);
+  await page.goto("/overview");
+
+  const toast = page.locator(".toast").first();
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText("deny");
+  await expect(toast).toContainText("metadata.google.internal");
+});
+
 test("overview: the egress-window filter narrows the cards", async ({ page }) => {
   const iso = (secAgo: number) => new Date(Date.now() - secAgo * 1000).toISOString();
   const evs = [

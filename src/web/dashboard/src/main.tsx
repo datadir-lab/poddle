@@ -111,16 +111,21 @@ const linkTo = (to: string) => (e: MouseEvent) => {
 // the Overview and Audit views so there is one subscription. Exposes the initial
 // loading state and the live-stream connection status.
 type Conn = "connecting" | "live" | "down";
-function useAudit(): { events: Event[]; loading: boolean; status: Conn } {
+// onLive (kept in a ref so it can change without resubscribing) fires once per
+// *streamed* event — never for the initial fetch — so callers can react to live
+// activity (e.g. toast a new denial) without double-firing on load.
+function useAudit(onLive?: (ev: Event) => void): { events: Event[]; loading: boolean; status: Conn } {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<Conn>("connecting");
+  const liveRef = useRef(onLive);
+  liveRef.current = onLive;
   useEffect(() => {
     api.audit().then((es: Event[]) => setEvents(es || [])).catch(() => {}).finally(() => setLoading(false));
     const src = new EventSource(`${CFG.apiBase}/audit/stream`);
     src.onopen = () => setStatus("live");
     src.onmessage = (e) => {
-      try { const ev = JSON.parse(e.data); setEvents((prev) => [ev, ...prev].slice(0, 4000)); } catch {}
+      try { const ev = JSON.parse(e.data); setEvents((prev) => [ev, ...prev].slice(0, 4000)); liveRef.current?.(ev); } catch {}
     };
     src.onerror = () => setStatus("down");
     return () => src.close();
@@ -1357,9 +1362,43 @@ function CommandPalette({ open, onClose, events }: { open: boolean; onClose: () 
   );
 }
 
+// ToastHost surfaces live denials/blocks the moment they stream in, so the
+// console tells you rather than waiting to be checked. Each links to the audit.
+type Toast = { id: number; pod: string; decision: string; upstream: string };
+function ToastHost({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div class="toasts" role="region" aria-label="Live alerts">
+      {toasts.map((t) => {
+        const to = "/audit?q=" + encodeURIComponent(t.upstream || t.pod);
+        return (
+          <div key={t.id} class="toast" role="status">
+            <span class="toast__ic" aria-hidden="true"><Icon name={t.decision === "block" ? "octagon" : "ban"} size={16} /></span>
+            <div class="toast__body">
+              <div class="toast__title"><span class="c-pod">{t.pod}</span> <span class={"decision d-" + t.decision}>{t.decision}</span></div>
+              <a class="toast__link c-mono" href={to} onClick={linkTo(to)}>{t.upstream || "egress"}</a>
+            </div>
+            <button type="button" class="toast__close" aria-label="Dismiss alert" onClick={() => onDismiss(t.id)}>×</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function App() {
   const route = useRoute();
-  const { events, loading: eventsLoading, status: liveStatus } = useAudit();
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
+  const pushToast = (ev: Event) => {
+    if (ev.decision !== "deny" && ev.decision !== "block") return;
+    // Ignore any replay of already-old events on (re)connect; only alert on fresh ones.
+    if (ev.time && Date.now() - new Date(ev.time).getTime() > 60000) return;
+    const id = ev.seq;
+    setToasts((prev) => (prev.some((x) => x.id === id) ? prev : [...prev, { id, pod: ev.pod || "—", decision: ev.decision as string, upstream: ev.upstream || "" }].slice(-4)));
+    setTimeout(() => dismiss(id), 6500);
+  };
+  const { events, loading: eventsLoading, status: liveStatus } = useAudit(pushToast);
   const vf = useVerify();
   const active = route.view === "pod" ? "pods" : route.view;
   const page = PAGE[active] || PAGE.overview;
@@ -1422,6 +1461,7 @@ function App() {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} events={events} />
+      <ToastHost toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
