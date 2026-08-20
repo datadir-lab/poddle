@@ -97,6 +97,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ env.TAG }} # the released tag, so install.sh matches the release
+      - name: Install cosign # so install.sh exercises signature verification
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Wait for the release to be current
         run: |
           for i in $(seq 1 30); do
@@ -173,6 +175,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ env.TAG }} # the released tag, so install.sh matches the release
+      - name: Install cosign # so install.sh exercises signature verification
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Install, verify, uninstall
         run: |
           set -eux
