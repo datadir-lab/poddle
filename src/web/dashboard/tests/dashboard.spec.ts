@@ -137,8 +137,9 @@ test("audit feed: text filter + segmented decision filter (no native select)", a
   await expect(page.locator("table")).toContainText("metadata.google.internal");
   await expect(page.locator("table")).not.toContainText("evil.example"); // a block, not a deny
 
-  // filtered-empty state is distinguished from no-data-yet
-  await page.getByRole("radio", { name: "All", exact: true }).click();
+  // filtered-empty state is distinguished from no-data-yet (scope to the decision
+  // group; a second "All" now exists in the time-range filter).
+  await page.getByRole("radiogroup", { name: "filter by decision" }).getByRole("radio", { name: "All", exact: true }).click();
   await page.getByPlaceholder("filter").fill("zzz-no-such-host");
   await expect(page.locator("table")).toContainText("No events match your filter.");
 });
