@@ -197,10 +197,11 @@ test("policy builder: per-destination method toggles round-trip through the stor
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL(/\/policies\/methpol$/);
 
-  // Reopened from the file store: GET is pressed, and the row summarises it.
+  // Reopened from the file store: the row collapses to a "GET" summary; expand it.
+  await expect(page.locator(".rule__msum")).toContainText("GET");
+  await page.locator(".rule__msum").click();
   await expect(page.locator(".mchip", { hasText: "GET" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".mchip", { hasText: "POST" })).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator(".rule__msum")).toContainText("GET");
 
   // Scope to the actions bar: a "DELETE" method chip is also on screen.
   await page.locator(".actions").getByRole("button", { name: "Delete" }).click();
