@@ -34,10 +34,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Suites that pass on GitHub's rootless podman and drive the Go binary.
-        # e2e-move/e2e-task isolate poddled's socket via PODDLE_SOCKET (not
-        # XDG_RUNTIME_DIR), so they run rootless too. e2e-ui/e2e-claude (UI /
-        # external harness, no Go-coverage value) stay out.
+        # Suites that pass on GitHub's rootless podman AND drive the instrumented
+        # binary (so GOCOVERDIR captures their coverage). e2e-move/e2e-task
+        # isolate poddled's socket via PODDLE_SOCKET (not XDG_RUNTIME_DIR), so
+        # they run rootless too. Excluded: e2e-ui/e2e-claude (UI / external
+        # harness); e2e-remote (stubbed harness, drives nothing yet); integration
+        # (in-process `go test`, not the spawned binary) — none produce covdata.
         suite:
           - e2e-up
           - e2e-l4
@@ -53,9 +55,7 @@ jobs:
           - e2e-task
           - e2e-resume-move
           - e2e-autoscale
-          - e2e-remote
           - e2e
-          - integration
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
