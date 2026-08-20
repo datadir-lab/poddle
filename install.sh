@@ -3,9 +3,14 @@
 #
 #   curl -sSf https://raw.githubusercontent.com/datadir-lab/poddle/HEAD/install.sh | sh
 #
+# The download is verified: the archive's sha256 against checksums.txt, and (if
+# cosign is installed) the cosign keyless signature over checksums.txt. Install
+# cosign for full supply-chain verification.
+#
 # Env overrides:
 #   PODDLE_VERSION       tag to install (default: latest release)
 #   PODDLE_INSTALL_DIR   install dir (default: /usr/local/bin, else ~/.local/bin)
+#   PODDLE_SKIP_VERIFY   set to any value to skip checksum/signature verification
 #
 # poddle runs pods with podman; install that separately.
 set -eu
@@ -63,7 +68,11 @@ archive="${BIN}_${num}_${goos}_${goarch}.tar.gz"
 base="https://github.com/$REPO/releases/download/$ver"
 dlo "$base/$archive" "$tmp/$archive" || err "download failed: $archive"
 
-# Verify checksum when a sha256 tool is available.
+# --- Verify the download --------------------------------------------------
+# Two layers: (1) integrity - the archive's sha256 must match checksums.txt;
+# (2) authenticity - checksums.txt carries a cosign keyless signature from the
+# release workflow, so a matching checksum proves the archive is genuinely ours.
+# Verification runs when the tools are present; set PODDLE_SKIP_VERIFY=1 to skip.
 if command -v sha256sum >/dev/null 2>&1; then
 	sumcmd="sha256sum -c"
 elif command -v shasum >/dev/null 2>&1; then
@@ -71,11 +80,42 @@ elif command -v shasum >/dev/null 2>&1; then
 else
 	sumcmd=""
 fi
-if [ -n "$sumcmd" ] && dlo "$base/checksums.txt" "$tmp/checksums.txt" 2>/dev/null; then
-	grep " $archive$" "$tmp/checksums.txt" >"$tmp/sum" 2>/dev/null || err "no checksum listed for $archive"
-	(cd "$tmp" && $sumcmd sum >/dev/null 2>&1) && info "checksum verified" || err "checksum verification failed"
+if [ -n "${PODDLE_SKIP_VERIFY:-}" ]; then
+	info "PODDLE_SKIP_VERIFY set; skipping checksum and signature verification"
+elif dlo "$base/checksums.txt" "$tmp/checksums.txt" 2>/dev/null; then
+	if [ -n "$sumcmd" ]; then
+		grep " $archive$" "$tmp/checksums.txt" >"$tmp/sum" 2>/dev/null || err "no checksum listed for $archive"
+		if (cd "$tmp" && $sumcmd sum >/dev/null 2>&1); then
+			info "checksum verified"
+		else
+			err "checksum verification failed"
+		fi
+	else
+		info "no sha256 tool; skipping checksum verification"
+	fi
+
+	# Authenticity: verify the cosign keyless signature over checksums.txt.
+	if command -v cosign >/dev/null 2>&1; then
+		if dlo "$base/checksums.txt.sig" "$tmp/checksums.txt.sig" 2>/dev/null &&
+			dlo "$base/checksums.txt.pem" "$tmp/checksums.txt.pem" 2>/dev/null; then
+			if cosign verify-blob \
+				--certificate "$tmp/checksums.txt.pem" \
+				--signature "$tmp/checksums.txt.sig" \
+				--certificate-identity-regexp "^https://github.com/$REPO/\.github/workflows/release\.yml@refs/tags/.*\$" \
+				--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+				"$tmp/checksums.txt" >/dev/null 2>&1; then
+				info "signature verified (cosign)"
+			else
+				err "cosign signature verification failed"
+			fi
+		else
+			info "signature files unavailable; skipping cosign verification"
+		fi
+	else
+		info "cosign not found; skipping signature check (install cosign for full verification)"
+	fi
 else
-	info "skipping checksum verification (no sha256 tool or checksums.txt)"
+	info "checksums.txt unavailable; skipping verification"
 fi
 
 tar -xzf "$tmp/$archive" -C "$tmp"
