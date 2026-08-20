@@ -1,0 +1,58 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  pubDate: Date;
+  author?: string;
+}
+const { title, description, pubDate, author = 'The poddle team' } = Astro.props;
+const date = pubDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+---
+<Base title={`${title} - poddle`} description={description}>
+  <article class="container post">
+    <a class="post__back" href="/blog"><span aria-hidden="true">←</span> Blog</a>
+    <header class="post__head">
+      <h1 class="post__title">{title}</h1>
+      <p class="post__meta"><time datetime={pubDate.toISOString()}>{date}</time> · {author}</p>
+    </header>
+    <div class="post__body">
+      <slot />
+    </div>
+  </article>
+  <script>
+    // A horizontally-scrollable code block must be reachable by keyboard (WCAG 2.1.1),
+    // so make only the ones that actually overflow focusable.
+    document.querySelectorAll('.post__body pre').forEach((pre) => {
+      if (pre.scrollWidth > pre.clientWidth + 2) {
+        pre.setAttribute('tabindex', '0');
+        pre.setAttribute('role', 'region');
+        pre.setAttribute('aria-label', 'Code block');
+      }
+    });
+  </script>
+</Base>
+<style>
+  .post { max-width: 46rem; padding-block: clamp(2.5rem, 6vw, 4rem) var(--space-section); }
+  .post__back { font-size: 0.9rem; font-weight: 600; color: var(--faint); }
+  .post__back:hover { color: var(--accent); }
+  .post__head { margin: 1.6rem 0 2.4rem; padding-bottom: 1.6rem; border-bottom: 1px solid var(--border); }
+  .post__title { font-size: clamp(2rem, 4.6vw, 3.1rem); line-height: 1.08; margin: 0; }
+  .post__meta { color: var(--faint); font-size: 0.9rem; margin: 1rem 0 0; }
+
+  .post__body { font-size: 1.0625rem; line-height: 1.72; }
+  .post__body :global(p) { margin: 0 0 1.15rem; color: var(--muted); }
+  .post__body :global(h2) { font-family: var(--font-serif); font-weight: 400; font-size: 1.75rem; letter-spacing: -0.01em; line-height: 1.12; margin: 2.6rem 0 0.9rem; color: var(--ink); }
+  .post__body :global(h3) { font-family: var(--font-serif); font-weight: 400; font-size: 1.32rem; margin: 1.9rem 0 0.6rem; color: var(--ink); }
+  .post__body :global(strong) { color: var(--ink); font-weight: 600; }
+  .post__body :global(a) { color: var(--accent); text-decoration: underline; text-underline-offset: 0.15em; text-decoration-thickness: 1px; }
+  .post__body :global(a:hover) { color: var(--accent-ink); }
+  .post__body :global(ul), .post__body :global(ol) { color: var(--muted); margin: 0 0 1.15rem; padding-left: 1.35rem; }
+  .post__body :global(li) { margin: 0.35rem 0; }
+  .post__body :global(code) { font-family: var(--mono); font-size: 0.88em; background: var(--surface); padding: 0.1em 0.36em; border-radius: 5px; }
+  .post__body :global(pre) { background: #14342b; color: #e6f0ea; border-radius: 12px; padding: 1rem 1.15rem; overflow-x: auto; font-family: var(--mono); font-size: 0.9rem; line-height: 1.7; margin: 0 0 1.35rem; }
+  .post__body :global(pre code) { background: none; padding: 0; color: inherit; font-size: inherit; }
+  .post__body :global(blockquote) { border-left: 3px solid var(--accent); margin: 0 0 1.25rem; padding: 0.15rem 0 0.15rem 1.15rem; color: var(--muted); font-style: italic; }
+  .post__body :global(hr) { border: 0; border-top: 1px solid var(--border); margin: 2.2rem 0; }
+</style>
