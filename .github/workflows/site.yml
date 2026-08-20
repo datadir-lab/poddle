@@ -37,6 +37,13 @@ jobs:
 
       - name: Build the site
         working-directory: src/web/site
+        env:
+          # Set the PODDLE_PRICING_URL repo variable to the public pricing
+          # endpoint (https://api.poddle.dev/v1/pricing) to inject real prices at
+          # build. While it is unset the prebuild sync no-ops and the redacted
+          # placeholder ships, so this stays dormant until the API is public.
+          # See src/web/site/scripts/sync-pricing.mjs.
+          PODDLE_PRICING_URL: ${{ vars.PODDLE_PRICING_URL }}
         run: |
           npm ci
           npm run build

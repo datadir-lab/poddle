@@ -23,12 +23,20 @@ try {
     copyFileSync(src, out);
     console.log('[sync-pricing] copied canonical pricing -> pricing.generated.json');
   } else if (url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
-    const text = await res.text();
-    JSON.parse(text); // validate it is JSON before writing
-    writeFileSync(out, text);
-    console.log('[sync-pricing] fetched canonical pricing -> pricing.generated.json');
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
+      const text = await res.text();
+      JSON.parse(text); // validate it is JSON before writing
+      writeFileSync(out, text);
+      console.log('[sync-pricing] fetched canonical pricing -> pricing.generated.json');
+    } catch (fetchErr) {
+      // A pricing-fetch blip must not break the marketing deploy: warn and fall
+      // back to the committed placeholder rather than failing the build. (A
+      // missing PODDLE_PRICING_SRC file below still fails loudly - that is an
+      // explicit misconfiguration, not a transient network issue.)
+      console.error(`[sync-pricing] WARNING: ${fetchErr.message}; using placeholder pricing.json`);
+    }
   } else {
     console.log('[sync-pricing] no PODDLE_PRICING_SRC/URL set; using committed placeholder pricing.json');
   }
