@@ -13,11 +13,10 @@ This is poddle's working self-assessment against two OpenSSF programs:
 Status legend: ✅ met · 🔧 met by a change in this branch · ⚠️ needs a maintainer
 action (see the [checklist](#maintainer-action-checklist)) · N/A not applicable.
 
-> To claim the badge: register the project at
-> <https://www.bestpractices.dev/en/projects/new> (log in with the GitHub
-> account that owns `datadir-lab/poddle`), then work down the tables below —
-> almost every answer is "Met" with the linked evidence. Paste the project ID
-> into the README badge (see the checklist).
+> **Status: registered and _passing_** —
+> [bestpractices.dev project 14171](https://www.bestpractices.dev/en/projects/14171).
+> The tables below are the evidence behind each answer; keep them current as the
+> project evolves so the badge stays valid.
 
 ## Basics
 
@@ -126,7 +125,7 @@ or near maximum.
 | Vulnerabilities | 0 → **10** | 🔧 Fixed: bumped `vite`, `esbuild`, `astro`, `sharp` in `src/web/*`; osv-scanner is clean. |
 | Signed-Releases | 8 → **10** | 🔧 Fixed: SLSA provenance (`poddle.intoto.jsonl`) added to `release.yml`, verifiable on the next tagged release. |
 | Branch-Protection | −1 (error) | 🔧 Wired `SCORECARD_TOKEN` (admin-read PAT) into `scorecard.yml`; the secret is set. Tighten protection (checklist) so the revealed score is high. |
-| CII-Best-Practices | 0 | ⚠️ Register + earn the Best Practices badge (this document); Scorecard reads the live badge. |
+| CII-Best-Practices | 0 → passing | ✅ Registered and **passing** ([project 14171](https://www.bestpractices.dev/en/projects/14171)); Scorecard reads the live badge on its next run. |
 | Maintained | 0 | ⚠️ Age-based ("created within 90 days"). Clears automatically ~90 days after repo creation with ongoing activity. No code change. |
 | Code-Review | 0 | ⚠️ Route changes through PRs with a second-party approval (checklist). Improves as reviewed PRs accumulate. |
 | Pinned-Dependencies | 8–10 | ✅ `main` pins actions by SHA. The one intentional exception is the SLSA reusable workflow, which must be tag-pinned. |
@@ -138,21 +137,17 @@ or near maximum.
 Items that only a repository admin can do (they are outward-facing or account
 settings, not code):
 
-- [ ] **Register the badge.** Create the project at
-      <https://www.bestpractices.dev/en/projects/new>, fill the questionnaire
-      using the tables above, and reach *passing*.
-- [ ] **Add the badge to the README.** Replace `<PROJECT_ID>` and uncomment the
-      badge line already placed in `README.md`.
-- [ ] **Self-attest** `know_secure_design`, `know_common_errors`,
+- [x] **Register the badge.** Registered as
+      [project 14171](https://www.bestpractices.dev/en/projects/14171); status *passing*.
+- [x] **Add the badge to the README.** Live badge for project 14171 is in `README.md`.
+- [x] **Self-attest** `know_secure_design`, `know_common_errors`,
       `report_responses`, and `enhancement_responses` on bestpractices.dev
-      (backed by `docs/security-design.md` and your issue responsiveness).
-- [ ] **Enable GitHub Discussions** (strengthens `discussion`):
-      `gh api -X PATCH repos/datadir-lab/poddle -f has_discussions=true`
-- [ ] **Enable secret scanning + push protection** (supports
-      `no_leaked_credentials`):
-      `gh api -X PATCH repos/datadir-lab/poddle -f 'security_and_analysis[secret_scanning][status]=enabled' -f 'security_and_analysis[secret_scanning_push_protection][status]=enabled'`
-- [ ] **Enable Dependabot security updates:**
-      `gh api -X PUT repos/datadir-lab/poddle/automated-security-fixes`
+      (backed by `docs/security-design.md` and issue responsiveness).
+- [x] **Enable GitHub Discussions** (strengthens `discussion`) — enabled.
+- [x] **Enable secret scanning + push protection** (supports
+      `no_leaked_credentials`) — both enabled, plus a `gitleaks` CI gate
+      (`.github/workflows/secret-scan.yml`).
+- [x] **Enable Dependabot security updates** — enabled.
 - [ ] **Tighten branch protection** so the now-visible Branch-Protection score is
       high and to move Code-Review: require a pull-request review (≥1 approval)
       and, optionally, signed commits. Note the solo-maintainer tension — a
