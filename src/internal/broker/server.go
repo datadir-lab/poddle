@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"time"
 )
 
 // Server binds a Gateway to a TCP address and serves it. Serve binds
@@ -27,7 +28,7 @@ func (s *Server) Serve(addr string) (string, error) {
 		return "", err
 	}
 	s.ln = ln
-	s.http = &http.Server{Handler: s.gw}
+	s.http = &http.Server{Handler: s.gw, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = s.http.Serve(ln) }()
 	return ln.Addr().String(), nil
 }

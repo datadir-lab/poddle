@@ -156,7 +156,8 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		d.forward = ln
 		d.forwardAddr = ln.Addr().String()
 		fp := broker.NewForwardProxy(d, d) // d is PolicyChecker + Auditor
-		go func() { _ = http.Serve(ln, fp) }()
+		fsrv := &http.Server{Handler: fp, ReadHeaderTimeout: 10 * time.Second}
+		go func() { _ = fsrv.Serve(ln) }()
 	}
 	return addr, nil
 }

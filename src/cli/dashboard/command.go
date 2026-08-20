@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -186,7 +187,11 @@ func NewCmd() *cobra.Command {
 				_ = openBrowser(url) // best-effort
 			}
 			eng := podman.New(pexec.OS{}, os.Getenv("PODDLE_HOST"))
-			return http.Serve(ln, Handler(poddled.SocketPath(), policyStore(), eng.Pods))
+			srv := &http.Server{
+				Handler:           Handler(poddled.SocketPath(), policyStore(), eng.Pods),
+				ReadHeaderTimeout: 10 * time.Second,
+			}
+			return srv.Serve(ln)
 		},
 	}
 	c.Flags().IntVar(&port, "port", 7333, "local port to bind (127.0.0.1)")

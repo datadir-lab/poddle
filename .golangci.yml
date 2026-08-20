@@ -6,6 +6,9 @@ linters:
   # `default: standard` = errcheck, govet, ineffassign, staticcheck, unused.
   enable:
     - misspell
+    - gosec # security analysis
+    - gocritic # extra correctness/diagnostic checks
+    - revive # style + lint
   settings:
     errcheck:
       # Writes to stdout/stderr/tabwriters: the error is conventionally ignored.
@@ -13,6 +16,15 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+    gosec:
+      # poddle IS a credential broker + subprocess runner + forward proxy, so
+      # these categories fire on its core function, not on defects.
+      excludes:
+        - G101 # "hardcoded credentials" - credential-handling strings + fixtures
+        - G204 # subprocess with variable - running podman/ssh is the product
+        - G304 # file inclusion via variable - reads user-given config/token paths
+        - G703 # path traversal via taint - same as G304 (reads files by path)
+        - G704 # SSRF via taint - the broker is a forward proxy by design
   exclusions:
     rules:
       # Unchecked errors in tests are usually intentional.
@@ -23,3 +35,21 @@ linters:
       - linters:
           - errcheck
         source: 'defer .*\.Close\(\)'
+      # Test fixtures trip gosec (fake creds, temp dirs, timeout-less servers).
+      - path: '_test\.go'
+        linters:
+          - gosec
+      # MD5 and int->uint32 conversions in the L4 code are required by the
+      # Postgres wire protocol (md5 auth, frame lengths), not weaknesses.
+      - path: 'internal/l4/'
+        linters:
+          - gosec
+        text: 'G401|G501|G115'
+      # revive: unused-parameter (interface impls) and exported-symbol doc
+      # comments (internal packages) are too noisy to be worthwhile here.
+      - linters:
+          - revive
+        text: 'unused-parameter'
+      - linters:
+          - revive
+        text: 'exported:'
