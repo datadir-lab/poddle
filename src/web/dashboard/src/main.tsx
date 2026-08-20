@@ -1,5 +1,5 @@
 import { render } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource/jetbrains-mono/400.css";
@@ -26,6 +26,11 @@ type Pod = {
   name: string; state: string; size: string; mode: string; policy: string;
   autoscale: boolean; cpu: string; memPerc: string; mem: string;
 };
+
+// Platform-aware modifier hint: ⌘ on macOS, Ctrl elsewhere (the handler accepts
+// either meta or ctrl regardless, so this only affects the displayed shortcut).
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || "");
+const CMD_HINT = IS_MAC ? "⌘K" : "Ctrl K";
 
 const api = {
   audit: (limit = 1000) => fetch(`${CFG.apiBase}/audit?limit=${limit}`, { headers: H }).then((r) => r.json()),
@@ -213,6 +218,8 @@ const ICONS: Record<string, () => any> = {
   check: () => (<path d="M20 6 9 17l-5-5" />),
   octagon: () => (<><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>),
   panel: () => (<><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" /></>),
+  search: () => (<><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></>),
+  theme: () => (<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />),
 };
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const draw = ICONS[name];
@@ -1266,6 +1273,79 @@ function ThemeToggle() {
   );
 }
 
+// CommandPalette is a ⌘K/Ctrl-K launcher: fuzzy-jump to any view, pod, policy,
+// or destination. Pods/policies are fetched once on open; destinations come from
+// the audit stream already in memory.
+type Cmd = { id: string; label: string; hint: string; icon: string; run: () => void };
+function CommandPalette({ open, onClose, events }: { open: boolean; onClose: () => void; events: Event[] }) {
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
+  const [pods, setPods] = useState<Pod[]>([]);
+  const [pols, setPols] = useState<Policy[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setQ(""); setSel(0);
+    api.pods().then((p: Pod[]) => setPods(p || [])).catch(() => {});
+    api.policies().then((p: Policy[]) => setPols(p || [])).catch(() => {});
+    const id = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(id);
+  }, [open]);
+
+  const cmds: Cmd[] = useMemo(() => {
+    const nav: Cmd[] = NAV.map((n) => ({ id: "nav:" + n.key, label: n.label, hint: "view", icon: n.icon, run: () => navigate(n.to) }));
+    const podCmds: Cmd[] = pods.map((p) => ({ id: "pod:" + p.name, label: p.name, hint: "pod", icon: "pods", run: () => navigate("/pods/" + encodeURIComponent(p.name)) }));
+    const polCmds: Cmd[] = pols.map((p) => ({ id: "pol:" + p.name, label: p.name, hint: "policy", icon: "policies", run: () => navigate("/policies/" + encodeURIComponent(p.name)) }));
+    const destCmds: Cmd[] = destinations(events).slice(0, 20).map((d) => ({ id: "dest:" + d.upstream, label: d.upstream, hint: "destination", icon: "globe", run: () => navigate("/audit?q=" + encodeURIComponent(d.upstream)) }));
+    const theme: Cmd = {
+      id: "theme", label: "Toggle light / dark theme", hint: "action", icon: "theme",
+      run: () => { const r = document.documentElement; const t = r.getAttribute("data-theme") === "dark" ? "light" : "dark"; r.setAttribute("data-theme", t); try { localStorage.setItem("poddle-theme", t); } catch {} },
+    };
+    return [...nav, ...podCmds, ...polCmds, ...destCmds, theme];
+  }, [pods, pols, events]);
+
+  const s = q.toLowerCase();
+  const shown = q ? cmds.filter((c) => c.label.toLowerCase().includes(s) || c.hint.includes(s)) : cmds;
+  const selClamped = Math.min(sel, Math.max(0, shown.length - 1));
+
+  if (!open) return null;
+
+  const run = (c: Cmd) => { onClose(); c.run(); };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => Math.min(i + 1, shown.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSel((i) => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (shown[selClamped]) run(shown[selClamped]); }
+    else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+  };
+
+  return (
+    <div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette" onClick={onClose}>
+      <div class="cmdk__panel" onClick={(e) => e.stopPropagation()}>
+        <div class="cmdk__search">
+          <span class="cmdk__searchic" aria-hidden="true"><Icon name="search" size={16} /></span>
+          <input ref={inputRef} class="cmdk__input" placeholder="Jump to a view, pod, policy, or destination…"
+            value={q} aria-label="Command palette search"
+            onInput={(e) => { setQ((e.target as HTMLInputElement).value); setSel(0); }} onKeyDown={onKey} />
+        </div>
+        <ul class="cmdk__list">
+          {shown.length === 0 && <li class="cmdk__empty">No matches.</li>}
+          {shown.slice(0, 40).map((c, i) => (
+            <li key={c.id}>
+              <button type="button" class={"cmdk__item" + (i === selClamped ? " on" : "")}
+                onMouseEnter={() => setSel(i)} onClick={() => run(c)}>
+                <span class="cmdk__ic" aria-hidden="true"><Icon name={c.icon} size={15} /></span>
+                <span class="cmdk__lb">{c.label}</span>
+                <span class="cmdk__hint">{c.hint}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const route = useRoute();
   const { events, loading: eventsLoading, status: liveStatus } = useAudit();
@@ -1285,6 +1365,17 @@ function App() {
   const docName = route.view === "pod" ? route.name : page.title;
   useEffect(() => { document.title = "poddle · " + docName; }, [docName]);
 
+  // ⌘K / Ctrl-K toggles the command palette from anywhere; Escape closes it.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPaletteOpen((o) => !o); }
+      else if (e.key === "Escape") setPaletteOpen(false);
+    };
+    addEventListener("keydown", on);
+    return () => removeEventListener("keydown", on);
+  }, []);
+
   return (
     <div class={"app" + (collapsed ? " app--collapsed" : "")}>
       <Sidebar active={active} v={vf.verify} collapsed={collapsed} />
@@ -1298,7 +1389,12 @@ function App() {
             <h1 class="topbar__title">{page.title}</h1>
             <p class="topbar__sub">{page.sub}</p>
           </div>
-          <LiveDot status={liveStatus} />
+          <div class="topbar__actions">
+            <button class="topbar__search" type="button" aria-label="Open command palette" onClick={() => setPaletteOpen(true)}>
+              <Icon name="search" size={15} /><span class="topbar__searchlabel">Search</span><kbd class="topbar__kbd">{CMD_HINT}</kbd>
+            </button>
+            <LiveDot status={liveStatus} />
+          </div>
         </header>
         <main>
           {route.view === "overview" && <OverviewView events={events} loading={eventsLoading} onPod={goPod} />}
@@ -1314,6 +1410,7 @@ function App() {
           {route.view === "policies" && <PolicyView selected={route.name} events={events} />}
         </main>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} events={events} />
     </div>
   );
 }
