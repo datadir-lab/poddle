@@ -527,14 +527,17 @@ td.perf { text-align: right; white-space: nowrap; }
 
 .editor { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem 1.6rem; background: var(--card); }
 .editor.empty { color: var(--faint); display: flex; align-items: center; justify-content: center; min-height: 180px; }
-.editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); margin: 1.4rem 0 0.55rem; }
+.editor label { display: block; font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 1.4rem 0 0.55rem; }
 .editor label:first-of-type { margin-top: 0; }
-.label-hint { text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--faint); margin-left: 0.5rem; }
-.editor .row { display: flex; gap: 1rem; align-items: flex-start; }
-.editor .row > div { flex: 1; }
+/* the helper text sits on its own line under the label: clear separation, and it
+   wraps naturally on narrow screens */
+.label-hint { display: block; text-transform: none; letter-spacing: normal; font: 400 0.78rem/1.45 var(--font-sans); color: var(--faint); margin-top: 0.25rem; }
+.editor .row { display: flex; gap: 1rem 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+.editor .row > div { flex: 1 1 12rem; }
 .editor .row > div.narrow { flex: 0 0 auto; }
 .editor .row label { margin-top: 0; } /* keep Name + Egress labels on the same line */
 .editor .row input { width: 100%; }
+@media (max-width: 560px) { .editor .row > div.narrow { flex-basis: 100%; } }
 
 /* ---- visual policy builder (destination rows + per-host method toggles) ---- */
 .rules { display: flex; flex-direction: column; gap: 0.5rem; }

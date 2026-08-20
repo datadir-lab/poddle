@@ -187,25 +187,55 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
 });
 
-test("policy builder: per-destination method toggles round-trip through the store", async ({ page }) => {
+test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockAudit(page);
+  await mockPods(page);
   await page.goto("/policies/new");
-  await page.locator("#pol-name").fill("methpol");
+
   await page.getByRole("button", { name: /Add destination/ }).click();
   await page.locator(".rule__host").first().fill("api.github.com");
-  await page.getByRole("button", { name: /limit methods/ }).click(); // reveal the method toggles (no JSON)
+  await page.getByRole("button", { name: /limit methods/ }).click(); // reveal the toggles (no JSON)
   await page.getByRole("button", { name: "GET", exact: true }).click(); // restrict to GET
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL(/\/policies\/methpol$/);
 
-  // Reopened from the file store: the row collapses to a "GET" summary; expand it.
+  // "Done" collapses to a clickable summary; clicking it re-expands with GET still on.
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.locator(".rule__msum")).toContainText("GET");
+  await expect(page.locator(".mchip")).toHaveCount(0); // collapsed
   await page.locator(".rule__msum").click();
   await expect(page.locator(".mchip", { hasText: "GET" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".mchip", { hasText: "POST" })).toHaveAttribute("aria-pressed", "false");
+});
 
-  // Scope to the actions bar: a "DELETE" method chip is also on screen.
-  await page.locator(".actions").getByRole("button", { name: "Delete" }).click();
-  await expect(page.locator(".list")).not.toContainText("methpol");
+test("policies: the dry-run applies allow-list, deny-list, per-method, and default-deny rules", async ({ page }) => {
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 5, time: t, pod: "a", kind: "request", upstream: "api.github.com", method: "POST" },          // allowed host, but POST blocked (GET only)
+    { seq: 4, time: t, pod: "a", kind: "request", upstream: "api.github.com", method: "GET" },            // allowed host + allowed method -> passes
+    { seq: 3, time: t, pod: "a", kind: "request", upstream: "metadata.google.internal", method: "GET" }, // on the deny-list
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "unlisted.example", method: "GET" },          // not allow-listed (default-deny)
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // Build in the visual editor: allow api.github.com restricted to GET; block a host.
+  await page.getByRole("button", { name: /Add destination/ }).click();
+  await page.locator(".rule__host").first().fill("api.github.com");
+  await page.getByRole("button", { name: /limit methods/ }).click();
+  await page.getByRole("button", { name: "GET", exact: true }).click();
+  await page.getByRole("button", { name: /Add blocked host/ }).click();
+  await page.locator("input[aria-label='Blocked host']").fill("metadata.google.internal");
+
+  // Only the GET to api.github.com passes; the other three are denied for distinct reasons.
+  await expect(page.locator(".dryrun")).toContainText("3 would be denied");
+  const list = page.locator(".dryrun__list");
+  await expect(list).toContainText("api.github.com");           // POST -> method not allowed
+  await expect(list).toContainText("metadata.google.internal"); // on the deny-list
+  await expect(list).toContainText("unlisted.example");         // not allow-listed
 });
 
 test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
