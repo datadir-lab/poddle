@@ -22,36 +22,41 @@ function n(e, t) {
 }
 function r(e, r, i) {
 	if (t(r, e.deny_upstreams || [])) return {
-		decision: "deny",
+		allow: !1,
 		reason: "on the deny-list"
 	};
 	if ((e.allow_upstreams || []).length > 0 && !t(r, e.allow_upstreams || [])) return {
-		decision: "deny",
+		allow: !1,
 		reason: "not allow-listed"
 	};
 	let a = n(e.methods, r);
 	return a && i && i !== "CONNECT" && !a.some((e) => e.toUpperCase() === i.toUpperCase()) ? {
-		decision: "block",
+		allow: !1,
 		reason: i + " not allowed here"
 	} : {
-		decision: "allow",
+		allow: !0,
 		reason: ""
 	};
 }
 function i(e, t) {
-	let n = t.filter((e) => e.kind === "request" && e.upstream), i = /* @__PURE__ */ new Map();
+	let n = t.filter((e) => e.kind === "request" && e.upstream), i = /* @__PURE__ */ new Map(), a = 0;
 	for (let t of n) {
 		let n = r(e, t.upstream, t.method || "");
-		if (n.decision === "allow") continue;
-		let a = `${t.method || ""}|${t.upstream}`, o = i.get(a) || {
+		if (n.allow) continue;
+		a++;
+		let o = `${t.method || ""}|${t.upstream}`, s = i.get(o) || {
 			upstream: t.upstream,
 			method: t.method || "",
 			reason: n.reason,
 			count: 0
 		};
-		o.count++, i.set(a, o);
+		s.count++, i.set(o, s);
 	}
-	return [...i.values()].sort((e, t) => t.count - e.count);
+	return {
+		total: n.length,
+		denied: a,
+		rows: [...i.values()].sort((e, t) => t.count - e.count)
+	};
 }
 function a(e) {
 	let t = e.methods || {};

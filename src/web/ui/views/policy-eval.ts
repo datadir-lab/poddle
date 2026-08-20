@@ -26,31 +26,33 @@ export function methodsFor(methods: Record<string, string[]> | undefined, host: 
   return null;
 }
 
-export function decide(pol: Policy, host: string, method: string): { decision: "allow" | "deny" | "redact" | "block"; reason: string } {
-  if (matchHost(host, pol.deny_upstreams || [])) return { decision: "deny", reason: "on the deny-list" };
+export function decide(pol: Policy, host: string, method: string): { allow: boolean; reason: string } {
+  if (matchHost(host, pol.deny_upstreams || [])) return { allow: false, reason: "on the deny-list" };
   if ((pol.allow_upstreams || []).length > 0 && !matchHost(host, pol.allow_upstreams || []))
-    return { decision: "deny", reason: "not allow-listed" };
+    return { allow: false, reason: "not allow-listed" };
   const allowed = methodsFor(pol.methods, host);
   if (allowed && method && method !== "CONNECT" && !allowed.some((m) => m.toUpperCase() === method.toUpperCase()))
-    return { decision: "block", reason: method + " not allowed here" };
-  return { decision: "allow", reason: "" };
+    return { allow: false, reason: method + " not allowed here" };
+  return { allow: true, reason: "" };
 }
 
 // dryRun replays a (possibly unsaved) policy over the recent request stream and
 // reports what its allow/deny rules would decide. Secret redaction depends on
 // request payloads, so it is deliberately out of scope — this is access control.
-export function dryRun(pol: Policy, events: Event[]): DryRow[] {
+export function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; rows: DryRow[] } {
   const reqs = events.filter((e) => e.kind === "request" && e.upstream);
   const m = new Map<string, DryRow>();
+  let denied = 0;
   for (const e of reqs) {
     const d = decide(pol, e.upstream as string, e.method || "");
-    if (d.decision === "allow") continue;
+    if (d.allow) continue;
+    denied++;
     const key = `${e.method || ""}|${e.upstream}`;
     const row = m.get(key) || { upstream: e.upstream as string, method: e.method || "", reason: d.reason, count: 0 };
     row.count++;
     m.set(key, row);
   }
-  return [...m.values()].sort((a, b) => b.count - a.count);
+  return { total: reqs.length, denied, rows: [...m.values()].sort((a, b) => b.count - a.count) };
 }
 
 // toRows expands a stored policy into builder rows (union of the allow-list and
