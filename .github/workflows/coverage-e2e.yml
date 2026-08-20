@@ -1,0 +1,76 @@
+name: E2E coverage
+
+# Reports the e2e suites' coverage to Codecov under the `e2e` flag. The e2e
+# tests drive the *built* poddle binary against real podman, so their coverage
+# needs Go binary coverage (go build -cover + GOCOVERDIR), not `go test -cover`.
+# The buildBinary helper instruments the binary whenever GOCOVERDIR is set; this
+# job sets it, runs the container-backed suites, then converts and uploads.
+#
+# Heavy (real pods), so it runs off the per-PR path: on push to main (freshest
+# carryforward data), nightly, and on demand. The `e2e` flag carries forward in
+# codecov.yml, so PRs that don't run this keep the last reported e2e coverage.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *' # nightly, 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-coverage:
+    name: E2E coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Engine versions
+        run: |
+          podman version || true
+          docker version --format 'docker {{.Server.Version}}' || true
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
+      - name: Run e2e suites with coverage
+        env:
+          GOCOVERDIR: ${{ github.workspace }}/covdata
+        run: |
+          mkdir -p "$GOCOVERDIR"
+          # The suites that pass on GitHub's rootless podman and drive the Go
+          # binary. e2e-move/e2e-task (need rootful podman) and e2e-ui/e2e-claude
+          # (UI / external harness, no Go-coverage value) are intentionally out.
+          suites="e2e-up e2e-l4 e2e-connector e2e-templates e2e-audit e2e-policy e2e-forward e2e-secure e2e-poddled e2e-resize e2e-resume-move e2e-autoscale e2e-remote e2e integration"
+          failed=""
+          for s in $suites; do
+            echo "::group::$s"
+            if task "$s"; then
+              echo "$s ok"
+            else
+              echo "::warning::e2e suite $s failed (continuing so partial coverage is still reported)"
+              failed="$failed $s"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then echo "::warning::failed suites:$failed"; fi
+      - name: Convert coverage data to a profile
+        run: |
+          go tool covdata textfmt -i="${{ github.workspace }}/covdata" -o=coverage-e2e.txt
+          echo "e2e coverage:"
+          go tool cover -func=coverage-e2e.txt | tail -1
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-e2e.txt
+          flags: e2e
+          fail_ci_if_error: false
