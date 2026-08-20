@@ -1,0 +1,60 @@
+// Shared types for @poddle/ui/views. Canonical shapes moved verbatim from
+// src/web/dashboard/src/main.tsx (the poddle daemon's /v1 API responses) plus
+// the presentational types derived from the dashboard's view layer.
+
+export type Event = {
+  seq: number; time: string; source?: string; pod?: string;
+  kind: string; upstream?: string; method?: string; path?: string;
+  status?: number; decision?: string; detail?: string;
+};
+export type Policy = {
+  name: string; allow_upstreams?: string[]; deny_upstreams?: string[];
+  methods?: Record<string, string[]>; egress?: string;
+};
+export type Pod = {
+  name: string; state: string; size: string; mode: string; policy: string;
+  autoscale: boolean; cpu: string; memPerc: string; mem: string;
+};
+
+export type Hist = Record<string, { cpu: number[]; mem: number[] }>;
+
+export type Verify = { ok: boolean; brokenAt: number } | null;
+
+export type Grouped = { pod: string; decision: string; upstream: string; count: number; secrets: number };
+
+export type SegOption = { value: string; label: string; tone?: string };
+
+export type Stats = {
+  pods: number;
+  requests: number;
+  redactions: number;
+  secrets: number;
+  blocked: number;
+  denied: number;
+};
+
+export type Dest = {
+  upstream: string; total: number; allow: number; redact: number;
+  deny: number; block: number; secrets: number; pods: Set<string>;
+};
+
+// ---- presentational / UI-only shapes (no daemon API counterpart) ----
+
+// A single allow-list row in the visual policy builder: a host plus an
+// optional set of methods it is restricted to (empty = any method). `open`
+// reveals the method toggles even before any are picked.
+export type AllowRow = { host: string; methods: string[]; open: boolean };
+
+// One aggregated "would be denied" row from a policy dry-run.
+export type DryRow = { upstream: string; method: string; reason: string; count: number };
+
+// A single entry in the command palette (⌘K).
+export type Cmd = { id: string; label: string; hint: string; icon: string; run: () => void };
+
+// A live denial/block surfaced the moment it streams in.
+export type Toast = { id: number; pod: string; decision: string; upstream: string };
+
+// A pending confirmation for a destructive/consequential pod action.
+export type Pending = { type: "bind"; name: string } | { type: "revoke" } | null;
+
+export const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
