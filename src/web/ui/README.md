@@ -17,6 +17,7 @@ dependency (`"@poddle/ui": "file:../ui"`):
 ```css
 @import "@poddle/ui/tokens.css";  /* colors, type, spacing — CSS custom props */
 @import "@poddle/ui/base.css";    /* reset, typography, forms, buttons */
+@import "@poddle/ui/views.css";   /* styles for the @poddle/ui/views components */
 ```
 
 It is also published to npm as `@poddle/ui` for external consumers such as the

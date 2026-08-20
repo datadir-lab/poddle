@@ -4,10 +4,11 @@
   "description": "poddle design system — shared tokens and CSS primitives for all poddle UI.",
   "license": "MIT",
   "type": "module",
-  "files": ["tokens.css", "base.css", "views/dist"],
+  "files": ["tokens.css", "base.css", "views.css", "views/dist"],
   "exports": {
     "./tokens.css": "./tokens.css",
     "./base.css": "./base.css",
+    "./views.css": "./views.css",
     "./views": {
       "types": "./views/dist/index.d.ts",
       "import": "./views/dist/index.js"
