@@ -30,12 +30,14 @@ jobs:
           podman network create --internal poddle-lock-test
           podman network create poddle-egress-test
 
-      - name: Broker container — dual-homed, http on :18080
+      - name: Broker container — dual-homed (internet PRIMARY, internal second)
         run: |
-          podman run -d --name spike-broker --network poddle-lock-test \
+          # Primary network = internet-capable, so the broker's DEFAULT route
+          # reaches upstreams; the internal net is added second for pod reach.
+          podman run -d --name spike-broker --network poddle-egress-test \
             docker.io/library/python:3-alpine \
             python3 -m http.server 18080 --bind 0.0.0.0
-          podman network connect poddle-egress-test spike-broker   # 2nd leg: internet
+          podman network connect poddle-lock-test spike-broker
           sleep 3
           podman ps
           BIP=$(podman inspect spike-broker -f '{{ (index .NetworkSettings.Networks "poddle-lock-test").IPAddress }}')
@@ -63,7 +65,7 @@ jobs:
       - name: CHECK C — the broker CAN reach the internet (relay works, want PASS)
         run: |
           set +e
-          OUT=$(podman exec spike-broker python3 -c 'import urllib.request;urllib.request.urlopen("http://1.1.1.1",timeout=5);print("rc=0")' 2>/dev/null || echo "rc=1")
+          OUT=$(podman exec spike-broker python3 -c 'import socket;socket.create_connection(("1.1.1.1",443),timeout=5);print("rc=0")' 2>/dev/null || echo "rc=1")
           echo "$OUT"
           if echo "$OUT" | grep -q "rc=0"; then echo "PASS — broker relays to upstreams"; echo "RELAY=yes" >> "$GITHUB_ENV"
           else echo "::error::broker cannot reach the internet"; echo "RELAY=no" >> "$GITHUB_ENV"; fi
