@@ -13,3 +13,4 @@ export * from "./OverviewCards";
 export * from "./AttentionPanel";
 export * from "./RedactionsTable";
 export * from "./PolicyList";
+export * from "./PolicyEditor";

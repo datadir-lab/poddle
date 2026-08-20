@@ -7,10 +7,9 @@ import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
 import {
-  SegmentedControl, IntegrityBadge, AuditLogTable,
-  PodFleetTable, PodDetailPanel, OverviewCards, AttentionPanel, RedactionsTable, PolicyList,
+  IntegrityBadge, AuditLogTable,
+  PodFleetTable, PodDetailPanel, OverviewCards, AttentionPanel, RedactionsTable, PolicyList, PolicyEditor,
   summarise, group,
-  type SegOption,
 } from "@poddle/ui/views";
 
 // Runtime data-source config: the SAME bundle serves local (defaults) and the
@@ -153,12 +152,6 @@ function usePods(): { pods: Pod[]; hist: Hist } {
 }
 
 // ---- views ----
-const EGRESS_MODES: SegOption[] = [
-  { value: "redact", label: "Redact", tone: "redact" },
-  { value: "block", label: "Block", tone: "deny" },
-  { value: "off", label: "Off", tone: "faint" },
-];
-
 function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string) => void }) {
   const { pods: livePods } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
@@ -183,64 +176,6 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
   );
 }
 
-const lines = (a?: string[]) => (a || []).join("\n");
-const parseLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
-
-function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved: (name: string) => void; onDeleted: () => void }) {
-  const [name, setName] = useState(policy.name);
-  const [allow, setAllow] = useState(lines(policy.allow_upstreams));
-  const [deny, setDeny] = useState(lines(policy.deny_upstreams));
-  const [egress, setEgress] = useState(policy.egress || "redact");
-  const [methods, setMethods] = useState(JSON.stringify(policy.methods || {}, null, 2));
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    setName(policy.name); setAllow(lines(policy.allow_upstreams)); setDeny(lines(policy.deny_upstreams));
-    setEgress(policy.egress || "redact"); setMethods(JSON.stringify(policy.methods || {}, null, 2)); setErr("");
-  }, [policy]);
-
-  const save = async () => {
-    let parsedMethods: Record<string, string[]> = {};
-    try { parsedMethods = methods.trim() ? JSON.parse(methods) : {}; }
-    catch { setErr("methods must be valid JSON, e.g. {\"git.internal\":[\"GET\"]}"); return; }
-    if (!name.trim()) { setErr("name is required"); return; }
-    const res = await api.putPolicy({
-      name: name.trim(), allow_upstreams: parseLines(allow), deny_upstreams: parseLines(deny),
-      methods: parsedMethods, egress,
-    });
-    if (!res.ok) { setErr("save failed: " + res.status); return; }
-    onSaved(name.trim());
-  };
-  const del = async () => { await api.delPolicy(policy.name); onDeleted(); };
-
-  return (
-    <div class="editor">
-      <div class="row">
-        <div>
-          <label for="pol-name">Name</label>
-          <input id="pol-name" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-        </div>
-        <div class="narrow">
-          <label>Egress mode</label>
-          <SegmentedControl value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
-        </div>
-      </div>
-      <label for="pol-allow">Allowed destinations <span class="label-hint">Default-deny when set · one host per line · ".example.com" matches any subdomain</span></label>
-      <textarea id="pol-allow" value={allow} onInput={(e) => setAllow((e.target as HTMLTextAreaElement).value)} placeholder="api.anthropic.com&#10;.github.com" />
-      <label for="pol-deny">Always blocked <span class="label-hint">Wins over allowed · one host per line</span></label>
-      <textarea id="pol-deny" value={deny} onInput={(e) => setDeny((e.target as HTMLTextAreaElement).value)} placeholder="metadata.google.internal" />
-      <label for="pol-methods">Per-host HTTP methods <span class="label-hint">JSON · limits which methods each host accepts</span></label>
-      <textarea id="pol-methods" value={methods} onInput={(e) => setMethods((e.target as HTMLTextAreaElement).value)} placeholder={'{"git.internal": ["GET", "POST"]}'} />
-      {err && <div class="err">{err}</div>}
-      <div class="actions">
-        <button class="btn btn--primary" onClick={save}>Save</button>
-        {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
-      </div>
-      <div class="hint">Reference from a pod: <code>poddle up --policy {name || "&lt;name&gt;"}</code>, or <code>policy = "{name || "&lt;name&gt;"}"</code> in a template.</div>
-    </div>
-  );
-}
-
 function PolicyView({ selected }: { selected?: string }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const load = () => api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => setPolicies([]));
@@ -259,8 +194,12 @@ function PolicyView({ selected }: { selected?: string }) {
         onNew={() => navigate("/policies/new")} />
       {sel
         ? <PolicyEditor policy={sel}
-            onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
-            onDeleted={() => { load(); navigate("/policies"); }} />
+            hint={<>Reference from a pod: <code>poddle up --policy {sel.name || "&lt;name&gt;"}</code>, or <code>policy = "{sel.name || "&lt;name&gt;"}"</code> in a template.</>}
+            onSave={(p) => api.putPolicy(p).then((r) => {
+              if (r.ok) { load(); navigate(`/policies/${encodeURIComponent(p.name)}`); }
+              return { ok: r.ok, error: r.ok ? undefined : "save failed: " + r.status };
+            })}
+            onDelete={() => api.delPolicy(sel.name).then(() => { load(); navigate("/policies"); })} />
         : <div class="editor empty">Select a policy, or create one.</div>}
     </div>
   );

@@ -618,4 +618,136 @@ function D({ policies: e, selectedName: t, onSelect: n, onNew: r }) {
 	});
 }
 //#endregion
-export { T as AttentionPanel, b as AuditLogTable, _ as DecisionBadge, x as Fact, v as IntegrityBadge, w as OverviewCards, C as PodDetailPanel, S as PodFleetTable, D as PolicyList, E as RedactionsTable, g as SegmentedControl, m as Sparkline, h as StatCard, c as cap1, s as group, l as humanKind, u as relTime, o as summarise, d as threshTone };
+//#region views/PolicyEditor.tsx
+var O = (e) => (e || []).join("\n"), k = (e) => e.split("\n").map((e) => e.trim()).filter(Boolean), A = [
+	{
+		value: "redact",
+		label: "Redact",
+		tone: "redact"
+	},
+	{
+		value: "block",
+		label: "Block",
+		tone: "deny"
+	},
+	{
+		value: "off",
+		label: "Off",
+		tone: "faint"
+	}
+];
+function j({ policy: e, onSave: t, onDelete: r, hint: a }) {
+	let [o, s] = i(e.name), [c, l] = i(O(e.allow_upstreams)), [u, d] = i(O(e.deny_upstreams)), [f, m] = i(e.egress || "redact"), [h, _] = i(JSON.stringify(e.methods || {}, null, 2)), [v, y] = i("");
+	return n(() => {
+		s(e.name), l(O(e.allow_upstreams)), d(O(e.deny_upstreams)), m(e.egress || "redact"), _(JSON.stringify(e.methods || {}, null, 2)), y("");
+	}, [e]), /* @__PURE__ */ p("div", {
+		class: "editor",
+		children: [
+			/* @__PURE__ */ p("div", {
+				class: "row",
+				children: [/* @__PURE__ */ p("div", { children: [/* @__PURE__ */ p("label", {
+					for: "pol-name",
+					children: "Name"
+				}), /* @__PURE__ */ p("input", {
+					id: "pol-name",
+					value: o,
+					onInput: (e) => s(e.target.value)
+				})] }), /* @__PURE__ */ p("div", {
+					class: "narrow",
+					children: [/* @__PURE__ */ p("label", { children: "Egress mode" }), /* @__PURE__ */ p(g, {
+						value: f,
+						options: A,
+						onChange: m,
+						ariaLabel: "egress mode"
+					})]
+				})]
+			}),
+			/* @__PURE__ */ p("label", {
+				for: "pol-allow",
+				children: ["Allowed destinations ", /* @__PURE__ */ p("span", {
+					class: "label-hint",
+					children: "Default-deny when set · one host per line · \".example.com\" matches any subdomain"
+				})]
+			}),
+			/* @__PURE__ */ p("textarea", {
+				id: "pol-allow",
+				value: c,
+				onInput: (e) => l(e.target.value),
+				placeholder: "api.anthropic.com\n.github.com"
+			}),
+			/* @__PURE__ */ p("label", {
+				for: "pol-deny",
+				children: ["Always blocked ", /* @__PURE__ */ p("span", {
+					class: "label-hint",
+					children: "Wins over allowed · one host per line"
+				})]
+			}),
+			/* @__PURE__ */ p("textarea", {
+				id: "pol-deny",
+				value: u,
+				onInput: (e) => d(e.target.value),
+				placeholder: "metadata.google.internal"
+			}),
+			/* @__PURE__ */ p("label", {
+				for: "pol-methods",
+				children: ["Per-host HTTP methods ", /* @__PURE__ */ p("span", {
+					class: "label-hint",
+					children: "JSON · limits which methods each host accepts"
+				})]
+			}),
+			/* @__PURE__ */ p("textarea", {
+				id: "pol-methods",
+				value: h,
+				onInput: (e) => _(e.target.value),
+				placeholder: "{\"git.internal\": [\"GET\", \"POST\"]}"
+			}),
+			v && /* @__PURE__ */ p("div", {
+				class: "err",
+				children: v
+			}),
+			/* @__PURE__ */ p("div", {
+				class: "actions",
+				children: [/* @__PURE__ */ p("button", {
+					class: "btn btn--primary",
+					onClick: async () => {
+						let e = {};
+						try {
+							e = h.trim() ? JSON.parse(h) : {};
+						} catch {
+							y("methods must be valid JSON, e.g. {\"git.internal\":[\"GET\"]}");
+							return;
+						}
+						if (!o.trim()) {
+							y("name is required");
+							return;
+						}
+						let n = await t({
+							name: o.trim(),
+							allow_upstreams: k(c),
+							deny_upstreams: k(u),
+							methods: e,
+							egress: f
+						});
+						if (!n.ok) {
+							y(n.error || "save failed");
+							return;
+						}
+					},
+					children: "Save"
+				}), e.name && /* @__PURE__ */ p("button", {
+					class: "btn btn--danger",
+					onClick: async () => {
+						await r();
+					},
+					children: "Delete"
+				})]
+			}),
+			a && /* @__PURE__ */ p("div", {
+				class: "hint",
+				children: a
+			})
+		]
+	});
+}
+//#endregion
+export { T as AttentionPanel, b as AuditLogTable, _ as DecisionBadge, x as Fact, v as IntegrityBadge, w as OverviewCards, C as PodDetailPanel, S as PodFleetTable, j as PolicyEditor, D as PolicyList, E as RedactionsTable, g as SegmentedControl, m as Sparkline, h as StatCard, c as cap1, s as group, l as humanKind, u as relTime, o as summarise, d as threshTone };
