@@ -48,16 +48,6 @@ body {
   *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
 }
 
-/* Smooth cross-fade between light/dark — enabled by the toggle only for the
-   duration of the switch (see ThemeToggle), so hovers/clicks stay instant and
-   there is no transition on first paint. */
-@media (prefers-reduced-motion: no-preference) {
-  :root.theming, :root.theming *, :root.theming *::before, :root.theming *::after {
-    transition: background-color 0.32s ease, border-color 0.32s ease, color 0.32s ease,
-      fill 0.32s ease, stroke 0.32s ease, box-shadow 0.32s ease !important;
-  }
-}
-
 input, select, textarea {
   font: inherit;
   background: var(--card);
