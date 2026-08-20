@@ -15,7 +15,8 @@
   },
   "sideEffects": ["*.css"],
   "scripts": {
-    "build:views": "vite build --config views/vite.config.ts && tsc -p views/tsconfig.json --emitDeclarationOnly"
+    "build:views": "vite build --config views/vite.config.ts && tsc -p views/tsconfig.json --emitDeclarationOnly",
+    "test": "vitest run"
   },
   "peerDependencies": {
     "preact": ">=10"
@@ -24,7 +25,9 @@
     "preact": "^10.24.3",
     "typescript": "^5.6.3",
     "vite": "^8.2.1",
-    "@preact/preset-vite": "^2.10.6"
+    "@preact/preset-vite": "^2.10.6",
+    "vitest": "^3.0.0",
+    "jsdom": "^25.0.1"
   },
   "repository": {
     "type": "git",
