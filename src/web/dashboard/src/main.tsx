@@ -53,6 +53,10 @@ const api = {
     fetch(`${CFG.apiBase}/pods/${encodeURIComponent(pod)}`, { method: "DELETE", headers: H }),
 };
 
+// asArray coerces a JSON response to a list, so a non-array body (a daemon error
+// object, an unexpected shape) can never crash a downstream .filter/for-of.
+const asArray = <T,>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
+
 // ---- router ----
 // A tiny dependency-free history router. The Go handler serves the SPA shell for
 // any non-asset path, so these URLs deep-link and survive a refresh.
@@ -121,7 +125,7 @@ function useAudit(onLive?: (ev: Event) => void): { events: Event[]; loading: boo
   const liveRef = useRef(onLive);
   liveRef.current = onLive;
   useEffect(() => {
-    api.audit().then((es: Event[]) => setEvents(es || [])).catch(() => {}).finally(() => setLoading(false));
+    api.audit().then((es) => setEvents(asArray<Event>(es))).catch(() => {}).finally(() => setLoading(false));
     const src = new EventSource(`${CFG.apiBase}/audit/stream`);
     src.onopen = () => setStatus("live");
     src.onmessage = (e) => {
@@ -160,11 +164,12 @@ function usePods(): { pods: Pod[]; hist: Hist; loading: boolean } {
   const [hist, setHist] = useState<Hist>({});
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    const tick = () => api.pods().then((ps: Pod[]) => {
-      setPods(ps || []);
+    const tick = () => api.pods().then((raw) => {
+      const ps = asArray<Pod>(raw);
+      setPods(ps);
       setHist((h) => {
         const nh: Hist = { ...h };
-        for (const p of ps || []) {
+        for (const p of ps) {
           const cur = nh[p.name] || { cpu: [], mem: [] };
           nh[p.name] = {
             cpu: [...cur.cpu, parseFloat(p.cpu) || 0].slice(-40),
@@ -277,7 +282,7 @@ function decisionCounts(events: Event[]): Record<string, number> {
 // that was redacted, denied, or blocked (same unit — one y-axis, never two).
 type TBucket = { t0: number; req: number; intervened: number };
 function bucketEvents(events: Event[], n = 24): TBucket[] {
-  const reqs = events.filter((e) => e.kind === "request" && e.time);
+  const reqs = events.filter((e) => e.kind === "request" && e.time && !Number.isNaN(new Date(e.time as string).getTime()));
   if (reqs.length < 2) return [];
   let min = Infinity, max = -Infinity;
   const ts = reqs.map((e) => { const t = new Date(e.time).getTime(); if (t < min) min = t; if (t > max) max = t; return t; });
@@ -1114,7 +1119,7 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
   const { pods } = usePods();
-  const load = () => api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => setPolicies([])).finally(() => setLoading(false));
+  const load = () => api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => setPolicies([])).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   // Fleet governance: how many running pods each policy governs, and which run
@@ -1300,7 +1305,7 @@ function PodControls({ pod, policies }: { pod: Pod; policies: Policy[] }) {
 function PodDetailView({ name, events, loading }: { name: string; events: Event[]; loading: boolean }) {
   const { pods, hist } = usePods();
   const [policies, setPolicies] = useState<Policy[]>([]);
-  useEffect(() => { api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => {}); }, []);
+  useEffect(() => { api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => {}); }, []);
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
   return (
@@ -1378,8 +1383,8 @@ function CommandPalette({ open, onClose, events }: { open: boolean; onClose: () 
   useEffect(() => {
     if (!open) return;
     setQ(""); setSel(0);
-    api.pods().then((p: Pod[]) => setPods(p || [])).catch(() => {});
-    api.policies().then((p: Policy[]) => setPols(p || [])).catch(() => {});
+    api.pods().then((p) => setPods(asArray<Pod>(p))).catch(() => {});
+    api.policies().then((p) => setPols(asArray<Policy>(p))).catch(() => {});
     const id = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(id);
   }, [open]);

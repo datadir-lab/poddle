@@ -464,3 +464,79 @@ test("pod controls: revokes credentials on a running pod (confirmed)", async ({ 
   await expect(page.locator(".controls__status.ok")).toContainText("Credentials revoked");
   expect(revoked).toBe(true);
 });
+
+// ---- resilience: the console must survive a hostile / failing daemon ----
+test("resilience: every view renders a graceful empty state when the API errors", async ({ page }) => {
+  await page.route("**/v1/**", (r) => r.fulfill({ status: 500, contentType: "text/plain", body: "boom" }));
+  await page.goto("/overview");
+  await expect(page.locator(".sidebar")).toBeVisible();
+  await expect(page.locator(".cards")).toBeVisible(); // rendered the real (empty) view, not stuck on skeletons
+  await expect(page.locator(".skel")).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Pods" }).click();
+  await expect(page.locator("main")).toContainText("No pods running yet");
+  await page.getByRole("link", { name: "Destinations" }).click();
+  await expect(page.locator(".panel.empty")).toBeVisible();
+  await page.getByRole("link", { name: "Policies" }).click();
+  await expect(page.locator(".editor.empty")).toBeVisible();
+});
+
+test("resilience: coerces non-array API responses instead of crashing", async ({ page }) => {
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: { error: "nope" } })); // object, not a list
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: 42 }));                   // a number
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: null }));           // null
+  await page.goto("/overview");
+  await expect(page.locator(".cards")).toBeVisible();
+  await expect(page.locator(".card", { hasText: "requests" }).locator(".card__num")).toHaveText("0");
+  await page.goto("/policies");
+  await expect(page.locator(".layout")).toBeVisible(); // a null policy list does not blow up the view
+});
+
+test("resilience: a failed policy rebind reports an error, not a false success", async ({ page }) => {
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
+    { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+  ] }));
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [
+    { name: "prod", egress: "redact", allow_upstreams: [], deny_upstreams: [], methods: {} },
+    { name: "staging", egress: "redact", allow_upstreams: [], deny_upstreams: [], methods: {} },
+  ] }));
+  await page.route("**/v1/pods/agent1/policy", (r) => r.fulfill({ status: 500, body: "boom" }));
+  await mockAudit(page);
+  await page.goto("/pods/agent1");
+  await page.getByRole("button", { name: "staging" }).click();
+  await page.getByRole("button", { name: "Bind", exact: true }).click();
+  await expect(page.locator(".controls__status.bad")).toContainText("Could not bind");
+});
+
+test("resilience: a failed policy save surfaces the error and does not navigate", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => (r.request().method() === "PUT"
+    ? r.fulfill({ status: 500, body: "boom" })
+    : r.fulfill({ json: [] })));
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+  await page.locator("#pol-name").fill("failpol");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator(".err")).toContainText("Save failed");
+  await expect(page).toHaveURL(/\/policies\/new$/);
+});
+
+test("command palette: shows a no-matches state", async ({ page }) => {
+  await mockAudit(page);
+  await mockPods(page);
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [] }));
+  await page.goto("/overview");
+  await page.keyboard.press("Control+k");
+  await page.locator(".cmdk__input").fill("zzz-nothing-here");
+  await expect(page.locator(".cmdk__empty")).toContainText("No matches");
+});
+
+test("resilience: deep-linking a nonexistent pod shows 'not running', not a crash", async ({ page }) => {
+  await mockPods(page); // agent1 + agent2, no "ghost"
+  await mockAudit(page);
+  await page.goto("/pods/ghost");
+  await expect(page.locator(".detail-title")).toHaveText("ghost");
+  await expect(page.locator(".detail-head")).toContainText("not running");
+});
