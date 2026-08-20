@@ -963,6 +963,34 @@ function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; 
   return { total: reqs.length, denied, rows: [...m.values()].sort((a, b) => b.count - a.count) };
 }
 
+// Starter templates for the most common agent-sandbox postures. Every one
+// deny-lists the cloud metadata endpoints (a top credential-theft target) and
+// defaults to redact (strip secrets the agent tries to send). The operator picks
+// one, then tweaks and saves.
+const META_DENY = ["169.254.169.254", "metadata.google.internal"];
+const POLICY_TEMPLATES: { id: string; label: string; hint: string; policy: Omit<Policy, "name"> }[] = [
+  {
+    id: "provider-only", label: "AI provider only",
+    hint: "Reach the model and nothing else. The tightest useful posture.",
+    policy: { allow_upstreams: ["api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "coding-agent", label: "Coding agent",
+    hint: "Model + GitHub + npm/PyPI/Go. The common CI or task sandbox.",
+    policy: { allow_upstreams: ["api.anthropic.com", ".github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "proxy.golang.org"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "read-only", label: "Read-only GitHub",
+    hint: "Clone and read from GitHub (GET only) plus the model. No pushes.",
+    policy: { allow_upstreams: [".github.com", "api.anthropic.com"], deny_upstreams: META_DENY, methods: { ".github.com": ["GET"] }, egress: "redact" },
+  },
+  {
+    id: "locked-down", label: "Locked down",
+    hint: "Model only, and block all other egress outright — not just redact.",
+    policy: { allow_upstreams: ["api.anthropic.com"], deny_upstreams: META_DENY, methods: {}, egress: "block" },
+  },
+];
+
 // toRows expands a stored policy into builder rows (union of the allow-list and
 // any hosts that carry method restrictions, so nothing is lost on a round-trip).
 function toRows(p: Policy): AllowRow[] {
@@ -990,6 +1018,18 @@ function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { polic
   const patchDeny = (i: number, v: string) => setDenies((d) => d.map((x, j) => (j === i ? v : x)));
   const addDeny = () => setDenies((d) => [...d, ""]);
   const removeDeny = (i: number) => setDenies((d) => d.filter((_, j) => j !== i));
+
+  // Templates offer a starting point on a fresh policy; picking one fills the
+  // builder (and the operator can then rename/tweak). Shown only while blank.
+  const isNew = !policy.name;
+  const blank = !name && allows.length === 0 && denies.length === 0;
+  const applyTemplate = (t: (typeof POLICY_TEMPLATES)[number]) => {
+    setName(t.id);
+    setAllows(toRows({ name: t.id, ...t.policy }));
+    setDenies(t.policy.deny_upstreams || []);
+    setEgress(t.policy.egress || "redact");
+    setErr("");
+  };
 
   // Assemble the (unsaved) policy from the builder rows — shared by save + dry-run.
   const draft = (): Policy => {
@@ -1021,6 +1061,20 @@ function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { polic
 
   return (
     <div class="editor">
+      {isNew && blank && (
+        <div class="templates">
+          <div class="templates__label">Start from a template</div>
+          <div class="templates__grid">
+            {POLICY_TEMPLATES.map((t) => (
+              <button type="button" key={t.id} class="tmpl" onClick={() => applyTemplate(t)}>
+                <span class="tmpl__name">{t.label}</span>
+                <span class="tmpl__hint">{t.hint}</span>
+              </button>
+            ))}
+          </div>
+          <div class="templates__or">or build one from scratch below</div>
+        </div>
+      )}
       <div class="row">
         <div>
           <label for="pol-name">Name</label>
