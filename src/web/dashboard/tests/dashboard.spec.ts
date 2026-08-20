@@ -281,6 +281,42 @@ test("policies: the new-policy form is not wiped by background polls", async ({ 
   await expect(page.locator(".rule__host").first()).toHaveValue("api.example.com");
 });
 
+test("policies: a starter template pre-fills the visual builder and dry-runs against recent egress", async ({ page }) => {
+  // The coding-agent template deny-lists the cloud metadata endpoints; the audit
+  // tail below hits both, so applying it must surface those denials in the dry-run.
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 3, time: t, pod: "a", kind: "request", upstream: "api.anthropic.com", method: "POST" },       // allowed
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "metadata.google.internal", method: "GET" }, // deny-listed by the template
+    { seq: 1, time: t, pod: "a", kind: "request", upstream: "169.254.169.254", method: "GET" },          // deny-listed by the template
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // A blank new policy offers starter templates; picking one fills the builder.
+  await expect(page.locator(".tmpl")).toHaveCount(4);
+  await page.getByRole("button", { name: /Coding agent/ }).click();
+
+  // Name, allow-list, and the metadata deny-list all populate from the template.
+  await expect(page.locator("#pol-name")).toHaveValue("coding-agent");
+  await expect(page.locator("input[aria-label='Allowed host']")).toHaveCount(6);
+  await expect(page.locator("input[aria-label='Allowed host']").first()).toHaveValue("api.anthropic.com");
+  await expect(page.locator("input[aria-label='Blocked host']")).toHaveCount(2);
+
+  // The picker collapses once the builder is no longer blank.
+  await expect(page.locator(".tmpl")).toHaveCount(0);
+
+  // The live dry-run replays the template over recent egress: both metadata hits are denied.
+  await expect(page.locator(".dryrun")).toContainText("2 would be denied");
+  await expect(page.locator(".dryrun__list")).toContainText("metadata.google.internal");
+  await expect(page.locator(".dryrun__list")).toContainText("169.254.169.254");
+  await expect(page.locator(".dryrun__list")).not.toContainText("api.anthropic.com"); // allowed
+});
+
 test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
   // A running pod with no policy (ungoverned) + one governed by "prod".
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [

@@ -567,6 +567,16 @@ td.perf { text-align: right; white-space: nowrap; }
 .addrow { align-self: flex-start; font: 600 0.82rem/1 var(--font-sans); color: var(--accent); background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: var(--radius-sm); padding: 0.5rem 0.8rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
 .addrow:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: var(--accent); }
 
+/* ---- policy starter templates ---- */
+.templates { margin-bottom: 1.6rem; }
+.templates__label { font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.6rem; }
+.templates__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+.tmpl { display: flex; flex-direction: column; gap: 0.25rem; text-align: left; padding: 0.75rem 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bone); cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+.tmpl:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tmpl__name { font: 600 0.9rem/1.2 var(--font-sans); color: var(--ink); }
+.tmpl__hint { font-size: 0.78rem; line-height: 1.45; color: var(--faint); }
+.templates__or { margin-top: 0.7rem; font-size: 0.8rem; color: var(--faint); }
+
 .actions { display: flex; gap: 0.6rem; margin-top: 1.5rem; }
 .btn {
   font: 600 0.9rem/1 var(--font-sans);
