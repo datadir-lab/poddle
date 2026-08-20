@@ -440,11 +440,18 @@ function relTime(iso: string): string {
 }
 
 // ---- views ----
+// VerifyBadge is the at-a-glance provenance signal. It links to the Audit view,
+// where the integrity panel explains the hash-chain in full; the tooltip gives
+// the short version on hover.
 function VerifyBadge({ v }: { v: Verify }) {
-  if (!v) return <span class="badge">verifying…</span>;
-  return v.ok
-    ? <span class="badge ok">chain intact ✓</span>
-    : <span class="badge bad">chain broken @{v.brokenAt} ✗</span>;
+  const cls = v == null ? "badge" : v.ok ? "badge ok" : "badge bad";
+  const label = v == null ? "verifying…" : v.ok ? "chain intact ✓" : `chain broken @${v.brokenAt} ✗`;
+  const title = v == null
+    ? "Checking the audit hash-chain…"
+    : v.ok
+      ? "Every audit event is hash-linked to the one before it, so any edit or deletion is detectable. Intact = nothing was tampered with. Click for details."
+      : `The audit hash-chain is broken at event #${v.brokenAt}: a row was altered or removed. Click for details.`;
+  return <a class={cls} href="/audit" title={title} onClick={linkTo("/audit")}>{label}</a>;
 }
 
 // IntegrityPanel is the provenance centerpiece of the Audit view: it states the
