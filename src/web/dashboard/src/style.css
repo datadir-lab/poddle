@@ -538,13 +538,15 @@ td.perf { text-align: right; white-space: nowrap; }
 /* ---- visual policy builder (destination rows + per-host method toggles) ---- */
 .rules { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.35rem; }
 .rules__empty { margin: 0.1rem 0; font-size: 0.84rem; color: var(--faint); }
-.rule { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bone); }
+.rule { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bone); transition: border-color 0.12s; }
+.rule:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .rule__row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.4rem 0.3rem 0.55rem; }
 .rule__host { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.85rem; border: 0; background: transparent; padding: 0.32rem 0.2rem; }
 .rule__host:focus { outline: none; border: 0; }
 .rule__limit { flex: none; font: 500 0.76rem/1 var(--font-sans); color: var(--faint); background: transparent; border: 0; cursor: pointer; white-space: nowrap; }
 .rule__limit:hover { color: var(--accent); }
-.rule__msum { flex: none; font: 500 0.74rem/1 var(--mono); color: var(--accent); white-space: nowrap; }
+.rule__msum { flex: none; font: 500 0.74rem/1 var(--mono); color: var(--accent); white-space: nowrap; cursor: pointer; padding: 0.26rem 0.55rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.rule__msum:hover { background: color-mix(in srgb, var(--accent) 17%, transparent); }
 .rule__rm { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.15rem; line-height: 1; color: var(--faint); background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; }
 .rule__rm:hover { color: var(--deny); background: color-mix(in srgb, var(--deny) 9%, transparent); }
 .rule__methods { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem; padding: 0 0.5rem 0.5rem 0.55rem; }
@@ -552,7 +554,9 @@ td.perf { text-align: right; white-space: nowrap; }
 .mchip { font: 600 0.72rem/1 var(--mono); color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 0.28rem 0.55rem; cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s; }
 .mchip:hover { border-color: var(--faint); color: var(--ink); }
 .mchip.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-.rule__mclear { font: 500 0.72rem/1 var(--font-sans); color: var(--faint); background: transparent; border: 0; cursor: pointer; margin-left: 0.2rem; }
+.rule__mdone { font: 600 0.72rem/1 var(--font-sans); color: var(--accent); background: transparent; border: 0; cursor: pointer; margin-left: 0.35rem; }
+.rule__mdone:hover { text-decoration: underline; }
+.rule__mclear { font: 500 0.72rem/1 var(--font-sans); color: var(--faint); background: transparent; border: 0; cursor: pointer; }
 .rule__mclear:hover { color: var(--ink); }
 .addrow { align-self: flex-start; font: 600 0.82rem/1 var(--font-sans); color: var(--accent); background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: var(--radius-sm); padding: 0.5rem 0.8rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
 .addrow:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: var(--accent); }

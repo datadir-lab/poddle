@@ -963,7 +963,7 @@ function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; 
 function toRows(p: Policy): AllowRow[] {
   const m = p.methods || {};
   const hosts = [...new Set([...(p.allow_upstreams || []), ...Object.keys(m)])];
-  return hosts.map((h) => ({ host: h, methods: m[h] || [], open: (m[h] || []).length > 0 }));
+  return hosts.map((h) => ({ host: h, methods: m[h] || [], open: false }));
 }
 
 function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; events: Event[]; onSaved: (name: string) => void; onDeleted: () => void }) {
@@ -1027,18 +1027,19 @@ function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; 
             <div class="rule__row">
               <input class="rule__host" value={r.host} placeholder="api.example.com" aria-label="Allowed host"
                 onInput={(e) => patchAllow(i, { host: (e.target as HTMLInputElement).value })} />
-              {!r.open && r.methods.length === 0
-                ? <button type="button" class="rule__limit" onClick={() => patchAllow(i, { open: true })}>＋ limit methods</button>
-                : <span class="rule__msum">{r.methods.length ? r.methods.join(", ") : "any method"}</span>}
+              {!r.open && (r.methods.length
+                ? <button type="button" class="rule__msum" title={"Limited to " + r.methods.join(", ") + " — click to edit"} onClick={() => patchAllow(i, { open: true })}>{r.methods.length > 3 ? r.methods.length + " methods" : r.methods.join(", ")}</button>
+                : <button type="button" class="rule__limit" onClick={() => patchAllow(i, { open: true })}>＋ limit methods</button>)}
               <button type="button" class="rule__rm" aria-label="Remove destination" onClick={() => removeAllow(i)}>×</button>
             </div>
-            {(r.open || r.methods.length > 0) && (
+            {r.open && (
               <div class="rule__methods">
                 <span class="rule__mlabel">Allow only:</span>
                 {HTTP_METHODS.map((m) => (
                   <button type="button" key={m} class={"mchip" + (r.methods.includes(m) ? " on" : "")} aria-pressed={r.methods.includes(m)} onClick={() => toggleMethod(i, m)}>{m}</button>
                 ))}
-                <button type="button" class="rule__mclear" onClick={() => patchAllow(i, { methods: [], open: false })}>Any method</button>
+                <button type="button" class="rule__mdone" onClick={() => patchAllow(i, { open: false })}>Done</button>
+                {r.methods.length > 0 && <button type="button" class="rule__mclear" onClick={() => patchAllow(i, { methods: [], open: false })}>Clear</button>}
               </div>
             )}
           </div>
@@ -1091,7 +1092,7 @@ function PolicyEditor({ policy, events, onSaved, onDeleted }: { policy: Policy; 
         <button class="btn btn--primary" onClick={save}>Save</button>
         {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
       </div>
-      <div class="hint">Reference from a pod: <code>poddle up --policy {name || "&lt;name&gt;"}</code>, or <code>policy = "{name || "&lt;name&gt;"}"</code> in a template.</div>
+      <div class="hint">Reference from a pod: <code>poddle up --policy {name || "<name>"}</code>, or <code>policy = "{name || "<name>"}"</code> in a template.</div>
     </div>
   );
 }
