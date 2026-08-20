@@ -212,6 +212,7 @@ const ICONS: Record<string, () => any> = {
   ban: () => (<><circle cx="12" cy="12" r="10" /><path d="m4.9 4.9 14.2 14.2" /></>),
   check: () => (<path d="M20 6 9 17l-5-5" />),
   octagon: () => (<><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>),
+  panel: () => (<><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" /></>),
 };
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const draw = ICONS[name];
@@ -443,7 +444,7 @@ function relTime(iso: string): string {
 // VerifyBadge is the at-a-glance provenance signal. It links to the Audit view,
 // where the integrity panel explains the hash-chain in full; the tooltip gives
 // the short version on hover.
-function VerifyBadge({ v }: { v: Verify }) {
+function VerifyBadge({ v, compact }: { v: Verify; compact?: boolean }) {
   const cls = v == null ? "badge" : v.ok ? "badge ok" : "badge bad";
   const label = v == null ? "Verifying…" : v.ok ? "Chain intact ✓" : `Chain broken @${v.brokenAt} ✗`;
   const tip = v == null
@@ -453,6 +454,13 @@ function VerifyBadge({ v }: { v: Verify }) {
       : `The audit hash-chain is broken at event #${v.brokenAt}: a row was altered or removed. Click to open the audit trail.`;
   // aria-label pins the accessible name (the CSS tooltip's ::after text would
   // otherwise fold into it); the visual tooltip carries the fuller explanation.
+  if (compact) {
+    return (
+      <a class={cls + " badge--icon"} href="/audit" title={label} aria-label={label} onClick={linkTo("/audit")}>
+        <Icon name={v && !v.ok ? "octagon" : "policies"} size={15} />
+      </a>
+    );
+  }
   return <a class={cls} href="/audit" data-tip={tip} aria-label={label} onClick={linkTo("/audit")}>{label}</a>;
 }
 
@@ -1092,23 +1100,24 @@ const PAGE: Record<string, { title: string; sub: string }> = {
   policies: { title: "Policies", sub: "The egress rules your pods run under." },
 };
 
-function Sidebar({ active, v }: { active: string; v: Verify }) {
+function Sidebar({ active, v, collapsed }: { active: string; v: Verify; collapsed: boolean }) {
   return (
     <aside class="sidebar">
-      <a class="brand" href="/overview" onClick={linkTo("/overview")}>
+      <a class="brand" href="/overview" aria-label="poddle" onClick={linkTo("/overview")}>
         <PoddleMark size={27} />
         <span class="brand__name">poddle</span>
       </a>
       <nav class="nav" aria-label="Primary">
         {NAV.map((it) => (
           <a key={it.key} href={it.to} class={"nav__i" + (active === it.key ? " on" : "")}
+            title={collapsed ? it.label : undefined}
             aria-current={active === it.key ? "page" : undefined} onClick={linkTo(it.to)}>
             <Icon name={it.icon} size={17} /><span>{it.label}</span>
           </a>
         ))}
       </nav>
       <div class="sidebar__foot">
-        <VerifyBadge v={v} />
+        <VerifyBadge v={v} compact={collapsed} />
         <ThemeToggle />
       </div>
     </aside>
@@ -1269,12 +1278,28 @@ function App() {
   const vf = useVerify();
   const active = route.view === "pod" ? "pods" : route.view;
   const page = PAGE[active] || PAGE.overview;
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("poddle-sidebar") === "collapsed"; } catch { return false; }
+  });
+  const toggleRail = () => setCollapsed((c) => {
+    const n = !c;
+    try { localStorage.setItem("poddle-sidebar", n ? "collapsed" : "expanded"); } catch {}
+    return n;
+  });
+
+  // Reflect the section in the tab title so history/tab-switching are legible.
+  const docName = route.view === "pod" ? route.name : page.title;
+  useEffect(() => { document.title = "poddle · " + docName; }, [docName]);
 
   return (
-    <div class="app">
-      <Sidebar active={active} v={vf.verify} />
+    <div class={"app" + (collapsed ? " app--collapsed" : "")}>
+      <Sidebar active={active} v={vf.verify} collapsed={collapsed} />
       <div class="content">
         <header class="topbar">
+          <button class="rail-toggle" type="button" aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={toggleRail}>
+            <Icon name="panel" size={18} />
+          </button>
           <div class="topbar__head">
             <h1 class="topbar__title">{page.title}</h1>
             <p class="topbar__sub">{page.sub}</p>

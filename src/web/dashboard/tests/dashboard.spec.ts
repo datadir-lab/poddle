@@ -250,6 +250,29 @@ test("pod controls: rebinds a policy to a running pod (confirmed, real body POST
   expect(bound?.name).toBe("staging"); // the full policy definition was posted
 });
 
+test("chrome: sidebar collapses/expands (persisted) and the tab title tracks the route", async ({ page }) => {
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/overview");
+  await expect(page).toHaveTitle(/poddle . Overview/);
+  await expect(page.locator(".app")).not.toHaveClass(/app--collapsed/);
+
+  // Collapse; nav links stay reachable by accessible name even when labels hide.
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(page.locator(".app")).toHaveClass(/app--collapsed/);
+  await expect(page.getByRole("link", { name: "Pods" })).toBeVisible();
+
+  // Persists across a reload (localStorage).
+  await page.reload();
+  await expect(page.locator(".app")).toHaveClass(/app--collapsed/);
+
+  // Expand again, and the tab title follows navigation.
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(page.locator(".app")).not.toHaveClass(/app--collapsed/);
+  await page.getByRole("link", { name: "Audit" }).click();
+  await expect(page).toHaveTitle(/poddle . Audit/);
+});
+
 test("destinations: aggregates egress by host, flags denials, and drills into the audit", async ({ page }) => {
   await mockAudit(page); // SEED: api.anthropic.com (allow + redact), metadata.google.internal (deny)
   await mockPods(page);
