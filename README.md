@@ -1,5 +1,7 @@
 <div align="center">
 
+<br>
+
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
