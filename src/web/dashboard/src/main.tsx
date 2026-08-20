@@ -301,7 +301,7 @@ function rowKey(onClick: () => void) {
 // immediate effect — the right pattern for egress mode and the audit filter,
 // and it keeps the bundle dependency-free for go:embed. An option's `tone`
 // colors the active segment by its meaning (e.g. block = deny-red).
-type SegOption = { value: string; label: string; tone?: string };
+type SegOption = { value: string; label: string; tone?: string; badge?: string | number };
 function Segmented({ value, options, onChange, ariaLabel }: {
   value: string; options: SegOption[]; onChange: (v: string) => void; ariaLabel: string;
 }) {
@@ -321,7 +321,7 @@ function Segmented({ value, options, onChange, ariaLabel }: {
           tabIndex={i === idx ? 0 : -1}
           class={"seg__opt" + (value === o.value ? " on" : "")}
           onClick={() => onChange(o.value)}>
-          {o.label}
+          {o.label}{o.badge != null && <span class="seg__badge" aria-hidden="true">{o.badge}</span>}
         </button>
       ))}
     </div>
@@ -469,7 +469,7 @@ function AuditView({ events, initialPod, loading, status }: { events: Event[]; i
     return c;
   }, [matched]);
   const shown = useMemo(() => (decision ? matched.filter((e) => e.decision === decision) : matched), [matched, decision]);
-  const decisionOpts = DECISION_FILTER.map((o) => ({ ...o, label: `${o.label} ${counts[o.value] ?? 0}` }));
+  const decisionOpts = DECISION_FILTER.map((o) => ({ ...o, badge: counts[o.value] ?? 0 }));
 
   const toolbar = (
     <div class="toolbar">

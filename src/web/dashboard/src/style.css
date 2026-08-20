@@ -325,6 +325,10 @@ td.perf { text-align: right; white-space: nowrap; }
 .btn--sm { padding: 0.42rem 0.7rem; font-size: 0.8rem; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
+/* count badge inside a segmented option (aria-hidden - the label carries meaning) */
+.seg__badge { margin-left: 0.4rem; font-size: 0.82em; opacity: 0.65; font-variant-numeric: tabular-nums; }
+.seg__opt.on .seg__badge { opacity: 0.85; }
+
 /* keyboard-operable clickable rows */
 tr.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
