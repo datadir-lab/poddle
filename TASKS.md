@@ -14,15 +14,25 @@ interactive identity selection. Verified end-to-end against real podman and the
 real Claude Code CLI (mock upstream, sentinel secret): the pod only ever holds a
 handle, and the upstream only ever sees the real credential.
 
-## Phase 2 - poddled + reattach
+## Phase 2 - poddled + reattach (shipped)
 
-- [ ] poddled service skeleton (unix socket, start/stop).
-- [ ] Move the broker into poddled (persistent, host-side).
-- [ ] Assigned identity: pod-lifetime creds. Close the client, the agent keeps
-      running, reattach later.
-- [ ] Remote pods + reverse-tunnel egress from pod to broker.
-- [ ] Full-flow e2e (testcontainers): `up` -> agent calls through broker ->
-      `down`; handle revoked on down; no secret in pod env.
+- [x] poddled service skeleton (unix socket, start/stop).
+- [x] Move the broker into poddled (persistent, host-side).
+- [x] Assigned identity: pod-lifetime creds. Close the client, the agent keeps
+      running, reattach later (`up --detach` + `attach`; handles live until `down`).
+- [x] Remote pods via podman's `--url ssh://` transport (a pod on a remote host).
+- [ ] Reverse-tunnel egress from a remote pod back to the broker — still pending;
+      the remote harness/e2e is stubbed.
+- [x] Full-flow e2e (real podman): `up` -> agent calls through broker -> `down`;
+      handle revoked on down; no secret in pod env.
+
+Also shipped in this phase, beyond the original list: the **L4 datastore broker**
+(a pod reaches real Redis/Postgres with only a handle — the broker re-auths with
+the real credential, incl. Postgres SCRAM/md5, and splices), a **tamper-evident
+audit log** (`daemon audit`, hash-chain `--verify`), the **forward proxy** that
+governs a pod's arbitrary egress by policy, and **dynamic vertical sizing**
+(`resize`, reactive autoscale, `move` live-migrate). A local **observability
+dashboard** (audit stream, policy, destinations) is in active development.
 
 ## Phase 3 - Collaboration
 
