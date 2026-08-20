@@ -12,6 +12,12 @@ pre-commit:
     gofmt:
       glob: "*.go"
       run: sh scripts/gofmt-check.sh {staged_files}
+    # Keep the README/site terminal demo in sync with its (deterministic) generator.
+    # The dashboard screenshot is browser-rendered, so it's refreshed with `task
+    # assets` and guarded in CI instead of on every commit.
+    demo-svg:
+      glob: "docs/demo/{gen-svg,build}.{js,mjs}"
+      run: node docs/demo/build.mjs && git add .github/assets/demo.svg src/web/site/public/demo.svg
 
 commit-msg:
   commands:
