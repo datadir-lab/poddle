@@ -36,6 +36,11 @@ stack (git host, CI, registries, databases), with **no real secret inside the
 pod**. The agent gets a revocable *handle*; a broker on your host holds the real
 credential and swaps it in on the wire. Revoke a pod and its access dies at once.
 
+<p align="center">
+  <img src=".github/assets/demo.svg" width="820"
+       alt="Terminal demo: poddle identity add stores a login on your host; poddle task runs a coding agent headless in a fresh pod with no secrets mounted; poddle ls shows the running pod; poddled audit shows each brokered request allowed or denied by policy, with an intact hash-chained audit log." />
+</p>
+
 ```bash
 poddle up                       # interactive secretless sandbox
 poddle task "add tests for X"   # run an agent headless, to completion
