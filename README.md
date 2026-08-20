@@ -1,3 +1,10 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+  <img src=".github/assets/logo.svg" alt="poddle" width="104">
+</picture>
+
 # poddle
 
 **Self-hostable, secret-safe dev sandboxes for coding agents.**
@@ -9,6 +16,18 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14171/badge)](https://www.bestpractices.dev/projects/14171)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
 
+[**Website**](https://poddle.dev) · [**Quickstart**](#quickstart) · [**How it works**](#how-it-works) · [**Docs**](https://poddle.dev/docs)
+
+</div>
+
+<p align="center">
+  <img src=".github/assets/dashboard-audit.png" width="860"
+       alt="poddle dashboard audit log: every brokered request with an allow, redact, deny, or block decision" />
+</p>
+
+<p align="center"><i>Every request a pod makes is brokered, attributed, and policy-checked &mdash; the real secret never leaves your host.</i></p>
+
+---
 
 `poddle up` spins an isolated, reproducible pod on your own infra, wired to your
 stack (git host, CI, registries, databases), with **no real secret inside the
@@ -53,6 +72,16 @@ Requires [podman](https://podman.io) on the host that runs the pods.
 
 ## Quickstart
 
+The fastest path &mdash; sensible defaults, no config:
+
+```bash
+poddle up                                             # secretless sandbox, attached
+poddle task "fix the failing parser test and open a PR"
+```
+
+<details>
+<summary><b>Full setup</b> &mdash; bring your own identities, connectors, and a <code>.poddle.toml</code></summary>
+
 ```bash
 # 1. Add a login for your agent (token via stdin, never argv). Re-auth is
 #    prompted when stale; the real token stays on your machine.
@@ -74,6 +103,8 @@ TOML
 poddle up                       # attach an interactive session
 poddle task "fix the failing parser test and open a PR"
 ```
+
+</details>
 
 Inside the pod, `git`, `psql`, `npm`, and the rest just work, each authenticated
 through the broker with a handle. The real credentials are never present.
@@ -109,7 +140,18 @@ working after the client exits and can be reattached.
 
 New HTTP services are a few lines of declarative TOML, no code.
 
-## Commands
+## Secret-safety
+
+- **`block_paths`**: mounts that would expose host secrets (`~/.ssh`, `~/.aws`,
+  poddle's own token store) are refused before the pod is created.
+- **credential scan**: bind mounts are scanned for `.env`/keys/`.npmrc`; warn by
+  default, or `secret_scan = "block"`.
+- **egress redaction**: the broker scrubs its managed secrets plus
+  high-confidence patterns (private keys, `AKIA...`, `ghp_...`) from outbound
+  bodies (`egress = redact | block | off`).
+
+<details>
+<summary><b>All commands</b></summary>
 
 ```
 poddle up [name]            create a secretless pod and attach (--detach to leave it)
@@ -128,17 +170,12 @@ poddle daemon status        is poddled running? what is it serving?
 poddle version
 ```
 
-## Secret-safety
+</details>
 
-- **`block_paths`**: mounts that would expose host secrets (`~/.ssh`, `~/.aws`,
-  poddle's own token store) are refused before the pod is created.
-- **credential scan**: bind mounts are scanned for `.env`/keys/`.npmrc`; warn by
-  default, or `secret_scan = "block"`.
-- **egress redaction**: the broker scrubs its managed secrets plus
-  high-confidence patterns (private keys, `AKIA...`, `ghp_...`) from outbound
-  bodies (`egress = redact | block | off`).
+<details>
+<summary><b>Sizing, moving &amp; self-hosting</b></summary>
 
-## Sizing
+### Sizing
 
 `size` (weak/strong) is a **CPU ceiling, not a reservation**: idle pods float to
 ~0 and burst to the cap for free, so oversubscription is fine. Resize a running
@@ -151,7 +188,7 @@ without OOMing the pod. The answer to "needs more RAM" is `poddle move` (below),
 not resize. Live memory resize is grow-only and needs cgroup delegation (a
 rootful or systemd-delegated host).
 
-## Moving a session
+### Moving a session
 
 Pods are disposable compute shells; your workspace and agent state live on named
 volumes. `poddle move <pod> --size strong` (or `--image`) re-homes the session
@@ -160,13 +197,16 @@ handles, in seconds (the volumes aren't copied). It's how you get more RAM, swap
 the base image, or recover from a dead pod. `poddle down` removes the shell and
 its volumes.
 
-## Self-host and remote
+### Self-host and remote
 
 `PODDLE_HOST=ssh://user@host` runs pods on a remote machine over the same code
 path. The broker binds an owner-only Unix control socket; credentials live in
 memory (memguard), never on disk.
 
-## Development
+</details>
+
+<details>
+<summary><b>Development</b></summary>
 
 ```
 src/cli/              CLI entry + one vertical slice per command
@@ -185,6 +225,8 @@ task e2e-*    # end-to-end suites (need podman): e2e-up, e2e-connector, e2e-l4, 
 ```
 
 Module `github.com/datadir-lab/poddle`; imports carry the `src/` segment.
+
+</details>
 
 ## License
 
