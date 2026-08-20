@@ -7,8 +7,9 @@ import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
 import {
-  Sparkline, StatCard, SegmentedControl, IntegrityBadge, AuditLogTable, DecisionBadge,
-  summarise, group, cap1,
+  SegmentedControl, IntegrityBadge, AuditLogTable,
+  PodFleetTable, PodDetailPanel, OverviewCards, AttentionPanel, RedactionsTable, PolicyList,
+  summarise, group,
   type SegOption,
 } from "@poddle/ui/views";
 
@@ -161,51 +162,15 @@ const EGRESS_MODES: SegOption[] = [
 function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string) => void }) {
   const { pods: livePods } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
+  const stats = { ...s, pods: livePods.length }; // "pods active" is the LIVE fleet, not audit history
   const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
   const redactions = useMemo(() => group(events, ["redact"]).slice(0, 12), [events]);
 
   return (
     <div>
-      <div class="cards">
-        <StatCard n={livePods.length} label="pods active" />
-        <StatCard n={s.requests} label="requests" />
-        <StatCard n={s.secrets} label="secrets redacted" tone={s.secrets ? "warn" : undefined} />
-        <StatCard n={s.blocked + s.denied} label="blocked / denied" tone={s.blocked + s.denied ? "flag" : undefined} />
-      </div>
-
-      <h2 class="section-title">Attention</h2>
-      {attention.length === 0
-        ? <div class="panel empty">No policy denials or blocks — agents are inside their guardrails.</div>
-        : <div class="panel">
-            {attention.map((a) => (
-              <button class="attn" onClick={() => onPod(a.pod)}>
-                <span class="attn__pod">{a.pod}</span>
-                <span class="attn__desc">
-                  <DecisionBadge decision={a.decision} /> {a.upstream}
-                </span>
-                <span class="attn__count">×{a.count}</span>
-              </button>
-            ))}
-          </div>}
-
-      <h2 class="section-title">Secrets redacted</h2>
-      {redactions.length === 0
-        ? <div class="panel empty">No secrets redacted yet — redact-mode policies strip credentials the agent tries to send.</div>
-        : <div class="table-wrap">
-            <table>
-              <thead><tr><th>pod</th><th>destination</th><th>secrets</th><th>times</th></tr></thead>
-              <tbody>
-                {redactions.map((c) => (
-                  <tr onClick={() => onPod(c.pod)} class="clickable">
-                    <td class="c-pod">{c.pod}</td>
-                    <td class="c-mono">{c.upstream}</td>
-                    <td class="c-mono">{c.secrets}</td>
-                    <td class="c-mono">×{c.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>}
+      <OverviewCards stats={stats} />
+      <AttentionPanel attention={attention} onPod={onPod} />
+      <RedactionsTable redactions={redactions} onPod={onPod} />
     </div>
   );
 }
@@ -213,30 +178,8 @@ function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string)
 function PodsView({ onPod }: { onPod: (pod: string) => void }) {
   const { pods, hist } = usePods();
   return (
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th scope="col">pod</th><th scope="col">state</th><th scope="col">size</th><th scope="col">mode</th><th scope="col">policy</th><th scope="col" class="num">cpu</th><th scope="col" class="num">memory</th></tr>
-        </thead>
-        <tbody>
-          {pods.length === 0 && <tr><td colSpan={7} class="empty">No pods running yet — start one with <code>poddle up</code>.</td></tr>}
-          {pods.map((p) => {
-            const h = hist[p.name] || { cpu: [], mem: [] };
-            return (
-              <tr key={p.name} class="clickable" onClick={() => onPod(p.name)}>
-                <td class="c-pod">{p.name}{p.autoscale && <span class="tag">auto</span>}</td>
-                <td><span class={"state state--" + p.state}>{p.state}</span></td>
-                <td class="c-mono">{cap1(p.size)}</td>
-                <td class="c-mono">{p.mode ? cap1(p.mode) : <span class="faint">—</span>}</td>
-                <td class="c-mono">{p.policy || <span class="faint">—</span>}</td>
-                <td class="perf"><Sparkline data={h.cpu} /><span class="c-mono">{p.cpu || "—"}</span></td>
-                <td class="perf"><Sparkline data={h.mem} /><span class="c-mono">{p.memPerc || "—"}</span></td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <PodFleetTable pods={pods} hist={hist} onPod={onPod}
+      emptyState={<>No pods running yet — start one with <code>poddle up</code>.</>} />
   );
 }
 
@@ -311,13 +254,9 @@ function PolicyView({ selected }: { selected?: string }) {
 
   return (
     <div class="layout">
-      <div class="list">
-        {policies.map((p) => (
-          <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
-            class={selected === p.name ? "on" : ""}>{p.name}</a>
-        ))}
-        <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
-      </div>
+      <PolicyList policies={policies} selectedName={selected}
+        onSelect={(n) => navigate("/policies/" + encodeURIComponent(n))}
+        onNew={() => navigate("/policies/new")} />
       {sel
         ? <PolicyEditor policy={sel}
             onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
@@ -334,42 +273,14 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
 // goPod routes to a pod's drill-down page.
 const goPod = (pod: string) => navigate("/pods/" + encodeURIComponent(pod));
 
-function Fact({ label, children }: { label: string; children: any }) {
-  return <div><dt>{label}</dt><dd>{children}</dd></div>;
-}
-
 function PodDetailView({ name, events }: { name: string; events: Event[] }) {
   const { pods, hist } = usePods();
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
   return (
-    <div>
-      <div class="detail-head">
-        <a href="/pods" class="back" onClick={linkTo("/pods")}>← Pods</a>
-        <h1 class="detail-title">{name}</h1>
-        {pod
-          ? <span class={"state state--" + pod.state}>{pod.state}</span>
-          : <span class="state state--stopped">not running</span>}
-        {pod?.autoscale && <span class="tag">auto</span>}
-      </div>
-
-      {pod && (
-        <dl class="facts">
-          <Fact label="size"><span class="c-mono">{cap1(pod.size)}</span></Fact>
-          <Fact label="mode"><span class="c-mono">{pod.mode ? cap1(pod.mode) : "—"}</span></Fact>
-          <Fact label="policy">
-            {pod.policy
-              ? <a class="fact-link c-mono" href={`/policies/${encodeURIComponent(pod.policy)}`} onClick={linkTo(`/policies/${encodeURIComponent(pod.policy)}`)}>{pod.policy}</a>
-              : <span class="faint">none</span>}
-          </Fact>
-          <Fact label="cpu"><span class="perf-inline"><Sparkline data={h.cpu} /><span class="c-mono">{pod.cpu || "—"}</span></span></Fact>
-          <Fact label="memory"><span class="perf-inline"><Sparkline data={h.mem} /><span class="c-mono">{pod.mem || "—"}</span></span></Fact>
-        </dl>
-      )}
-
-      <h2 class="section-title">Audit trail</h2>
-      <AuditLogTable events={events} initialPod={name} />
-    </div>
+    <PodDetailPanel name={name} pod={pod} hist={h} events={events}
+      onBack={linkTo("/pods")}
+      onPolicyClick={pod?.policy ? linkTo(`/policies/${encodeURIComponent(pod.policy)}`) : undefined} />
   );
 }
 
