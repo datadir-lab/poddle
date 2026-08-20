@@ -92,18 +92,24 @@ const linkTo = (to: string) => (e: MouseEvent) => {
 };
 
 // useAudit: the single live audit source (initial fetch + SSE tail), shared by
-// the Overview and Audit views so there is one subscription.
-function useAudit(): Event[] {
+// the Overview and Audit views so there is one subscription. Exposes the initial
+// loading state and the live-stream connection status.
+type Conn = "connecting" | "live" | "down";
+function useAudit(): { events: Event[]; loading: boolean; status: Conn } {
   const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<Conn>("connecting");
   useEffect(() => {
-    api.audit().then((es: Event[]) => setEvents(es || [])).catch(() => {});
+    api.audit().then((es: Event[]) => setEvents(es || [])).catch(() => {}).finally(() => setLoading(false));
     const src = new EventSource(`${CFG.apiBase}/audit/stream`);
+    src.onopen = () => setStatus("live");
     src.onmessage = (e) => {
       try { const ev = JSON.parse(e.data); setEvents((prev) => [ev, ...prev].slice(0, 4000)); } catch {}
     };
+    src.onerror = () => setStatus("down");
     return () => src.close();
   }, []);
-  return events;
+  return { events, loading, status };
 }
 
 type Verify = { ok: boolean; brokenAt: number } | null;
@@ -121,9 +127,10 @@ function useVerify(): Verify {
 // usePods polls /v1/pods and keeps a rolling CPU/mem history per pod for the
 // sparklines (the browser is the time-series store — no server needed).
 type Hist = Record<string, { cpu: number[]; mem: number[] }>;
-function usePods(): { pods: Pod[]; hist: Hist } {
+function usePods(): { pods: Pod[]; hist: Hist; loading: boolean } {
   const [pods, setPods] = useState<Pod[]>([]);
   const [hist, setHist] = useState<Hist>({});
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     const tick = () => api.pods().then((ps: Pod[]) => {
       setPods(ps || []);
@@ -138,12 +145,12 @@ function usePods(): { pods: Pod[]; hist: Hist } {
         }
         return nh;
       });
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoading(false));
     tick();
     const id = setInterval(tick, 3000);
     return () => clearInterval(id);
   }, []);
-  return { pods, hist };
+  return { pods, hist, loading };
 }
 
 // threshTone maps a live % (of the pod's limit) to a severity tone so the
@@ -236,6 +243,59 @@ function Card({ n, label, tone }: { n: number | string; label: string; tone?: st
   );
 }
 
+// ---- loading & live-status building blocks ----
+// Skeletons fill the brief gap before the first fetch resolves, so a populated
+// account never flashes its empty state on load.
+function SkelCards() {
+  return (
+    <div class="cards" aria-hidden="true">
+      {[0, 1, 2, 3].map((i) => (
+        <div class="card" key={i}><span class="skel skel--num" /><span class="skel skel--sm" /></div>
+      ))}
+    </div>
+  );
+}
+function SkelTable({ rows = 6 }: { rows?: number }) {
+  return (
+    <div class="table-wrap skel-table" aria-hidden="true" aria-busy="true">
+      {Array.from({ length: rows }).map((_, i) => <div class="skel-tr" key={i}><span class="skel" /></div>)}
+    </div>
+  );
+}
+// LiveDot reflects the audit stream's connection: live, reconnecting, or connecting.
+function LiveDot({ status }: { status: Conn }) {
+  const txt = status === "live" ? "Live" : status === "down" ? "Reconnecting" : "Connecting";
+  return (
+    <span class={"live live--" + status} title={"Audit stream: " + txt} role="status">
+      <span class="live__dot" aria-hidden="true" />{txt}
+    </span>
+  );
+}
+
+// CSV export of the (already filtered) audit rows - the "provable, exportable" story.
+function toCsv(rows: Event[]): string {
+  const cols: (keyof Event)[] = ["time", "pod", "kind", "decision", "upstream", "method", "status", "detail"];
+  const esc = (v: unknown) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = rows.map((e) => cols.map((c) => esc(e[c])).join(","));
+  return [cols.join(","), ...lines].join("\n");
+}
+function downloadCsv(rows: Event[]) {
+  const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "poddle-audit.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+// rowKeys makes a table row keyboard-operable (Enter/Space) when it is clickable.
+function rowKey(onClick: () => void) {
+  return (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+  };
+}
+
 // Segmented is an accessible single-select control (role=radiogroup) for a
 // small set of mutually exclusive options that should all stay visible with
 // immediate effect — the right pattern for egress mode and the audit filter,
@@ -281,11 +341,23 @@ const EGRESS_MODES: SegOption[] = [
   { value: "off", label: "Off", tone: "faint" },
 ];
 
-function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string) => void }) {
-  const { pods: livePods } = usePods(); // live fleet, not audit history
+function OverviewView({ events, loading, onPod }: { events: Event[]; loading: boolean; onPod: (pod: string) => void }) {
+  const { pods: livePods, loading: podsLoading } = usePods(); // live fleet, not audit history
   const s = useMemo(() => summarise(events), [events]);
   const attention = useMemo(() => group(events, ["deny", "block"]).slice(0, 8), [events]);
   const redactions = useMemo(() => group(events, ["redact"]).slice(0, 12), [events]);
+
+  if (loading && podsLoading) {
+    return (
+      <div>
+        <SkelCards />
+        <h2 class="section-title">Attention</h2>
+        <SkelTable rows={3} />
+        <h2 class="section-title">Secrets redacted</h2>
+        <SkelTable rows={4} />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -319,7 +391,7 @@ function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string)
               <thead><tr><th>pod</th><th>destination</th><th>secrets</th><th>times</th></tr></thead>
               <tbody>
                 {redactions.map((c) => (
-                  <tr onClick={() => onPod(c.pod)} class="clickable">
+                  <tr class="clickable" tabIndex={0} onClick={() => onPod(c.pod)} onKeyDown={rowKey(() => onPod(c.pod))}>
                     <td class="c-pod">{c.pod}</td>
                     <td class="c-mono">{c.upstream}</td>
                     <td class="c-mono">{c.secrets}</td>
@@ -334,7 +406,8 @@ function OverviewView({ events, onPod }: { events: Event[]; onPod: (pod: string)
 }
 
 function PodsView({ onPod }: { onPod: (pod: string) => void }) {
-  const { pods, hist } = usePods();
+  const { pods, hist, loading } = usePods();
+  if (loading) return <SkelTable rows={5} />;
   return (
     <div class="table-wrap">
       <table>
@@ -346,7 +419,7 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
           {pods.map((p) => {
             const h = hist[p.name] || { cpu: [], mem: [] };
             return (
-              <tr key={p.name} class="clickable" onClick={() => onPod(p.name)}>
+              <tr key={p.name} class="clickable" tabIndex={0} onClick={() => onPod(p.name)} onKeyDown={rowKey(() => onPod(p.name))}>
                 <td class="c-pod">{p.name}{p.autoscale && <span class="tag">auto</span>}</td>
                 <td><span class={"state state--" + p.state}>{p.state}</span></td>
                 <td class="c-mono">{cap1(p.size)}</td>
@@ -363,27 +436,58 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
   );
 }
 
-function AuditView({ events, initialPod }: { events: Event[]; initialPod?: string }) {
+const TIME_RANGES: SegOption[] = [
+  { value: "", label: "All" },
+  { value: "15m", label: "15m" },
+  { value: "1h", label: "1h" },
+  { value: "24h", label: "24h" },
+];
+const RANGE_MS: Record<string, number> = { "15m": 900000, "1h": 3600000, "24h": 86400000 };
+
+function AuditView({ events, initialPod, loading, status }: { events: Event[]; initialPod?: string; loading: boolean; status: Conn }) {
   const [q, setQ] = useState(initialPod || "");
   const [decision, setDecision] = useState("");
+  const [range, setRange] = useState("");
   useEffect(() => { if (initialPod) setQ(initialPod); }, [initialPod]);
 
-  const shown = useMemo(() => events.filter((e) => {
-    if (decision && e.decision !== decision) return false;
-    if (!q) return true;
+  // Narrow by search + time range first; the decision filter is applied last so
+  // the per-decision counts reflect everything else the user has narrowed to.
+  const matched = useMemo(() => {
+    const cutoff = range && RANGE_MS[range] ? Date.now() - RANGE_MS[range] : 0;
     const s = q.toLowerCase();
-    return (e.pod || "").toLowerCase().includes(s) || (e.kind || "").toLowerCase().includes(s) ||
-      (e.upstream || "").toLowerCase().includes(s);
-  }), [events, q, decision]);
+    return events.filter((e) => {
+      if (cutoff && new Date(e.time).getTime() < cutoff) return false;
+      if (!q) return true;
+      return (e.pod || "").toLowerCase().includes(s) || (e.kind || "").toLowerCase().includes(s) ||
+        (e.upstream || "").toLowerCase().includes(s);
+    });
+  }, [events, q, range]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { "": matched.length, allow: 0, redact: 0, block: 0, deny: 0 };
+    for (const e of matched) if (e.decision && e.decision in c) c[e.decision]++;
+    return c;
+  }, [matched]);
+  const shown = useMemo(() => (decision ? matched.filter((e) => e.decision === decision) : matched), [matched, decision]);
+  const decisionOpts = DECISION_FILTER.map((o) => ({ ...o, label: `${o.label} ${counts[o.value] ?? 0}` }));
+
+  const toolbar = (
+    <div class="toolbar">
+      <input class="grow" aria-label="Filter events by pod, kind, or upstream" placeholder="Filter by pod, kind, or upstream…" value={q}
+        onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+      <Segmented value={range} options={TIME_RANGES} onChange={setRange} ariaLabel="time range" />
+      <Segmented value={decision} options={decisionOpts} onChange={setDecision} ariaLabel="filter by decision" />
+      <LiveDot status={status} />
+      <button type="button" class="btn btn--ghost btn--sm" disabled={!shown.length} onClick={() => downloadCsv(shown)}>Export CSV</button>
+      <span class="count">{shown.length} events</span>
+    </div>
+  );
+
+  if (loading) return <div>{toolbar}<SkelTable rows={8} /></div>;
 
   return (
     <div>
-      <div class="toolbar">
-        <input class="grow" aria-label="Filter events by pod, kind, or upstream" placeholder="Filter by pod, kind, or upstream…" value={q}
-          onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
-        <Segmented value={decision} options={DECISION_FILTER} onChange={setDecision} ariaLabel="filter by decision" />
-        <span class="count">{shown.length} events</span>
-      </div>
+      {toolbar}
       <div class="table-wrap">
         <table class="dense">
           <thead>
@@ -392,11 +496,11 @@ function AuditView({ events, initialPod }: { events: Event[]; initialPod?: strin
           <tbody>
             {shown.length === 0 && (
               <tr><td colSpan={6} class="empty">
-                {q || decision ? "No events match your filter." : "Monitoring active — no events recorded yet."}
+                {q || decision || range ? "No events match your filter." : "Monitoring active — no events recorded yet."}
               </td></tr>
             )}
             {shown.slice(0, 800).map((e) => (
-              <tr key={e.seq}>
+              <tr key={e.seq} class="auditrow">
                 <td class="c-time" title={new Date(e.time).toLocaleString()}>{relTime(e.time)}</td>
                 <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
                 <td>{humanKind(e.kind)}</td>
@@ -472,7 +576,8 @@ function PolicyEditor({ policy, onSaved, onDeleted }: { policy: Policy; onSaved:
 
 function PolicyView({ selected }: { selected?: string }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
-  const load = () => api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => setPolicies([]));
+  const [loading, setLoading] = useState(true);
+  const load = () => api.policies().then((ps: Policy[]) => setPolicies(ps || [])).catch(() => setPolicies([])).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   // The selected policy is URL-driven (/policies/:name; "new" is the blank draft).
@@ -484,10 +589,12 @@ function PolicyView({ selected }: { selected?: string }) {
   return (
     <div class="layout">
       <div class="list">
-        {policies.map((p) => (
-          <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
-            class={selected === p.name ? "on" : ""}>{p.name}</a>
-        ))}
+        {loading
+          ? [0, 1, 2].map((i) => <span class="list__skel skel" key={i} aria-hidden="true" />)
+          : policies.map((p) => (
+              <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
+                class={selected === p.name ? "on" : ""}>{p.name}</a>
+            ))}
         <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
       </div>
       {sel
@@ -510,7 +617,7 @@ function Fact({ label, children }: { label: string; children: any }) {
   return <div><dt>{label}</dt><dd>{children}</dd></div>;
 }
 
-function PodDetailView({ name, events }: { name: string; events: Event[] }) {
+function PodDetailView({ name, events, loading, status }: { name: string; events: Event[]; loading: boolean; status: Conn }) {
   const { pods, hist } = usePods();
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
@@ -540,7 +647,7 @@ function PodDetailView({ name, events }: { name: string; events: Event[] }) {
       )}
 
       <h2 class="section-title">Audit trail</h2>
-      <AuditView events={events} initialPod={name} />
+      <AuditView events={events} initialPod={name} loading={loading} status={status} />
     </div>
   );
 }
@@ -570,7 +677,7 @@ function ThemeToggle() {
 
 function App() {
   const route = useRoute();
-  const events = useAudit();
+  const { events, loading: eventsLoading, status: liveStatus } = useAudit();
   const v = useVerify();
   const active = route.view === "pod" ? "pods" : route.view;
 
@@ -590,10 +697,10 @@ function App() {
         <ThemeToggle />
       </header>
       <main>
-        {route.view === "overview" && <OverviewView events={events} onPod={goPod} />}
+        {route.view === "overview" && <OverviewView events={events} loading={eventsLoading} onPod={goPod} />}
         {route.view === "pods" && <PodsView onPod={goPod} />}
-        {route.view === "pod" && <PodDetailView name={route.name} events={events} />}
-        {route.view === "audit" && <AuditView events={events} initialPod={route.pod} />}
+        {route.view === "pod" && <PodDetailView name={route.name} events={events} loading={eventsLoading} status={liveStatus} />}
+        {route.view === "audit" && <AuditView events={events} initialPod={route.pod} loading={eventsLoading} status={liveStatus} />}
         {route.view === "policies" && <PolicyView selected={route.name} />}
       </main>
     </div>
