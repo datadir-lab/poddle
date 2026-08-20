@@ -238,6 +238,32 @@ test("policies: the dry-run applies allow-list, deny-list, per-method, and defau
   await expect(list).toContainText("unlisted.example");         // not allow-listed
 });
 
+test("policies: an existing policy's dry-run is scoped to the pods that run it", async ({ page }) => {
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 3, time: t, pod: "onprod", kind: "request", upstream: "blocked.example", method: "GET" }, // a prod pod -> counts
+    { seq: 2, time: t, pod: "other", kind: "request", upstream: "blocked.example", method: "GET" },  // NOT a prod pod -> must be ignored
+  ];
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
+    { name: "onprod", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+    { name: "other", state: "running", size: "weak", mode: "headless", policy: "readonly", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+  ] }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [
+    { name: "prod", egress: "redact", allow_upstreams: [], deny_upstreams: ["blocked.example"], methods: {} },
+    { name: "readonly", egress: "redact", allow_upstreams: [], deny_upstreams: [], methods: {} },
+  ] }));
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.goto("/policies/prod");
+
+  // Only onprod runs prod, so only its request to the deny-listed host counts —
+  // "other" hits the same host but is ignored. 1 denied, not 2.
+  await expect(page.locator(".dryrun__title")).toContainText("1 pod on this policy");
+  await expect(page.locator(".dryrun")).toContainText("1 would be denied");
+  await expect(page.locator(".dryrun__list li").first()).toContainText("×1");
+});
+
 test("policies: the new-policy form is not wiped by background polls", async ({ page }) => {
   await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await mockAudit(page);
