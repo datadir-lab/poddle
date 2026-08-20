@@ -26,6 +26,10 @@ src/web/site/node_modules/
 src/web/site/dist/
 src/web/site/.astro/
 
+# Canonical pricing is injected from the private poddle-cloud repo at deploy
+# (scripts/sync-pricing.mjs); never commit the generated file.
+src/web/site/src/data/pricing.generated.json
+
 # Dashboard SPA deps (the built bundle IS committed at src/cli/dashboard/dist)
 src/web/dashboard/node_modules/
 src/web/dashboard/test-results/

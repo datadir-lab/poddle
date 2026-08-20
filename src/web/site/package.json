@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
+    "sync-pricing": "node ./scripts/sync-pricing.mjs",
+    "prebuild": "node ./scripts/sync-pricing.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",

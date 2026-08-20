@@ -1,36 +1,53 @@
 {
+  "_comment": "PLACEHOLDER. Canonical pricing lives in the private poddle-cloud repo (pricing/pricing.json) and is injected at deploy as pricing.generated.json by scripts/sync-pricing.mjs. Paid amounts are redacted here ($XX) on purpose so no commercial pricing lives in the AGPL repo; the layout is otherwise faithful.",
   "currency": "USD",
   "tiers": [
     {
-      "name": "Solo",
-      "tag": "For one developer kicking the tires.",
+      "name": "Free",
+      "tag": "Self-host the open-source core.",
       "amount": "$0",
-      "period": "free forever",
-      "note": "",
+      "period": "self-hosted",
+      "note": "AGPL-3.0, run it yourself",
       "featured": false,
-      "cta": { "label": "Start free", "href": "/cloud", "variant": "ghost" },
+      "cta": { "label": "Read the docs", "href": "/docs", "variant": "ghost" },
       "feats": [
-        "1 identity",
-        "Up to 2 pods at once",
         "Secretless broker + revocable handles",
-        "Forge, pipeline & registry connectors",
+        "Forge, pipeline, registry & database connectors",
+        "Full audit trail on your own infra",
+        "Bring your own compute",
         "Community support"
+      ]
+    },
+    {
+      "name": "Pro",
+      "tag": "For one developer who wants it hosted.",
+      "amount": "$XX",
+      "period": "per developer / month",
+      "note": "billed annually - 14-day free trial",
+      "featured": false,
+      "cta": { "label": "Start free trial", "href": "/cloud", "variant": "ghost" },
+      "feats": [
+        "Hosted broker - nothing to run",
+        "Unlimited identities",
+        "Every connector, plus write-your-own",
+        "Full audit trail, hosted",
+        "Bring your own compute",
+        "Email support"
       ]
     },
     {
       "name": "Team",
       "tag": "For teams shipping with coding agents.",
-      "amount": "$20",
+      "amount": "$XX",
       "period": "per developer / month",
-      "note": "billed annually - or $25 monthly",
+      "note": "billed annually - 3 seats minimum",
       "featured": true,
       "cta": { "label": "Start a team", "href": "/cloud", "variant": "primary" },
       "feats": [
-        "Everything in Solo",
-        "Unlimited identities",
-        "Parallel pods that burst & scale",
-        "Every connector, plus write-your-own",
-        "Per-user policy & full audit trail",
+        "Everything in Pro",
+        "Per-user policy & RBAC",
+        "Team audit-log export",
+        "SSO (Google, GitHub)",
         "Share pods with per-person identity",
         "Priority support"
       ]
@@ -48,22 +65,18 @@
         "SSO / SCIM & SAML",
         "DORA & AI-Act compliance controls",
         "Audit-log export & retention",
-        "SLA & dedicated support",
-        "Custom pod ceilings & invoicing"
+        "On-prem / air-gapped option",
+        "SLA & dedicated support"
       ]
     }
   ],
   "podCompute": {
     "managed": {
-      "heading": "Managed cloud pods",
-      "sub": "We run them - billed per second, scale-to-zero when idle. A small margin over raw cloud, so there's no capacity for you to manage.",
-      "rates": [
-        { "size": "Small", "specs": "2 vCPU / 4 GB", "price": "$0.19", "unit": "/hr" },
-        { "size": "Medium", "specs": "4 vCPU / 8 GB", "price": "$0.38", "unit": "/hr" },
-        { "size": "Large", "specs": "8 vCPU / 16 GB", "price": "$0.75", "unit": "/hr" },
-        { "size": "XL", "specs": "16 vCPU / 32 GB", "price": "$1.50", "unit": "/hr" }
-      ],
-      "note": "Suspended pods bill storage only (~$0.10/GB-month). Regions across AWS, GCP, Hetzner & Fly.io. Team seats include 60 pod-hours/developer each month."
+      "comingSoon": true,
+      "heading": "Managed pods",
+      "sub": "Coming soon. We run the pods for you on EU infrastructure, metered per second with scale-to-zero when idle. Join the waitlist and we will tell you when it lands.",
+      "cta": { "label": "Join the waitlist", "href": "mailto:hello@datadir.co?subject=Managed%20pods%20waitlist", "variant": "ghost" },
+      "note": "Until then, bring your own compute - you keep full control and pay your provider directly."
     },
     "byo": {
       "heading": "Bring your own compute",
@@ -89,15 +102,15 @@
     },
     {
       "q": "Do I pay poddle for compute?",
-      "a": "Only for managed pods - metered at a small margin over raw cloud, billed per second with scale-to-zero when idle. Bring your own cloud or self-hosted compute and you pay that provider directly; poddle just brokers the credentials."
+      "a": "No. Bring your own cloud or self-hosted compute and you pay that provider directly; poddle charges a per-developer fee for the hosted broker, identities, and audit trail. Managed pods, where we run the compute, are coming later."
     },
     {
       "q": "Can I self-host the broker?",
-      "a": "Yes. poddle is open source - run the broker on your own infrastructure and the raw secret stays in a vault you control. Most teams pick the managed cloud so there is no control plane to operate; the guarantees are identical either way."
+      "a": "Yes. The core is open source (AGPL-3.0) - self-host it free and the raw secret stays in a vault you control. The hosted cloud is the same broker with nothing for you to operate."
     },
     {
-      "q": "Is there a trial for Team?",
-      "a": "Yes - 14 days, no card. Your pods and identities carry straight over if you keep going."
+      "q": "Is there a trial?",
+      "a": "Yes - 14 days on Pro or Team, no card to start. Your pods and identities carry over if you keep going."
     }
   ]
 }

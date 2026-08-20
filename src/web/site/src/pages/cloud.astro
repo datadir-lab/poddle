@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Button from '../components/Button.astro';
-import pricing from '../data/pricing.json';
+import { pricing } from '../data/pricing';
 import legal from '../data/legal.json';
 
 const managed = pricing.podCompute.managed;
@@ -13,8 +13,8 @@ const runFor = [
     p: 'The broker and its sealed vault, run and hardened by us. One audited place to govern access - nothing for you to deploy, patch, or babysit.',
   },
   {
-    h: 'Managed pods',
-    p: 'Isolated, disposable pods on our cloud, metered per second with scale-to-zero when idle. Burst to a stronger shell for a headless task and drop back after.',
+    h: 'Your compute, brokered',
+    p: 'Run pods on your own cloud or self-hosted runners. The broker injects credentials on the wire, so you keep the compute and the data. Managed pods, where we run them, are coming later.',
   },
   {
     h: 'Identities, policy & audit',
@@ -34,15 +34,15 @@ const runFor = [
     <p class="eyebrow">poddle cloud</p>
     <h1 class="cl-title">The secretless broker, fully managed.</h1>
     <p class="cl-lead">
-      Full access, zero secrets - without running a thing. We host the broker, the sealed vault,
-      and your pods, so there is no control plane to operate and no capacity to babysit. poddle is
-      open source, so you can self-host any time; in the cloud you are productive in minutes.
+      Full access, zero secrets - without running a thing. We host the broker and the sealed
+      vault, so there is no control plane to operate. Pods run on your own compute; poddle is
+      open source, so you can self-host any time. In the cloud you are productive in minutes.
     </p>
     <div class="cl-cta">
       <Button href={early} variant="primary">Start free</Button>
       <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">&rarr;</span></Button>
     </div>
-    <p class="cl-note">poddle cloud is in early access. Free tier at launch, no credit card.</p>
+    <p class="cl-note">poddle cloud is in early access. 14-day free trial at launch, no card to start.</p>
   </section>
 
   <section class="container cl-body">
@@ -63,15 +63,15 @@ const runFor = [
       <div class="cl-choice">
         <div class="cl-opt cl-opt--f">
           <span class="cl-opt__badge">Recommended</span>
-          <h3 class="cl-opt__h">Managed cloud</h3>
-          <p class="cl-opt__sub">We run everything. You get productive agents in minutes.</p>
+          <h3 class="cl-opt__h">Hosted control plane</h3>
+          <p class="cl-opt__sub">We run the broker and vault. You get productive agents in minutes, on your own compute.</p>
           <ul class="cl-feats">
-            <li>Hosted broker, vault, and pods</li>
-            <li>Per-second pods, scale-to-zero when idle</li>
+            <li>Hosted broker and sealed vault</li>
+            <li>Identities, policy, and audit trail</li>
             <li>Upgrades, backups, and uptime on us</li>
-            <li>Free tier at launch, no credit card</li>
+            <li>14-day free trial, no card to start</li>
           </ul>
-          <div class="cl-opt__cta"><Button href={early} variant="primary">Start free</Button></div>
+          <div class="cl-opt__cta"><Button href={early} variant="primary">Start free trial</Button></div>
         </div>
         <div class="cl-opt">
           <h3 class="cl-opt__h">Self-host</h3>
@@ -88,20 +88,15 @@ const runFor = [
     </div>
 
     <div class="cl-block">
-      <p class="ilabel">Managed pod pricing</p>
+      <p class="ilabel">Managed pods</p>
       <p class="cl-prose">
-        Pods are metered per second at a small margin over raw cloud, so there is no capacity for
-        you to manage. Bring your own compute instead and you pay your provider directly.
+        Coming soon. We will run the pods for you on EU infrastructure, metered per second with
+        scale-to-zero when idle. Until then, bring your own compute and you pay your provider
+        directly - same broker, identities, and audit trail.
       </p>
-      <ul class="cl-rates">
-        {managed.rates.map((r) => (
-          <li>
-            <span class="cl-rates__size">{r.size} &middot; {r.specs}</span>
-            <span class="cl-rates__price">{r.price}<span>{r.unit}</span></span>
-          </li>
-        ))}
-      </ul>
-      <p class="cl-prose cl-prose--dim">{managed.note}</p>
+      {managed.cta && (
+        <div class="cl-cta"><Button href={managed.cta.href} variant="ghost">{managed.cta.label}</Button></div>
+      )}
       <p class="conn-more"><a href="/pricing">See full pricing &rarr;</a></p>
     </div>
 
