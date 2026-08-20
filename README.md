@@ -1,11 +1,12 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
-  <img src=".github/assets/logo.svg" alt="poddle" width="104">
-</picture>
-
-# poddle
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+    <img src=".github/assets/logo.svg" alt="" height="52" align="middle">
+  </picture>
+  &nbsp;poddle
+</h1>
 
 **Self-hostable, secret-safe dev sandboxes for coding agents.**
 
