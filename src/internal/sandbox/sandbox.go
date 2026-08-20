@@ -2,6 +2,10 @@
 // (podman today, kubernetes later) produce these; command slices consume them.
 package sandbox
 
+import (
+	"github.com/datadir-lab/poddle/src/internal/brokerendpoint"
+)
+
 // Sandbox is a poddle instance, as surfaced by `poddle ls`.
 type Sandbox struct {
 	ID        string // short engine id
@@ -43,6 +47,12 @@ type Mount struct {
 type Volume struct {
 	Name      string // engine volume name, e.g. poddle-proj-workspace
 	Container string // mount path in the pod, e.g. /workspace
+}
+
+// Network locks a pod's egress. When non-nil, the pod joins an internal (no
+// internet) network reaching only AllowList. nil = today's default (open).
+type Network struct {
+	AllowList []brokerendpoint.HostPort
 }
 
 // PodInfo is a pod's reconstructable configuration, read back from its labels,
@@ -94,5 +104,6 @@ type Spec struct {
 	Mounts     []Mount           // credential/workspace mounts (e.g. an identity)
 	Volumes    []Volume          // named volumes for session state (workspace, agent state)
 	Env        map[string]string // env vars injected into the sandbox
+	Network    *Network          // nil = open egress; non-nil = internal net, broker sole exit
 	Setup      []string          // shell commands run in the pod after create (e.g. harness install)
 }
