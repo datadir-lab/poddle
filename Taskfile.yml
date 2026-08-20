@@ -191,6 +191,14 @@ tasks:
       - npx playwright install chromium # matches the installed @playwright/test, image-version-independent
       - npx playwright test
 
+  e2e-site:
+    desc: Marketing site e2e (Playwright) — builds the static site and drives it in a real browser
+    dir: src/web/site
+    cmds:
+      - npm ci
+      - npx playwright install chromium
+      - npx playwright test
+
   web-docs:
     desc: Regenerate the docs CLI reference from cobra + lint the doc template examples
     cmds:

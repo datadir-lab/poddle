@@ -36,6 +36,11 @@ src/web/dashboard/test-results/
 src/web/dashboard/playwright-report/
 src/web/dashboard/.last-run.json
 
+# Site e2e (Playwright) artifacts
+src/web/site/test-results/
+src/web/site/playwright-report/
+src/web/site/.last-run.json
+
 # Agent scratch / parallel git worktrees
 .claude/worktrees/
 
