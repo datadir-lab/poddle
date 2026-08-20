@@ -1,0 +1,60 @@
+# Codecov configuration for poddle.
+# Reference: https://docs.codecov.com/docs/codecovyml-reference
+#
+# Two coverage streams, merged by flag:
+#   unit        - uploaded on every PR and push (fast, container-free). Drives the patch gate.
+#   integration - uploaded from the full run (nightly / push-to-main); needs a container engine.
+#   e2e         - uploaded from the binary-coverage run (nightly / manual); needs a container engine.
+#
+# The slow flags carry forward, so a PR that only runs unit tests reuses the last
+# integration/e2e report instead of cratering the project number to noise.
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto      # never fall below the base commit's coverage...
+        threshold: 1%     # ...tolerating 1% of refactor/measurement churn.
+        informational: false
+    patch:
+      default:
+        target: 80%       # new lines in a PR must be 80% covered...
+        threshold: 0%
+        flags:
+          - unit          # ...by unit tests, the only stream that runs per-PR.
+        informational: false
+
+flag_management:
+  default_rules:
+    carryforward: false
+  individual_flags:
+    - name: unit
+      paths:
+        - src/
+      carryforward: false # always fresh; runs on every PR and push.
+    - name: integration
+      paths:
+        - src/
+      carryforward: true  # reuse the last run when a commit doesn't exercise it.
+    - name: e2e
+      paths:
+        - src/
+      carryforward: true
+
+# Map the Go import paths that appear in coverage.out to repo-relative paths, so
+# the ignore/paths globs below match. No-op if Codecov already strips the prefix.
+fixes:
+  - "github.com/datadir-lab/poddle/::"
+
+# Files with no meaningful *unit*-test surface: the process entrypoint, the
+# OS-specific detach shims, and the in-tree test doubles. The real exec paths
+# these stand in for are covered by the integration/e2e streams.
+ignore:
+  - "src/cli/main.go"
+  - "src/internal/poddled/spawn_unix.go"
+  - "src/internal/poddled/spawn_windows.go"
+  - "**/fake.go"
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: false
