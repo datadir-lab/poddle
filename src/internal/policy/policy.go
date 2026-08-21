@@ -17,10 +17,11 @@ import (
 // Policy is a set of egress/access rules referenced by a pod.
 type Policy struct {
 	Name           string              `toml:"-" json:"name"`
-	AllowUpstreams []string            `toml:"allow_upstreams" json:"allow_upstreams"` // default-deny when non-empty; ".x" = any subdomain
-	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`   // always denied (wins over allow)
-	Methods        map[string][]string `toml:"methods" json:"methods"`                 // per-host allowed HTTP methods
-	Egress         string              `toml:"egress" json:"egress"`                   // redact (default) | block | off
+	Description    string              `toml:"description,omitempty" json:"description,omitempty"` // free-text note on intent; ignored by Decide
+	AllowUpstreams []string            `toml:"allow_upstreams" json:"allow_upstreams"`             // default-deny when non-empty; ".x" = any subdomain
+	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`               // always denied (wins over allow)
+	Methods        map[string][]string `toml:"methods" json:"methods"`                             // per-host allowed HTTP methods
+	Egress         string              `toml:"egress" json:"egress"`                               // redact (default) | block | off
 }
 
 // Decide evaluates one request against the policy. Order: the deny-list wins,
@@ -90,6 +91,14 @@ type Store interface {
 	List() ([]string, error)
 	Put(p *Policy) error
 	Delete(name string) error
+}
+
+// DefaultStore records which policy governs a pod that names none. It is
+// optional — a Store that does not implement it simply has no default — so the
+// enforcement path and the (future) Postgres store need not change to adopt it.
+type DefaultStore interface {
+	Default() (string, error)     // the default policy name, "" if unset
+	SetDefault(name string) error // name "" clears the default
 }
 
 // FileStore is a directory of <name>.toml policies.
@@ -174,16 +183,55 @@ func (s *FileStore) Put(p *Policy) error {
 	return os.WriteFile(filepath.Join(s.dir, p.Name+".toml"), b, 0o600)
 }
 
-// Delete removes the named policy file.
+// Delete removes the named policy file. If that policy was the default, the
+// marker is cleared too, so no dangling default is left behind.
 func (s *FileStore) Delete(name string) error {
 	if err := validName(name); err != nil {
 		return err
+	}
+	if d, _ := s.Default(); d == name {
+		_ = s.SetDefault("")
 	}
 	err := os.Remove(filepath.Join(s.dir, name+".toml"))
 	if os.IsNotExist(err) {
 		return nil
 	}
 	return err
+}
+
+// defaultMarker names the file in a store dir that records the default policy.
+// It has no .toml suffix, so List never mistakes it for a policy.
+const defaultMarker = ".default"
+
+// Default returns the name of the default policy (applied to a pod that names
+// none), or "" if unset.
+func (s *FileStore) Default() (string, error) {
+	b, err := os.ReadFile(filepath.Join(s.dir, defaultMarker))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// SetDefault records name as the default policy; an empty name clears it.
+func (s *FileStore) SetDefault(name string) error {
+	if name == "" {
+		err := os.Remove(filepath.Join(s.dir, defaultMarker))
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := validName(name); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.dir, defaultMarker), []byte(name), 0o600)
 }
 
 // Layered reads policies from ordered sources (first match wins — project
@@ -230,3 +278,25 @@ func (l Layered) List() ([]string, error) {
 
 func (l Layered) Put(p *Policy) error      { return l.Writer.Put(p) }
 func (l Layered) Delete(name string) error { return l.Writer.Delete(name) }
+
+// Default reads the default from the sources in order (project shadows global),
+// matching how policies themselves layer.
+func (l Layered) Default() (string, error) {
+	for _, s := range l.Sources {
+		if ds, ok := s.(DefaultStore); ok {
+			if d, err := ds.Default(); err == nil && d != "" {
+				return d, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// SetDefault writes the default through Writer (the global dir), where UI edits
+// go, so a user-set default is not shadowed by a versioned project one.
+func (l Layered) SetDefault(name string) error {
+	if ds, ok := l.Writer.(DefaultStore); ok {
+		return ds.SetDefault(name)
+	}
+	return fmt.Errorf("policy store does not support a default")
+}

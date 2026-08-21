@@ -30,6 +30,9 @@ src/web/site/.astro/
 # (scripts/sync-pricing.mjs); never commit the generated file.
 src/web/site/src/data/pricing.generated.json
 
+# Design system deps (the built views bundle IS committed at src/web/ui/views/dist)
+src/web/ui/node_modules/
+
 # Dashboard SPA deps (the built bundle IS committed at src/cli/dashboard/dist)
 src/web/dashboard/node_modules/
 src/web/dashboard/test-results/

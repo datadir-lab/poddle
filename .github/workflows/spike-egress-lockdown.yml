@@ -1,9 +1,11 @@
 name: Spike - egress lockdown feasibility
 
-# One-off feasibility probe for the non-bypassable egress lockdown (Task 1 of
-# docs/design/egress-lockdown-and-broker-placement.md): does a rootless pod on a
-# podman --internal network (no internet) still reach a host-side broker? Manual
-# only. Fails the job if the mechanism doesn't hold, so the answer is unambiguous.
+# Feasibility probe for the non-bypassable egress lockdown (Task 1 of
+# docs/design/egress-lockdown-and-broker-placement.md). `--internal` alone was
+# proven insufficient (it isolates the pod from the broker too). This tests the
+# peer-container mechanism: a dual-homed broker container on the pod's internal
+# network AND a normal network — peers on an internal net can talk while the
+# world stays blocked, and the broker relays egress. Manual; fails if it doesn't hold.
 
 on:
   workflow_dispatch:
@@ -23,59 +25,62 @@ jobs:
       - name: Engine version
         run: podman version
 
-      - name: Start a host-side broker stand-in (0.0.0.0:18080)
+      - name: Networks — internal (pod side) + a normal net (broker egress)
         run: |
-          nohup python3 -m http.server 18080 --bind 0.0.0.0 >/tmp/broker.log 2>&1 &
-          sleep 2
-          curl -sf http://127.0.0.1:18080/ >/dev/null && echo "host broker up"
+          podman network create --internal poddle-lock-test
+          podman network create poddle-egress-test
 
-      - name: Create the internal (no-internet) network
-        run: podman network create --internal poddle-lock-test
+      - name: Broker container — dual-homed (internet PRIMARY, internal second)
+        run: |
+          # Primary network = internet-capable, so the broker's DEFAULT route
+          # reaches upstreams; the internal net is added second for pod reach.
+          podman run -d --name spike-broker --network poddle-egress-test \
+            docker.io/library/python:3-alpine \
+            python3 -m http.server 18080 --bind 0.0.0.0
+          podman network connect poddle-lock-test spike-broker
+          sleep 3
+          podman ps
+          BIP=$(podman inspect spike-broker -f '{{ (index .NetworkSettings.Networks "poddle-lock-test").IPAddress }}')
+          echo "broker internal IP: $BIP"
+          echo "BIP=$BIP" >> "$GITHUB_ENV"
 
-      - name: CHECK 1 — internet must be BLOCKED from the internal network
+      - name: CHECK A — pod reaches the broker PEER on the internal net (want PASS)
         run: |
           set +e
           OUT=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
-            sh -c 'wget -T 4 -qO- http://1.1.1.1/ 2>/dev/null; echo "rc=$?"')
+            sh -c "wget -T 5 -qO- http://$BIP:18080/ >/dev/null 2>&1; echo rc=\$?")
           echo "$OUT"
-          if echo "$OUT" | grep -q "rc=0"; then
-            echo "::error::pod reached the internet (1.1.1.1); --internal did NOT block egress"
-            echo "INTERNET_BLOCKED=no" >> "$GITHUB_ENV"
-          else
-            echo "PASS — internet blocked"
-            echo "INTERNET_BLOCKED=yes" >> "$GITHUB_ENV"
-          fi
+          if echo "$OUT" | grep -q "rc=0"; then echo "PASS — pod reached the broker peer"; echo "PEER=yes" >> "$GITHUB_ENV"
+          else echo "::error::pod could NOT reach the broker peer at $BIP"; echo "PEER=no" >> "$GITHUB_ENV"; fi
 
-      - name: CHECK 2 — the host broker must be REACHABLE from the internal network
+      - name: CHECK B — pod CANNOT reach the internet (want PASS)
         run: |
           set +e
-          echo "--- via host.containers.internal ---"
-          A=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
-            sh -c 'wget -T 4 -qO- http://host.containers.internal:18080/ 2>/dev/null; echo "rc=$?"')
-          echo "$A"
-          GW=$(podman network inspect poddle-lock-test -f '{{ (index .Subnets 0).Gateway }}')
-          echo "--- via bridge gateway $GW ---"
-          B=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
-            sh -c "wget -T 4 -qO- http://$GW:18080/ 2>/dev/null; echo rc=\$?")
-          echo "$B"
-          REACH=no; FORM=""
-          if echo "$A" | grep -q "rc=0"; then REACH=yes; FORM="host.containers.internal"; fi
-          if [ "$REACH" = no ] && echo "$B" | grep -q "rc=0"; then REACH=yes; FORM="gateway($GW)"; fi
-          echo "BROKER_REACH=$REACH" >> "$GITHUB_ENV"
-          echo "BROKER_FORM=$FORM" >> "$GITHUB_ENV"
-          [ "$REACH" = yes ] && echo "PASS — broker reachable via $FORM" \
-            || echo "::warning::broker unreachable via host.containers.internal or the gateway on the internal network"
+          OUT=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
+            sh -c 'wget -T 5 -qO- http://1.1.1.1/ >/dev/null 2>&1; echo rc=$?')
+          echo "$OUT"
+          if echo "$OUT" | grep -q "rc=0"; then echo "::error::pod reached the internet"; echo "ISO=no" >> "$GITHUB_ENV"
+          else echo "PASS — pod isolated from the internet"; echo "ISO=yes" >> "$GITHUB_ENV"; fi
+
+      - name: CHECK C — the broker CAN reach the internet (relay works, want PASS)
+        run: |
+          set +e
+          OUT=$(podman exec spike-broker python3 -c 'import socket;socket.create_connection(("1.1.1.1",443),timeout=5);print("rc=0")' 2>/dev/null || echo "rc=1")
+          echo "$OUT"
+          if echo "$OUT" | grep -q "rc=0"; then echo "PASS — broker relays to upstreams"; echo "RELAY=yes" >> "$GITHUB_ENV"
+          else echo "::error::broker cannot reach the internet"; echo "RELAY=no" >> "$GITHUB_ENV"; fi
 
       - name: Verdict
         run: |
-          echo "internet_blocked=$INTERNET_BLOCKED  broker_reachable=$BROKER_REACH  form=$BROKER_FORM"
-          if [ "$INTERNET_BLOCKED" = yes ] && [ "$BROKER_REACH" = yes ]; then
-            echo "FEASIBLE — --internal blocks the internet AND the broker is reachable via $BROKER_FORM"
+          echo "peer=$PEER  isolated=$ISO  relay=$RELAY"
+          if [ "$PEER" = yes ] && [ "$ISO" = yes ] && [ "$RELAY" = yes ]; then
+            echo "FEASIBLE — peer-container: pod reaches the broker, is cut off from the internet, and the broker relays out."
           else
-            echo "::error::NOT feasible with --internal alone (blocked=$INTERNET_BLOCKED reach=$BROKER_REACH); evaluate pasta/nftables fallbacks"
-            exit 1
+            echo "::error::peer-container mechanism failed (peer=$PEER iso=$ISO relay=$RELAY)"; exit 1
           fi
 
       - name: Cleanup
         if: always()
-        run: podman network rm poddle-lock-test || true
+        run: |
+          podman rm -f spike-broker || true
+          podman network rm poddle-lock-test poddle-egress-test || true

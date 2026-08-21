@@ -255,6 +255,18 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 	// arbitrary egress through the broker's forward proxy, which exists whether
 	// or not the pod has a connector. Handles/policies live until `down`.
 	policyName := flagOr(cmd, "policy", o.policyName, tpl.Policy)
+	// A pod that names no policy inherits the configured default (if one is set
+	// and still exists), so unattended pods are governed rather than running wide
+	// open. An explicit `--policy ""` opts out and stays ungoverned.
+	if policyName == "" && !cmd.Flags().Changed("policy") && a.Policies != nil {
+		if ds, ok := a.Policies.(policy.DefaultStore); ok {
+			if def, err := ds.Default(); err == nil && def != "" {
+				if _, err := a.Policies.Get(def); err == nil {
+					policyName = def
+				}
+			}
+		}
+	}
 	if identityName != "" || len(tpl.Connectors) > 0 || (policyName != "" && a.Policies != nil) {
 		if err := b.EnsureRunning(); err != nil {
 			return fail(fmt.Errorf("start poddled: %w", err))

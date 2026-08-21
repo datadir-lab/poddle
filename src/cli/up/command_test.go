@@ -640,6 +640,49 @@ func TestUp_Policy_BindsWithoutConnectors(t *testing.T) {
 	}
 }
 
+func TestUp_Policy_DefaultAppliesWhenUnspecified(t *testing.T) {
+	store := policy.NewFileStore(t.TempDir())
+	if err := store.Put(&policy.Policy{Name: "house", AllowUpstreams: []string{"api.anthropic.com"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetDefault("house"); err != nil {
+		t.Fatal(err)
+	}
+	var log []string
+	f := &fakeCreator{}
+	spy := &spyBroker{log: &log}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Policies: store}, spy)
+	c.SetArgs([]string{"box", "--detach"}) // no --policy -> inherit the default
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.PolicyName != "house" {
+		t.Errorf("spec.PolicyName = %q, want house (the default should apply when no --policy)", f.spec.PolicyName)
+	}
+	if !strings.Contains(strings.Join(log, ","), "policy:house") {
+		t.Errorf("SetPolicy(house) should be called for the default; broker log = %v", log)
+	}
+}
+
+func TestUp_Policy_ExplicitEmptyOptsOutOfDefault(t *testing.T) {
+	store := policy.NewFileStore(t.TempDir())
+	_ = store.Put(&policy.Policy{Name: "house"})
+	_ = store.SetDefault("house")
+	var log []string
+	f := &fakeCreator{}
+	spy := &spyBroker{log: &log}
+	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses(), Policies: store}, spy)
+	c.SetArgs([]string{"box", "--policy", "", "--detach"}) // explicit opt-out stays ungoverned
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if f.spec.PolicyName != "" {
+		t.Errorf("spec.PolicyName = %q, want empty (--policy \"\" opts out of the default)", f.spec.PolicyName)
+	}
+}
+
 func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {

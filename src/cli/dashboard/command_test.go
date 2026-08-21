@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -130,12 +131,67 @@ func TestHandler_PolicyCRUD(t *testing.T) {
 	}
 }
 
+func TestHandler_DefaultPolicy(t *testing.T) {
+	store := policy.NewFileStore(filepath.Join(t.TempDir(), "policies"))
+	_ = store.Put(&policy.Policy{Name: "prod"})
+	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), store, nil))
+	t.Cleanup(srv.Close)
+
+	// Unset initially.
+	if got := getDefault(t, srv.URL); got != "" {
+		t.Errorf("default (unset) = %q, want empty", got)
+	}
+	// PUT sets it; GET reflects it and the store persists it.
+	putDefault(t, srv.URL, "prod")
+	if got := getDefault(t, srv.URL); got != "prod" {
+		t.Errorf("default after set = %q, want prod", got)
+	}
+	if d, _ := store.Default(); d != "prod" {
+		t.Errorf("PUT should persist to the store; store default = %q", d)
+	}
+	// Empty name clears it.
+	putDefault(t, srv.URL, "")
+	if got := getDefault(t, srv.URL); got != "" {
+		t.Errorf("default after clear = %q, want empty", got)
+	}
+}
+
+func getDefault(t *testing.T, base string) string {
+	t.Helper()
+	resp, err := http.Get(base + "/v1/default-policy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v.Name
+}
+
+func putDefault(t *testing.T, base, name string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPut, base+"/v1/default-policy", strings.NewReader(`{"name":"`+name+`"}`))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("PUT default = %d, want 204", resp.StatusCode)
+	}
+}
+
 func TestHandler_PodsAPI(t *testing.T) {
 	pods := func() ([]sandbox.PodView, error) {
 		return []sandbox.PodView{
 			{Name: "agent1", State: "running", Size: "weak", Mode: "headless", Policy: "prod", Autoscale: true, CPU: "12.5%", MemPerc: "68%", Mem: "2.7GB / 4GB"},
 		}, nil
 	}
+	// An absent daemon socket: the pods list falls back to the container labels.
 	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), nil, pods))
 	t.Cleanup(srv.Close)
 
@@ -149,5 +205,42 @@ func TestHandler_PodsAPI(t *testing.T) {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("/v1/pods should include %s; got:\n%s", want, body)
 		}
+	}
+}
+
+func TestHandler_PodsAPI_OverlaysDaemonPolicy(t *testing.T) {
+	// A stub daemon reporting a live rebind: agent1 now runs "locked-down", even
+	// though its immutable container label still says "prod".
+	sock := filepath.Join(t.TempDir(), "daemon.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/pods/policies" {
+			_, _ = w.Write([]byte(`{"agent1":"locked-down"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+
+	pods := func() ([]sandbox.PodView, error) {
+		return []sandbox.PodView{{Name: "agent1", State: "running", Policy: "prod"}}, nil
+	}
+	srv := httptest.NewServer(Handler(sock, nil, pods))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/v1/pods")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `"policy":"locked-down"`) {
+		t.Errorf("/v1/pods should overlay the daemon's live policy; got:\n%s", body)
+	}
+	if strings.Contains(string(body), `"policy":"prod"`) {
+		t.Errorf("/v1/pods should not show the stale label once rebound; got:\n%s", body)
 	}
 }

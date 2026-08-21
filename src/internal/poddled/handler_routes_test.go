@@ -93,6 +93,40 @@ func TestDaemon_SetPolicy(t *testing.T) {
 	}
 }
 
+func TestDaemon_PodPolicies(t *testing.T) {
+	srv, _ := testServer(t)
+
+	bind := func(pod, name string) {
+		body, _ := json.Marshal(policy.Policy{Name: name})
+		r, err := http.Post(srv.URL+"/pods/"+pod+"/policy", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+	}
+	get := func() map[string]string {
+		r, err := http.Get(srv.URL + "/pods/policies")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var m map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	if got := get(); len(got) != 0 {
+		t.Errorf("pod policies before any bind = %v, want empty", got)
+	}
+	bind("box", "guard")
+	bind("box", "lockdown") // a rebind: the latest binding wins
+	if got := get(); got["box"] != "lockdown" {
+		t.Errorf("pod policies = %v, want box:lockdown (latest bind wins)", got)
+	}
+}
+
 func TestDaemon_BadJSON_Returns400(t *testing.T) {
 	srv, _ := testServer(t)
 	for _, path := range []string{"/pods/box/policy", "/pods/box/handles", "/audit", "/events"} {
