@@ -179,9 +179,11 @@ image tag tracks the CLI version, so a client always launches a matching broker.
 via **`PODDLE_BROKER_IMAGE`** so e2e/CI point at a **locally built** image
 (`podman build`) with no registry dependency.
 
-*Feasibility sub-check (blocking, cheap):* confirm the static binary runs
-`daemon` in a distroless container, its control socket is reachable over a host
-bind mount, and the container dual-homes — before building Task 4 on it.
+*Feasibility sub-check — **RESOLVED** (2026-08-21):* CI probe
+(`spike-broker-container.yml`) confirmed `static=yes control_socket=yes
+dual_homed=yes` — the static binary runs `daemon` in `distroless/static-debian12`,
+`GET /health` returns `{"ok":true}` over the host-bind-mounted control socket, and
+the container dual-homes (`poddle-egress` + `poddle-lock-<pod>`).
 
 **Autoscaler needs podman.** poddled's opt-in autoscaler shells to `podman`
 (`podman.New(exec.OS{},"")`). A containerized broker has no podman, so the host
