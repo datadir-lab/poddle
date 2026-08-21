@@ -6,6 +6,7 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
+import "@poddle/ui/views.css";
 import type { Stats, Cmd, Toast } from "@poddle/ui/views";
 import {
   SegmentedControl, IntegrityBadge, IntegrityPanel,
