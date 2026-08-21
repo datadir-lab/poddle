@@ -297,14 +297,19 @@ test("policies: a starter template pre-fills the visual builder and dry-runs aga
   await mockPods(page);
   await page.goto("/policies/new");
 
-  // A blank new policy offers starter templates; picking one fills the builder.
-  await expect(page.locator(".tmpl")).toHaveCount(4);
+  // A blank new policy offers the full ordered set of starter templates.
+  await expect(page.locator(".tmpl")).toHaveCount(8);
   await page.getByRole("button", { name: /Coding agent/ }).click();
 
   // Name, allow-list, and the metadata deny-list all populate from the template.
   await expect(page.locator("#pol-name")).toHaveValue("coding-agent");
-  await expect(page.locator("input[aria-label='Allowed host']")).toHaveCount(6);
-  await expect(page.locator("input[aria-label='Allowed host']").first()).toHaveValue("api.anthropic.com");
+  const allowed = page.locator("input[aria-label='Allowed host']");
+  await expect(allowed).toHaveCount(7);
+  await expect(allowed.first()).toHaveValue("api.anthropic.com");
+  // The GitHub LFS/raw apex is allow-listed alongside .github.com (clones with LFS work).
+  const allowValues = await allowed.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(allowValues).toContain(".github.com");
+  expect(allowValues).toContain(".githubusercontent.com");
   await expect(page.locator("input[aria-label='Blocked host']")).toHaveCount(2);
 
   // The picker collapses once the builder is no longer blank.
@@ -315,6 +320,19 @@ test("policies: a starter template pre-fills the visual builder and dry-runs aga
   await expect(page.locator(".dryrun__list")).toContainText("metadata.google.internal");
   await expect(page.locator(".dryrun__list")).toContainText("169.254.169.254");
   await expect(page.locator(".dryrun__list")).not.toContainText("api.anthropic.com"); // allowed
+});
+
+test("policies: the fail-closed template sets egress to block (not just redact)", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // High-assurance is the fail-closed sibling of Coding agent: same reach, egress "block".
+  await page.getByRole("button", { name: /High-assurance/ }).click();
+  await expect(page.locator("#pol-name")).toHaveValue("high-assurance");
+  await expect(page.getByRole("radio", { name: "Block", exact: true })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Redact", exact: true })).not.toBeChecked();
 });
 
 test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
