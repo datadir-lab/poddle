@@ -1,7 +1,6 @@
 package podman
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -15,7 +14,7 @@ func lockedSpec() sandbox.Spec {
 		Network: &sandbox.Network{AllowList: []brokerendpoint.HostPort{{Host: "host.containers.internal", Port: "16379"}}}}
 }
 
-func TestCreate_LockedNetwork_CreatesInternalAndAttaches(t *testing.T) {
+func TestCreate_LockedNetwork_Attaches(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "cid123\n"}}
 	p := New(f, "")
 	if _, err := p.Create(lockedSpec()); err != nil {
@@ -25,24 +24,11 @@ func TestCreate_LockedNetwork_CreatesInternalAndAttaches(t *testing.T) {
 	for _, c := range f.Calls {
 		joined += strings.Join(c, " ") + "\n"
 	}
-	if !strings.Contains(joined, "network create --internal poddle-lock-box") {
-		t.Errorf("expected internal network create; calls:\n%s", joined)
+	if strings.Contains(joined, "network create") {
+		t.Errorf("Create must no longer create the lock network itself; calls:\n%s", joined)
 	}
 	if !strings.Contains(joined, "--network poddle-lock-box") {
 		t.Errorf("expected run --network poddle-lock-box; calls:\n%s", joined)
-	}
-}
-
-func TestCreate_LockedNetwork_FailsClosed(t *testing.T) {
-	f := &exec.Fake{Err: errors.New("netavark: internal networks unsupported")}
-	p := New(f, "")
-	if _, err := p.Create(lockedSpec()); err == nil {
-		t.Fatal("expected fail-closed error when the lock network can't be created")
-	}
-	for _, c := range f.Calls {
-		if len(c) > 1 && c[1] == "run" {
-			t.Error("must NOT run the pod when the lock network failed")
-		}
 	}
 }
 
