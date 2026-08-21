@@ -76,8 +76,8 @@ func TestRemoveVolumesForPod_ListsThenRemoves(t *testing.T) {
 	if err := p.RemoveVolumesForPod("box"); err != nil {
 		t.Fatalf("RemoveVolumesForPod: %v", err)
 	}
-	if len(f.Calls) != 3 {
-		t.Fatalf("expected list + remove + lock-network rm (3 calls), got %d: %v", len(f.Calls), f.Calls)
+	if len(f.Calls) != 4 {
+		t.Fatalf("expected list + remove + broker disconnect + lock-network rm (4 calls), got %d: %v", len(f.Calls), f.Calls)
 	}
 	if got := strings.Join(f.Calls[0], " "); got != "podman volume ls -q --filter label=poddle.pod=box" {
 		t.Errorf("list args = %q", got)
@@ -85,7 +85,10 @@ func TestRemoveVolumesForPod_ListsThenRemoves(t *testing.T) {
 	if got := strings.Join(f.Calls[1], " "); got != "podman volume rm vol1 vol2" {
 		t.Errorf("remove args = %q", got)
 	}
-	if got := strings.Join(f.Calls[2], " "); got != "podman network rm poddle-lock-box" {
+	if got := strings.Join(f.Calls[2], " "); got != "podman network disconnect poddle-lock-box poddle-broker" {
+		t.Errorf("broker disconnect args = %q", got)
+	}
+	if got := strings.Join(f.Calls[3], " "); got != "podman network rm poddle-lock-box" {
 		t.Errorf("lock-network rm args = %q", got)
 	}
 }
@@ -96,7 +99,7 @@ func TestRemoveVolumesForPod_NoVolumesIsNoop(t *testing.T) {
 	if err := p.RemoveVolumesForPod("box"); err != nil {
 		t.Fatalf("RemoveVolumesForPod: %v", err)
 	}
-	if len(f.Calls) != 2 {
-		t.Errorf("expected the list call + best-effort lock-network rm, got %d: %v", len(f.Calls), f.Calls)
+	if len(f.Calls) != 3 {
+		t.Errorf("expected the list call + best-effort broker disconnect + lock-network rm, got %d: %v", len(f.Calls), f.Calls)
 	}
 }

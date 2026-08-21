@@ -46,7 +46,7 @@ func TestCreate_NoNetwork_Unchanged(t *testing.T) {
 }
 
 func TestRemoveVolumesForPod_RemovesLockNetwork(t *testing.T) {
-	f := &exec.Fake{} // empty volume list -> just the network rm
+	f := &exec.Fake{} // empty volume list -> just the broker disconnect + network rm
 	p := New(f, "")
 	if err := p.RemoveVolumesForPod("box"); err != nil {
 		t.Fatalf("remove: %v", err)
@@ -57,5 +57,13 @@ func TestRemoveVolumesForPod_RemovesLockNetwork(t *testing.T) {
 	}
 	if !strings.Contains(joined, "network rm poddle-lock-box") {
 		t.Errorf("expected lock network removal; calls:\n%s", joined)
+	}
+	if !strings.Contains(joined, "network disconnect poddle-lock-box poddle-broker") {
+		t.Errorf("expected broker disconnect from the lock network; calls:\n%s", joined)
+	}
+	disconnectIdx := strings.Index(joined, "network disconnect poddle-lock-box poddle-broker")
+	rmIdx := strings.Index(joined, "network rm poddle-lock-box")
+	if disconnectIdx == -1 || rmIdx == -1 || disconnectIdx > rmIdx {
+		t.Errorf("expected broker disconnect to precede network rm; calls:\n%s", joined)
 	}
 }

@@ -424,7 +424,10 @@ func (p *Provider) RemoveVolumesForPod(pod string) error {
 			return fmt.Errorf("podman volume rm: %w: %s", err, r.Stderr)
 		}
 	}
-	// Best-effort: remove the pod's egress-lockdown network, if any.
+	// Best-effort: detach the shared broker first so the subsequent network rm
+	// isn't blocked by a still-attached container, then remove the pod's
+	// egress-lockdown network, if any.
+	_ = p.DisconnectBrokerFromPod("poddle-broker", pod)
 	_, _ = p.Runner.Run("podman", p.podman("network", "rm", "poddle-lock-"+pod)...)
 	return nil
 }
