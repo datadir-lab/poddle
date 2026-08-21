@@ -213,6 +213,43 @@ test("policies: a template saved through the editor persists and round-trips (re
   await expect(page.locator(".list")).not.toContainText("e2e-tmpl-provider");
 });
 
+test("policies: designate a default policy and see it marked, then clear it", async ({ page }) => {
+  const POLS = [
+    { name: "prod", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} },
+    { name: "locked", egress: "block", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} },
+  ];
+  let current = ""; // the server-side default, toggled by PUT
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await page.route("**/v1/default-policy", async (r) => {
+    if (r.request().method() === "PUT") { current = JSON.parse(r.request().postData() || "{}").name || ""; return r.fulfill({ status: 204, body: "" }); }
+    return r.fulfill({ json: { name: current } });
+  });
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies");
+
+  // No default yet: the footer explains unpoliced pods run ungoverned.
+  await expect(page.locator(".list__foot")).toContainText("No default");
+
+  // Open "prod" and set it as the default.
+  await page.locator(".list a", { hasText: "prod" }).first().click();
+  await page.getByRole("button", { name: "Set as default", exact: true }).click();
+
+  // The button flips to the active state; the list stars prod and the footer names it.
+  await expect(page.getByRole("button", { name: /★ Default/ })).toBeVisible();
+  await expect(page.locator(".list__row", { hasText: "prod" }).locator(".list__default")).toBeVisible();
+  await expect(page.locator(".list__foot")).toContainText("prod");
+
+  // The choice really reached the server (PUT body), not just local state.
+  expect(current).toBe("prod");
+
+  // Clicking again clears it.
+  await page.getByRole("button", { name: /★ Default/ }).click();
+  await expect(page.getByRole("button", { name: "Set as default", exact: true })).toBeVisible();
+  await expect(page.locator(".list__foot")).toContainText("No default");
+  expect(current).toBe("");
+});
+
 test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
   await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await mockAudit(page);

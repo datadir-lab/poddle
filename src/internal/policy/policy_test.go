@@ -107,6 +107,60 @@ func TestFileStore_PutListDelete(t *testing.T) {
 	}
 }
 
+func TestFileStore_Default(t *testing.T) {
+	s := NewFileStore(filepath.Join(t.TempDir(), "policies"))
+	_ = s.Put(&Policy{Name: "guard", AllowUpstreams: []string{"api.x"}})
+
+	// Unset by default.
+	if d, err := s.Default(); err != nil || d != "" {
+		t.Fatalf("Default (unset) = %q err=%v, want empty", d, err)
+	}
+	// Set + read back.
+	if err := s.SetDefault("guard"); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.Default(); d != "guard" {
+		t.Fatalf("Default = %q, want guard", d)
+	}
+	// The marker is not mistaken for a policy.
+	if names, _ := s.List(); len(names) != 1 || names[0] != "guard" {
+		t.Errorf("List should ignore the default marker; got %v", names)
+	}
+	// Deleting the default policy clears the dangling pointer.
+	if err := s.Delete("guard"); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.Default(); d != "" {
+		t.Errorf("deleting the default policy should clear the default; got %q", d)
+	}
+	// Clearing an already-unset default is a no-op.
+	if err := s.SetDefault(""); err != nil {
+		t.Errorf("clearing an unset default should be a no-op; got %v", err)
+	}
+}
+
+func TestLayered_Default(t *testing.T) {
+	proj := NewFileStore(t.TempDir())
+	global := NewFileStore(t.TempDir())
+	l := Layered{Sources: []Store{proj, global}, Writer: global}
+
+	// SetDefault writes through to the global (writer) store.
+	if err := l.SetDefault("prod"); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := global.Default(); d != "prod" {
+		t.Errorf("SetDefault should write to the global writer; global default = %q", d)
+	}
+	if d, _ := l.Default(); d != "prod" {
+		t.Errorf("Layered.Default = %q, want prod", d)
+	}
+	// A project default shadows the global one (project source is read first).
+	_ = proj.SetDefault("project-default")
+	if d, _ := l.Default(); d != "project-default" {
+		t.Errorf("project default should shadow global; got %q", d)
+	}
+}
+
 func TestLayered_ProjectShadowsGlobal(t *testing.T) {
 	proj := NewFileStore(t.TempDir())
 	global := NewFileStore(t.TempDir())

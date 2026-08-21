@@ -43,6 +43,12 @@ const api = {
     }),
   delPolicy: (name: string) =>
     fetch(`${CFG.apiBase}/policies/${encodeURIComponent(name)}`, { method: "DELETE", headers: H }),
+  // The default policy: applied to a pod started with no --policy.
+  defaultPolicy: () => fetch(`${CFG.apiBase}/default-policy`, { headers: H }).then((r) => r.json()),
+  setDefaultPolicy: (name: string) =>
+    fetch(`${CFG.apiBase}/default-policy`, {
+      method: "PUT", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+    }),
   // Bind a policy to a live pod (the gateway enforces it on the next request).
   bindPodPolicy: (pod: string, p: Policy) =>
     fetch(`${CFG.apiBase}/pods/${encodeURIComponent(pod)}/policy`, {
@@ -1025,7 +1031,7 @@ function toRows(p: Policy): AllowRow[] {
   return hosts.map((h) => ({ host: h, methods: m[h] || [], open: false }));
 }
 
-function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { policy: Policy; events: Event[]; scopePods: string[]; onSaved: (name: string) => void; onDeleted: () => void }) {
+function PolicyEditor({ policy, events, scopePods, isDefault, onSetDefault, onSaved, onDeleted }: { policy: Policy; events: Event[]; scopePods: string[]; isDefault?: boolean; onSetDefault?: (name: string) => void; onSaved: (name: string) => void; onDeleted: () => void }) {
   const [name, setName] = useState(policy.name);
   const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
@@ -1189,6 +1195,15 @@ function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { polic
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
         {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
+        {policy.name && onSetDefault && (
+          <button type="button" class={"btn btn--ghost btn--default" + (isDefault ? " is-default" : "")}
+            title={isDefault
+              ? "This policy is applied to pods started with no --policy. Click to clear."
+              : "Apply this policy to any pod started with no --policy."}
+            onClick={() => onSetDefault(isDefault ? "" : policy.name)}>
+            {isDefault ? "★ Default" : "Set as default"}
+          </button>
+        )}
       </div>
       <div class="hint">Reference from a pod: <code>poddle up --policy {name || "<name>"}</code>, or <code>policy = "{name || "<name>"}"</code> in a template.</div>
     </div>
@@ -1198,9 +1213,12 @@ function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { polic
 function PolicyView({ selected, events }: { selected?: string; events: Event[] }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [def, setDef] = useState<string>(""); // the default policy name ("" = none)
   const { pods } = usePods();
   const load = () => api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => setPolicies([])).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
+  const loadDefault = () => api.defaultPolicy().then((d) => setDef((d && d.name) || "")).catch(() => {});
+  const setDefault = async (name: string) => { setDef(name); await api.setDefaultPolicy(name).catch(() => {}); loadDefault(); };
+  useEffect(() => { load(); loadDefault(); }, []);
 
   // Fleet governance: how many running pods each policy governs, and which run
   // with none (a real risk — an unpoliced pod's egress is unrestricted).
@@ -1248,17 +1266,23 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
                 return (
                   <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
                     class={"list__row" + (selected === p.name ? " on" : "")}>
-                    <span>{p.name}</span>
+                    <span>{p.name}{def === p.name && <span class="list__default" title="Default — applied to pods started with no --policy">★</span>}</span>
                     {n > 0 && <span class="list__meta" title={`${n} running pod${n === 1 ? "" : "s"} use this policy`}>{n} pod{n === 1 ? "" : "s"}</span>}
                   </a>
                 );
               })}
           <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
+          <div class="list__foot">
+            {def
+              ? <>Default <a href={`/policies/${encodeURIComponent(def)}`} onClick={linkTo(`/policies/${encodeURIComponent(def)}`)}>{def}</a> — new pods with no <code>--policy</code> inherit it.</>
+              : <>No default — pods started with no <code>--policy</code> run ungoverned.</>}
+          </div>
         </div>
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
+              isDefault={!!sel.name && def === sel.name} onSetDefault={setDefault}
               onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
-              onDeleted={() => { load(); navigate("/policies"); }} />
+              onDeleted={() => { load(); loadDefault(); navigate("/policies"); }} />
           : <div class="editor empty">Select a policy, or create one.</div>}
       </div>
     </div>
