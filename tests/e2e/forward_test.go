@@ -34,18 +34,28 @@ func mockOn(t *testing.T, addr string, hit *int32) *httptest.Server {
 }
 
 // TestE2E_ForwardProxy_GovernsArbitraryEgress proves forced egress end to end. A
-// pod with a policy (allow only 127.0.0.1) has its ARBITRARY egress routed
-// through the broker's forward proxy (HTTP_PROXY, set because it has a policy).
-// Reaching an allow-listed host succeeds; reaching a disallowed host is blocked
-// with 403 and never reaches the upstream.
+// pod with a policy (allow only the broker-reachable mock host) has its
+// ARBITRARY egress routed through the broker's forward proxy (HTTP_PROXY, set
+// because it has a policy). Reaching an allow-listed host succeeds; reaching a
+// disallowed host is blocked with 403 and never reaches the upstream.
+//
+// The broker is a container, so the allow-listed upstream is addressed via
+// host.containers.internal (reachable from the broker's egress network) and the
+// mock binds 0.0.0.0. The denied host is a bogus name the policy rejects
+// *before* the broker dials, so it needs no server.
 func TestE2E_ForwardProxy_GovernsArbitraryEgress(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
 
-	var connHit, allowHit, denyHit int32
-	conn := mockOn(t, "127.0.0.1:0", &connHit)       // connector mock — spawns the daemon
-	allowMock := mockOn(t, "127.0.0.1:0", &allowHit) // allow-listed host
-	denyMock := mockOn(t, "127.0.0.2:0", &denyHit)   // different loopback host -> denied
+	var connHit, allowHit int32
+	conn := mockOn(t, "127.0.0.1:0", &connHit) // connector mock — spawns the daemon, never dialed
+	allowMock := mockOn(t, "0.0.0.0:0", &allowHit)
+	_, allowPort, err := net.SplitHostPort(allowMock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("allow mock addr: %v", err)
+	}
+	allowURL := "http://host.containers.internal:" + allowPort + "/"
+	const denyURL = "http://blocked.invalid/"
 
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
@@ -53,22 +63,25 @@ func TestE2E_ForwardProxy_GovernsArbitraryEgress(t *testing.T) {
 		"connector = \"woodpecker\"\nbase_url = \""+conn.URL+"\"\nowner = \"local\"\n")
 	writeFile(t, filepath.Join(connDir, "woodpecker-token"), "SENTINEL")
 	writeFile(t, filepath.Join(xdg, "poddle", "policies", "allowlist.toml"),
-		"allow_upstreams = [\"127.0.0.1\"]\n")
+		"allow_upstreams = [\"host.containers.internal\"]\n")
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/node:22\"\nconnectors = [\"svc\"]\n")
 
-	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"),
-		"XDG_STATE_HOME="+filepath.Join(xdg, "state"))
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-fwd-e2e"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run() // disconnects the broker from the lock net, then removes the pod
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
 	up := exec.Command(bin, "up", pod, "--detach", "--policy", "allowlist")
@@ -84,14 +97,11 @@ func TestE2E_ForwardProxy_GovernsArbitraryEgress(t *testing.T) {
 		out, _ := r.CombinedOutput()
 		return strings.TrimSpace(string(out))
 	}
-	if c := code(allowMock.URL); !strings.Contains(c, "200") {
+	if c := code(allowURL); !strings.Contains(c, "200") {
 		t.Errorf("allow-listed egress should reach the upstream, got %q", c)
 	}
-	if c := code(denyMock.URL); !strings.Contains(c, "403") {
+	if c := code(denyURL); !strings.Contains(c, "403") {
 		t.Errorf("disallowed egress should be blocked with 403, got %q", c)
-	}
-	if atomic.LoadInt32(&denyHit) != 0 {
-		t.Errorf("a policy-denied egress must never reach the upstream (hits=%d)", denyHit)
 	}
 	if atomic.LoadInt32(&allowHit) == 0 {
 		t.Error("the allow-listed egress should have reached the upstream")

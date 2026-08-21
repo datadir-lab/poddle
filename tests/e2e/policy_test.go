@@ -22,6 +22,10 @@ func TestE2E_Policy_DeniesDisallowedUpstream(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
 
+	// The gateway checks policy by hostname before it ever dials the connector's
+	// base_url (see gateway.go ServeHTTP), so this mock is never reached and
+	// needs no broker-reachable address — a plain loopback httptest.Server is
+	// enough to prove hits stays 0.
 	var hits int32
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
@@ -42,16 +46,19 @@ func TestE2E_Policy_DeniesDisallowedUpstream(t *testing.T) {
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/node:22\"\nconnectors = [\"svc\"]\n")
 
-	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"),
-		"XDG_STATE_HOME="+filepath.Join(xdg, "state"))
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-policy-e2e"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run() // disconnects the broker from the lock net, then removes the pod
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
 	// The pod reaches its connector through the broker; the policy must deny it.
