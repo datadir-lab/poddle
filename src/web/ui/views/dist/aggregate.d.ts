@@ -1,4 +1,4 @@
-import type { Event, Grouped, Stats } from "./types";
+import type { Dest, Event, Grouped, Stats } from "./types";
 export declare const secretsFrom: (detail?: string) => number;
 export declare function summarise(events: Event[]): Stats;
 export declare function group(events: Event[], decisions: string[]): Grouped[];
@@ -24,3 +24,5 @@ export declare const DECISIONS: readonly [{
     readonly icon: "octagon";
 }];
 export declare function decisionCounts(events: Event[]): Record<string, number>;
+export declare function destinations(events: Event[]): Dest[];
+export declare function rowKey(onClick: () => void): (e: KeyboardEvent) => void;

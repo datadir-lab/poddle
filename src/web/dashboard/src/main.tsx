@@ -6,11 +6,15 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
+import type { Stats } from "@poddle/ui/views";
 import {
-  Sparkline, SegmentedControl, DecisionBadge, IntegrityBadge, IntegrityPanel,
-  Icon, PoddleMark, EgressChart, PostureBar, FleetLoad, MixBar,
-  SkelCards, SkelTable, LiveDot, Fact,
-  summarise, group, cap1, humanKind, relTime, secretsFrom, decisionCounts,
+  SegmentedControl, DecisionBadge, IntegrityBadge, IntegrityPanel,
+  Icon, PoddleMark, EgressChart, PostureBar, FleetLoad,
+  SkelCards, SkelTable, LiveDot,
+  OverviewCards, AttentionPanel, RedactionsTable, PodFleetTable, PodDetailPanel,
+  AuditLogTable, PolicyList, DestinationsTable,
+  summarise, group, decisionCounts, destinations,
+  TIME_RANGES, RANGE_MS,
 } from "@poddle/ui/views";
 
 // Runtime data-source config: the SAME bundle serves local (defaults) and the
@@ -193,52 +197,11 @@ function usePods(): { pods: Pod[]; hist: Hist; loading: boolean } {
 }
 
 // ---- views ----
-function Card({ n, label, icon, tone }: { n: number | string; label: string; icon?: string; tone?: string }) {
-  return (
-    <div class={"card" + (tone ? " card--" + tone : "")}>
-      {icon && <span class="card__icon" aria-hidden="true"><Icon name={icon} size={17} /></span>}
-      <div class="card__num">{n}</div>
-      <div class="card__label">{label}</div>
-    </div>
-  );
-}
-
-// CSV export of the (already filtered) audit rows - the "provable, exportable" story.
-function toCsv(rows: Event[]): string {
-  const cols: (keyof Event)[] = ["seq", "time", "pod", "kind", "decision", "upstream", "method", "status", "detail"];
-  const esc = (v: unknown) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const lines = rows.map((e) => cols.map((c) => esc(e[c])).join(","));
-  return [cols.join(","), ...lines].join("\n");
-}
-function downloadCsv(rows: Event[]) {
-  const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "poddle-audit.csv";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-// rowKeys makes a table row keyboard-operable (Enter/Space) when it is clickable.
-function rowKey(onClick: () => void) {
-  return (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
-  };
-}
-
 // Segment options for the various filter/mode controls in this file (rendered
 // via the imported SegmentedControl). An option's `tone` colors the active
 // segment by its meaning (e.g. block = deny-red); `badge` renders a count.
 type SegOption = { value: string; label: string; tone?: string; badge?: string | number };
 
-const DECISION_FILTER: SegOption[] = [
-  { value: "", label: "All" },
-  { value: "allow", label: "Allow", tone: "allow" },
-  { value: "redact", label: "Redact", tone: "redact" },
-  { value: "block", label: "Block", tone: "deny" },
-  { value: "deny", label: "Deny", tone: "deny" },
-];
 const EGRESS_MODES: SegOption[] = [
   { value: "redact", label: "Redact", tone: "redact" },
   { value: "block", label: "Block", tone: "deny" },
@@ -255,6 +218,9 @@ function OverviewView({ events, loading, onPod }: { events: Event[]; loading: bo
     return cutoff ? events.filter((e) => e.time && new Date(e.time).getTime() >= cutoff) : events;
   }, [events, range]);
   const s = useMemo(() => summarise(win), [win]);
+  // The "pods active" card reflects the LIVE fleet, not the audit-history pod
+  // count (a torn-down pod can still appear in recent events).
+  const stats: Stats = useMemo(() => ({ ...s, pods: livePods.length }), [s, livePods]);
   const counts = useMemo(() => decisionCounts(win), [win]);
   const attention = useMemo(() => group(win, ["deny", "block"]).slice(0, 8), [win]);
   const redactions = useMemo(() => group(win, ["redact"]).slice(0, 12), [win]);
@@ -277,12 +243,7 @@ function OverviewView({ events, loading, onPod }: { events: Event[]; loading: bo
         <span class="ov-head__label">Egress window</span>
         <SegmentedControl value={range} options={TIME_RANGES} onChange={setRange} ariaLabel="overview time range" />
       </div>
-      <div class="cards">
-        <Card n={livePods.length} label="pods active" icon="pods" />
-        <Card n={s.requests} label="requests" icon="globe" />
-        <Card n={s.secrets} label="secrets redacted" icon="eyeoff" tone={s.secrets ? "warn" : undefined} />
-        <Card n={s.blocked + s.denied} label="blocked / denied" icon="ban" tone={s.blocked + s.denied ? "flag" : undefined} />
-      </div>
+      <OverviewCards stats={stats} />
 
       <div class="chart-card">
         <div class="chart-head">
@@ -313,39 +274,8 @@ function OverviewView({ events, loading, onPod }: { events: Event[]; loading: bo
         </div>
       </div>
 
-      <h2 class="section-title">Attention</h2>
-      {attention.length === 0
-        ? <div class="panel empty">No policy denials or blocks — agents are inside their guardrails.</div>
-        : <div class="panel">
-            {attention.map((a) => (
-              <button class="attn" onClick={() => onPod(a.pod)}>
-                <span class="attn__pod">{a.pod}</span>
-                <span class="attn__desc">
-                  <DecisionBadge decision={a.decision} /> {a.upstream}
-                </span>
-                <span class="attn__count">×{a.count}</span>
-              </button>
-            ))}
-          </div>}
-
-      <h2 class="section-title">Secrets redacted</h2>
-      {redactions.length === 0
-        ? <div class="panel empty">No secrets redacted yet — redact-mode policies strip credentials the agent tries to send.</div>
-        : <div class="table-wrap">
-            <table>
-              <thead><tr><th>pod</th><th>destination</th><th>secrets</th><th>times</th></tr></thead>
-              <tbody>
-                {redactions.map((c) => (
-                  <tr class="clickable" tabIndex={0} onClick={() => onPod(c.pod)} onKeyDown={rowKey(() => onPod(c.pod))}>
-                    <td class="c-pod">{c.pod}</td>
-                    <td class="c-mono">{c.upstream}</td>
-                    <td class="c-mono">{c.secrets}</td>
-                    <td class="c-mono">×{c.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>}
+      <AttentionPanel attention={attention} onPod={onPod} />
+      <RedactionsTable redactions={redactions} onPod={onPod} />
     </div>
   );
 }
@@ -354,130 +284,9 @@ function PodsView({ onPod }: { onPod: (pod: string) => void }) {
   const { pods, hist, loading } = usePods();
   if (loading) return <SkelTable rows={5} />;
   return (
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th scope="col">pod</th><th scope="col">state</th><th scope="col">size</th><th scope="col">mode</th><th scope="col">policy</th><th scope="col" class="num">cpu</th><th scope="col" class="num">memory</th></tr>
-        </thead>
-        <tbody>
-          {pods.length === 0 && <tr><td colSpan={7} class="empty">No pods running yet — start one with <code>poddle up</code>.</td></tr>}
-          {pods.map((p) => {
-            const h = hist[p.name] || { cpu: [], mem: [] };
-            return (
-              <tr key={p.name} class="clickable" tabIndex={0} onClick={() => onPod(p.name)} onKeyDown={rowKey(() => onPod(p.name))}>
-                <td class="c-pod">{p.name}{p.autoscale && <span class="tag">auto</span>}</td>
-                <td><span class={"state state--" + p.state}>{p.state}</span></td>
-                <td class="c-mono">{cap1(p.size)}</td>
-                <td class="c-mono">{p.mode ? cap1(p.mode) : <span class="faint">—</span>}</td>
-                <td class="c-mono">{p.policy || <span class="faint">—</span>}</td>
-                <td class="perf"><Sparkline data={h.cpu} /><span class="c-mono">{p.cpu || "—"}</span></td>
-                <td class="perf"><Sparkline data={h.mem} /><span class="c-mono">{p.memPerc || "—"}</span></td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <PodFleetTable pods={pods} hist={hist} onPod={onPod}
+      emptyState={<>No pods running yet — start one with <code>poddle up</code>.</>} />
   );
-}
-
-const TIME_RANGES: SegOption[] = [
-  { value: "", label: "All" },
-  { value: "15m", label: "15m" },
-  { value: "1h", label: "1h" },
-  { value: "24h", label: "24h" },
-];
-const RANGE_MS: Record<string, number> = { "15m": 900000, "1h": 3600000, "24h": 86400000 };
-
-function AuditView({ events, initialPod, initialQ, loading }: { events: Event[]; initialPod?: string; initialQ?: string; loading: boolean }) {
-  const [q, setQ] = useState(initialPod || initialQ || "");
-  const [decision, setDecision] = useState("");
-  const [range, setRange] = useState("");
-  useEffect(() => { if (initialPod) setQ(initialPod); else if (initialQ) setQ(initialQ); }, [initialPod, initialQ]);
-
-  // Narrow by search + time range first; the decision filter is applied last so
-  // the per-decision counts reflect everything else the user has narrowed to.
-  const matched = useMemo(() => {
-    const cutoff = range && RANGE_MS[range] ? Date.now() - RANGE_MS[range] : 0;
-    const s = q.toLowerCase();
-    return events.filter((e) => {
-      if (cutoff && new Date(e.time).getTime() < cutoff) return false;
-      if (!q) return true;
-      return (e.pod || "").toLowerCase().includes(s) || (e.kind || "").toLowerCase().includes(s) ||
-        (e.upstream || "").toLowerCase().includes(s);
-    });
-  }, [events, q, range]);
-
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { "": matched.length, allow: 0, redact: 0, block: 0, deny: 0 };
-    for (const e of matched) if (e.decision && e.decision in c) c[e.decision]++;
-    return c;
-  }, [matched]);
-  const shown = useMemo(() => (decision ? matched.filter((e) => e.decision === decision) : matched), [matched, decision]);
-  const decisionOpts = DECISION_FILTER.map((o) => ({ ...o, badge: counts[o.value] ?? 0 }));
-
-  const toolbar = (
-    <div class="toolbar">
-      <input class="grow" aria-label="Filter events by pod, kind, or upstream" placeholder="Filter by pod, kind, or upstream…" value={q}
-        onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
-      <SegmentedControl value={range} options={TIME_RANGES} onChange={setRange} ariaLabel="time range" />
-      <SegmentedControl value={decision} options={decisionOpts} onChange={setDecision} ariaLabel="filter by decision" />
-      <button type="button" class="btn btn--ghost btn--sm" disabled={!shown.length} onClick={() => downloadCsv(shown)}>Export CSV</button>
-      <span class="count">{shown.length} events</span>
-    </div>
-  );
-
-  if (loading) return <div>{toolbar}<SkelTable rows={8} /></div>;
-
-  return (
-    <div>
-      {toolbar}
-      <div class="table-wrap">
-        <table class="dense">
-          <thead>
-            <tr><th scope="col">time</th><th scope="col">pod</th><th scope="col">kind</th><th scope="col">decision</th><th scope="col">upstream</th><th scope="col">detail</th></tr>
-          </thead>
-          <tbody>
-            {shown.length === 0 && (
-              <tr><td colSpan={6} class="empty">
-                {q || decision || range ? "No events match your filter." : "Monitoring active — no events recorded yet."}
-              </td></tr>
-            )}
-            {shown.slice(0, 800).map((e) => (
-              <tr key={e.seq} class="auditrow">
-                <td class="c-time" title={new Date(e.time).toLocaleString()}>{relTime(e.time)}</td>
-                <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
-                <td>{humanKind(e.kind)}</td>
-                <td><DecisionBadge decision={e.decision} /></td>
-                <td class="c-mono">{e.upstream || <span class="faint">—</span>}</td>
-                <td class="c-detail">{cap1(e.detail || "")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ---- destinations (where the agents are reaching, derived from the audit) ----
-type Dest = { upstream: string; total: number; allow: number; redact: number; deny: number; block: number; secrets: number; pods: Set<string> };
-function destinations(events: Event[]): Dest[] {
-  const m = new Map<string, Dest>();
-  for (const e of events) {
-    if (e.kind !== "request" || !e.upstream) continue;
-    const d = m.get(e.upstream) || { upstream: e.upstream, total: 0, allow: 0, redact: 0, deny: 0, block: 0, secrets: 0, pods: new Set<string>() };
-    d.total++;
-    if (e.pod) d.pods.add(e.pod);
-    switch (e.decision) {
-      case "allow": d.allow++; break;
-      case "redact": d.redact++; d.secrets += secretsFrom(e.detail); break;
-      case "deny": d.deny++; break;
-      case "block": d.block++; break;
-    }
-    m.set(e.upstream, d);
-  }
-  return [...m.values()].sort((a, b) => b.total - a.total);
 }
 
 const goAuditFor = (upstream: string) => navigate("/audit?q=" + encodeURIComponent(upstream));
@@ -496,31 +305,13 @@ function DestinationsView({ events, loading }: { events: Event[]; loading: boole
       <span class="count">{all.length} destination{all.length === 1 ? "" : "s"} · {podCount} pod{podCount === 1 ? "" : "s"}</span>
     </div>
   );
-  if (loading) return <div>{toolbar}<SkelTable rows={6} /></div>;
 
   return (
     <div>
       {toolbar}
-      {shown.length === 0
+      {!loading && shown.length === 0
         ? <div class="panel empty">{q ? "No destinations match your filter." : "No egress recorded yet — destinations appear as your agents make requests."}</div>
-        : <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th scope="col">destination</th><th scope="col" class="num">requests</th><th scope="col">decision mix</th><th scope="col" class="num">pods</th><th scope="col" class="num">secrets</th></tr>
-              </thead>
-              <tbody>
-                {shown.map((d) => (
-                  <tr key={d.upstream} class="clickable" tabIndex={0} onClick={() => goAuditFor(d.upstream)} onKeyDown={rowKey(() => goAuditFor(d.upstream))}>
-                    <td class="c-mono dest__host">{d.upstream}{(d.deny || d.block) > 0 && <span class="dest__flag" aria-hidden="true" title="denied or blocked here"><Icon name="ban" size={12} /></span>}</td>
-                    <td class="num c-mono">{d.total}</td>
-                    <td><MixBar d={d} /></td>
-                    <td class="num c-mono" title={[...d.pods].join(", ")}>{d.pods.size}</td>
-                    <td class="num c-mono">{d.secrets || <span class="faint">—</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>}
+        : <DestinationsTable dests={shown} loading={loading} onSelect={goAuditFor} />}
     </div>
   );
 }
@@ -762,6 +553,7 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
         : null,
     [selected, policies],
   );
+  const hrefFor = (name: string) => `/policies/${encodeURIComponent(name)}`;
 
   return (
     <div>
@@ -778,21 +570,8 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
         </div>
       )}
       <div class="layout">
-        <div class="list">
-          {loading
-            ? [0, 1, 2].map((i) => <span class="list__skel skel" key={i} aria-hidden="true" />)
-            : policies.map((p) => {
-                const n = usage(p.name);
-                return (
-                  <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
-                    class={"list__row" + (selected === p.name ? " on" : "")}>
-                    <span>{p.name}</span>
-                    {n > 0 && <span class="list__meta" title={`${n} running pod${n === 1 ? "" : "s"} use this policy`}>{n} pod{n === 1 ? "" : "s"}</span>}
-                  </a>
-                );
-              })}
-          <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
-        </div>
+        <PolicyList policies={policies} selectedName={selected} loading={loading} usage={usage}
+          hrefFor={hrefFor} newHref="/policies/new" linkTo={linkTo} />
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
               onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
@@ -922,41 +701,13 @@ function PodDetailView({ name, events, loading }: { name: string; events: Event[
   useEffect(() => { api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => {}); }, []);
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
+  const controls = pod && pod.state === "running" ? <PodControls pod={pod} policies={policies} /> : undefined;
+  const policyHref = pod?.policy ? `/policies/${encodeURIComponent(pod.policy)}` : undefined;
   return (
-    <div>
-      <div class="detail-head">
-        <a href="/pods" class="back" onClick={linkTo("/pods")}>← Pods</a>
-        <h1 class="detail-title">{name}</h1>
-        {pod
-          ? <span class={"state state--" + pod.state}>{pod.state}</span>
-          : <span class="state state--stopped">not running</span>}
-        {pod?.autoscale && <span class="tag">auto</span>}
-      </div>
-
-      {pod && (
-        <dl class="facts">
-          <Fact label="size"><span class="c-mono">{cap1(pod.size)}</span></Fact>
-          <Fact label="mode"><span class="c-mono">{pod.mode ? cap1(pod.mode) : "—"}</span></Fact>
-          <Fact label="policy">
-            {pod.policy
-              ? <a class="fact-link c-mono" href={`/policies/${encodeURIComponent(pod.policy)}`} onClick={linkTo(`/policies/${encodeURIComponent(pod.policy)}`)}>{pod.policy}</a>
-              : <span class="faint">none</span>}
-          </Fact>
-          <Fact label="cpu"><span class="perf-inline"><Sparkline data={h.cpu} /><span class="c-mono">{pod.cpu || "—"}</span></span></Fact>
-          <Fact label="memory"><span class="perf-inline"><Sparkline data={h.mem} /><span class="c-mono">{pod.mem || "—"}</span></span></Fact>
-        </dl>
-      )}
-
-      {pod && pod.state === "running" && (
-        <>
-          <h2 class="section-title">Controls</h2>
-          <PodControls pod={pod} policies={policies} />
-        </>
-      )}
-
-      <h2 class="section-title">Audit trail</h2>
-      <AuditView events={events} initialPod={name} loading={loading} />
-    </div>
+    <PodDetailPanel name={name} pod={pod} hist={h} events={events} loading={loading}
+      backHref="/pods" onBack={linkTo("/pods")}
+      policyHref={policyHref} onPolicyClick={policyHref ? linkTo(policyHref) : undefined}
+      controls={controls} />
   );
 }
 
@@ -1147,7 +898,7 @@ function App() {
           {route.view === "audit" && (
             <>
               <IntegrityPanel verify={vf.verify} checkedAt={vf.checkedAt} recheck={vf.recheck} count={events.length} />
-              <AuditView events={events} initialPod={route.pod} initialQ={route.q} loading={eventsLoading} />
+              <AuditLogTable events={events} initialPod={route.pod} initialQ={route.q} loading={eventsLoading} />
             </>
           )}
           {route.view === "destinations" && <DestinationsView events={events} loading={eventsLoading} />}

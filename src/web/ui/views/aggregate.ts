@@ -1,7 +1,7 @@
 // Pure, client-side aggregations derived from the audit event stream. Moved
 // verbatim from src/web/dashboard/src/main.tsx so both the core dashboard and
 // (eventually) the commercial cloud console share one implementation.
-import type { Event, Grouped, Stats } from "./types";
+import type { Dest, Event, Grouped, Stats } from "./types";
 
 // secretsFrom parses the redacted-secret count out of an event's detail text
 // (falls back to 1 when the count isn't present in the message).
@@ -71,4 +71,32 @@ export function decisionCounts(events: Event[]): Record<string, number> {
   const c: Record<string, number> = { allow: 0, redact: 0, deny: 0, block: 0 };
   for (const e of events) if (e.decision && e.decision in c) c[e.decision]++;
   return c;
+}
+
+// destinations aggregates egress by upstream host (where the agents are
+// reaching, derived from the audit) — the Destinations view's data prep.
+export function destinations(events: Event[]): Dest[] {
+  const m = new Map<string, Dest>();
+  for (const e of events) {
+    if (e.kind !== "request" || !e.upstream) continue;
+    const d = m.get(e.upstream) || { upstream: e.upstream, total: 0, allow: 0, redact: 0, deny: 0, block: 0, secrets: 0, pods: new Set<string>() };
+    d.total++;
+    if (e.pod) d.pods.add(e.pod);
+    switch (e.decision) {
+      case "allow": d.allow++; break;
+      case "redact": d.redact++; d.secrets += secretsFrom(e.detail); break;
+      case "deny": d.deny++; break;
+      case "block": d.block++; break;
+    }
+    m.set(e.upstream, d);
+  }
+  return [...m.values()].sort((a, b) => b.total - a.total);
+}
+
+// rowKey makes a table row keyboard-operable (Enter/Space) when it is
+// clickable, matching the native activation keys of the button/link roles.
+export function rowKey(onClick: () => void) {
+  return (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+  };
 }

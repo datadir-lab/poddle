@@ -100,3 +100,5 @@ export type Pending = {
     type: "revoke";
 } | null;
 export declare const HTTP_METHODS: string[];
+export declare const TIME_RANGES: SegOption[];
+export declare const RANGE_MS: Record<string, number>;

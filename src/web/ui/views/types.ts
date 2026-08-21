@@ -62,3 +62,13 @@ export type Toast = { id: number; pod: string; decision: string; upstream: strin
 export type Pending = { type: "bind"; name: string } | { type: "revoke" } | null;
 
 export const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+// Shared time-range filter options (the audit feed's "time range" and the
+// overview's "egress window" both filter events by the same buckets).
+export const TIME_RANGES: SegOption[] = [
+  { value: "", label: "All" },
+  { value: "15m", label: "15m" },
+  { value: "1h", label: "1h" },
+  { value: "24h", label: "24h" },
+];
+export const RANGE_MS: Record<string, number> = { "15m": 900000, "1h": 3600000, "24h": 86400000 };
