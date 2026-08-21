@@ -65,6 +65,19 @@ jobs:
         run: |
           podman version || true
           docker version --format 'docker {{.Server.Version}}' || true
+      - name: Force slirp4netns for rootless podman (bypass pasta's systemd/dbus need in CI)
+        # The containerized broker needs an internet uplink; rootless podman's
+        # default `pasta` backend tries to move its process into a systemd user
+        # slice, which needs a dbus session that isn't reliably present when
+        # podman is spawned under `go test`. slirp4netns needs neither. System-
+        # wide so it applies despite tests overriding XDG_CONFIG_HOME.
+        run: |
+          if ! command -v slirp4netns >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y slirp4netns
+          fi
+          sudo mkdir -p /etc/containers/containers.conf.d
+          printf '%s\n' '[network]' 'default_rootless_network_cmd = "slirp4netns"' \
+            | sudo tee /etc/containers/containers.conf.d/10-slirp4netns.conf > /dev/null
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
       - name: Run ${{ matrix.suite }}

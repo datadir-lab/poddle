@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,38 +18,50 @@ import (
 // a policy that allows only a single mock upstream; from *inside* the pod a
 // script runs six probes and prints a unique marker for each:
 //
-//  1. raw egress to a public IP (proxied)      -> denied by policy (BLOCKED)
+//  1. raw egress to a public IP (proxied)       -> denied by policy         (BLOCKED)
 //  2. direct egress with the proxy env stripped -> no route out on --internal (BLOCKED)
-//  3. DNS resolution                            -> no external resolver     (BLOCKED)
-//  4. a control-plane verb on the data plane    -> unreachable / immutable  (BLOCKED)
-//  5. the allow-listed host THROUGH the broker  -> 200; a denied host       -> broker 403
+//  3. DNS resolution                            -> no external resolver      (BLOCKED)
+//  4. a control-plane verb on the data plane    -> unreachable / immutable   (BLOCKED)
+//  5. the allow-listed host THROUGH the broker  -> 200; a denied host        -> broker 403
 //  6. the blocked attempts are audited (daemon audit --pod <pod> --decision deny)
 //
 // If any escape probe (1-4) is NOT blocked, the test fails loudly — a pod that
 // reaches the internet or mutates its own governance is a lockdown breach.
+//
+// The broker is a container, so the allow-listed upstream is addressed via
+// host.containers.internal (reachable from the broker's egress network) and the
+// mock binds 0.0.0.0. The denied host is a bogus name the policy rejects *before*
+// the broker dials, so it needs no server. The pod always proxies to the broker,
+// which does the actual dialing.
 func TestE2E_Lockdown(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
 
-	// allow-listed host (127.0.0.1) and a denied host (127.0.0.2) — distinct
-	// loopback aliases so the policy matches by host, exactly as forward_test.
-	var allowHit, denyHit int32
-	allowMock := mockOn(t, "127.0.0.1:0", &allowHit)
-	denyMock := mockOn(t, "127.0.0.2:0", &denyHit)
+	// Allow-listed upstream: bound on 0.0.0.0 so the broker container reaches it
+	// at host.containers.internal. The denied host is bogus (policy denies it
+	// before any dial), so no deny server is needed.
+	var allowHit int32
+	allowMock := mockOn(t, "0.0.0.0:0", &allowHit)
+	_, allowPort, err := net.SplitHostPort(allowMock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("allow mock addr: %v", err)
+	}
+	allowURL := "http://host.containers.internal:" + allowPort + "/"
+	const denyURL = "http://blocked.invalid/"
 
 	xdg := t.TempDir()
-	// Lockdown policy: allow ONLY the mock upstream host; everything else denied.
+	// Lockdown policy: allow ONLY the broker-reachable mock host; all else denied.
 	writeFile(t, filepath.Join(xdg, "poddle", "policies", "lockdown.toml"),
-		"allow_upstreams = [\"127.0.0.1\"]\n")
+		"allow_upstreams = [\"host.containers.internal\"]\n")
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/node:22\"\n")
 
-	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"),
-		"XDG_STATE_HOME="+filepath.Join(xdg, "state"))
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-e2e-lockdown"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
@@ -81,7 +94,7 @@ curl -fsS -m 4 -o /dev/null -X POST --data '{"allow_upstreams":["0.0.0.0/0"]}' "
 echo "P5_ALLOW:$(curl -s -m 6 -o /dev/null -w '%%{http_code}' %s 2>/dev/null)"
 echo "P5_DENY:$(curl -s -m 6 -o /dev/null -w '%%{http_code}' %s 2>/dev/null)"
 echo PROBES_DONE
-`, pod, allowMock.URL, denyMock.URL)
+`, pod, allowURL, denyURL)
 
 	up := exec.Command(bin, "up", pod, "--policy", "lockdown", "--exec", script)
 	up.Dir, up.Env = proj, env
@@ -114,9 +127,6 @@ echo PROBES_DONE
 	}
 	if !strings.Contains(out, "P5_DENY:403") {
 		t.Errorf("a denied host should be refused by the broker with 403 (want P5_DENY:403):\n%s", out)
-	}
-	if atomic.LoadInt32(&denyHit) != 0 {
-		t.Errorf("a policy-denied request must never reach the upstream (hits=%d)", denyHit)
 	}
 	if atomic.LoadInt32(&allowHit) == 0 {
 		t.Errorf("the allow-listed request should have reached the upstream")
