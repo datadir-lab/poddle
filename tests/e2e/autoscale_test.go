@@ -54,7 +54,7 @@ func TestE2E_Autoscale_WarnsInteractive(t *testing.T) {
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	up := exec.Command(bin, "up", pod, "--autoscale", "--detach")
@@ -125,7 +125,7 @@ func TestE2E_Autoscale_GrowsHeadless(t *testing.T) {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
 		_, _ = exec.Command("sh", "-c",
 			"podman volume ls -q --filter label=poddle.pod="+pod+" | xargs -r podman volume rm").CombinedOutput()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	// A headless, autoscale-opted-in task pod (starts weak).

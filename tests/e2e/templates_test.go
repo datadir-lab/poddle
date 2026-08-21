@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,7 +37,14 @@ func TestE2E_Templates(t *testing.T) {
 func templatesNestedFull(t *testing.T, bin string) {
 	var mu sync.Mutex
 	var auths []string
-	mock := mockAnthropicUp(t, &auths, &mu)
+	mock := mockAnthropicUpOn(t, "0.0.0.0:0", &auths, &mu)
+	// The broker container dials the upstream, so address the mock at
+	// host.containers.internal (it binds 0.0.0.0), not the loopback mock.URL.
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 	const sentinel = "SENTINEL-TPL"
 
 	// User config: the `base` template (+ its script) and a sentinel identity.
@@ -56,7 +64,10 @@ func templatesNestedFull(t *testing.T, bin string) {
 
 	const pod = "poddle-tpl-e2e"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
-	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
+	t.Cleanup(func() {
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per test (its state dir is this test's temp)
+	})
 
 	// Verify (set -e aborts on any failed check → up returns non-zero):
 	verify := strings.Join([]string{
@@ -73,7 +84,7 @@ func templatesNestedFull(t *testing.T, bin string) {
 
 	cmd := exec.Command(bin, "up", pod, "--exec", verify) // no --template → project default
 	cmd.Dir = proj
-	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+xdg, "PODDLE_ANTHROPIC_BASE_URL="+mock.URL)
+	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+xdg, "PODDLE_ANTHROPIC_BASE_URL="+mockURL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("poddle up (templates) failed: %v\n%s", err, out)

@@ -86,7 +86,10 @@ func TestE2E_Secure_EgressRedactsSecret(t *testing.T) {
 
 	pod := "poddle-sec-egress"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
-	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
+	t.Cleanup(func() {
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per test (its state dir is this test's temp)
+	})
 
 	// Simulate an agent exfiltrating a secret it found: POST it as JSON.
 	inpod := `curl -s -o /dev/null -X POST -H "Content-Type: application/json" ` +

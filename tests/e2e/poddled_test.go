@@ -67,7 +67,7 @@ func TestE2E_Poddled_DetachRunDown(t *testing.T) {
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run() // best-effort: stop the daemon
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	// 1. up --detach: create the pod, auto-start poddled, issue the handle, exit.
@@ -111,45 +111,28 @@ func TestE2E_Poddled_DetachRunDown(t *testing.T) {
 		t.Errorf("upstream never saw the real token; got %v", got)
 	}
 
-	// 4. Capture the pod's handle + the gateway address (the daemon binds
-	// 0.0.0.0, so the host reaches it at 127.0.0.1:<port>).
-	cap := exec.Command(bin, "run", pod, `printf 'HANDLE=%s GATEWAY=%s\n' "$WOODPECKER_TOKEN" "$WOODPECKER_SERVER"`)
-	cap.Env = env
-	capOut, err := cap.CombinedOutput()
-	if err != nil {
-		t.Fatalf("capture failed: %v\n%s", err, capOut)
-	}
-	var handle, gateway string
-	for _, f := range strings.Fields(string(capOut)) {
-		if v, ok := strings.CutPrefix(f, "HANDLE="); ok {
-			handle = v
-		}
-		if v, ok := strings.CutPrefix(f, "GATEWAY="); ok {
-			gateway = v
-		}
-	}
-	_, port, err := net.SplitHostPort(strings.TrimPrefix(gateway, "http://"))
-	if err != nil || handle == "" {
-		t.Fatalf("could not read handle/gateway from pod: handle=%q gateway=%q", handle, gateway)
-	}
-	gwURL := "http://127.0.0.1:" + port
-
-	// Before down, the handle is valid — the gateway proxies (not 401).
-	if code := gwStatus(t, gwURL, handle); code == http.StatusUnauthorized {
-		t.Fatalf("handle should be valid before down, got 401")
-	}
-
-	// 5. down: revoke + remove.
+	// 4. down: revoke + remove. The gateway/data-plane listener now lives INSIDE
+	// the broker container on the pod's internal lock net, so it is no longer
+	// reachable from the host at 127.0.0.1 — we can't dial it to check handle
+	// validity (that host-side gwStatus probe is intentionally dropped). Validity
+	// BEFORE down is already proven above: the `run` at step 2 reached the service
+	// through the broker with the real token. Revocation AFTER down is asserted via
+	// the daemon's audit log (handle.revoke), not a host-side gateway probe.
 	down := exec.Command(bin, "down", pod)
 	down.Env = env
 	if out, err := down.CombinedOutput(); err != nil {
 		t.Fatalf("down failed: %v\n%s", err, out)
 	}
 
-	// The handle is now revoked at the (still-running) daemon → 401.
-	if code := gwStatus(t, gwURL, handle); code != http.StatusUnauthorized {
-		t.Errorf("handle should be revoked after down, gateway returned %d", code)
+	// down revoked the pod's handles at the (still-running) daemon: the audit log
+	// records a handle.revoke for the pod.
+	rev := exec.Command(bin, "daemon", "audit", "--pod", pod)
+	rev.Env = env
+	revOut, _ := rev.CombinedOutput()
+	if !strings.Contains(string(revOut), "handle.revoke") {
+		t.Errorf("down should revoke the pod's handles (want a handle.revoke audit event for %q):\n%s", pod, revOut)
 	}
+
 	// And the pod is gone.
 	ps, _ := exec.Command("podman", "ps", "-a", "--format", "{{.Names}}").CombinedOutput()
 	if strings.Contains(string(ps), pod) {

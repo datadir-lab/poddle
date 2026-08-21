@@ -83,7 +83,7 @@ func TestE2E_Audit_RecordsBrokeredAccess(t *testing.T) {
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless

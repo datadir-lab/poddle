@@ -165,7 +165,10 @@ func runConnCase(t *testing.T, bin string, tc connCase) {
 
 	pod := "poddle-conn-" + tc.name
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
-	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
+	t.Cleanup(func() {
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per test (its state dir is this test's temp)
+	})
 
 	cmd := exec.Command(bin, "up", pod, "--exec", tc.inPod(mockAddr))
 	cmd.Dir = proj

@@ -45,7 +45,7 @@ func TestE2E_ResumeMove_Headless(t *testing.T) {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
 		_, _ = exec.Command("sh", "-c",
 			"podman volume ls -q --filter label=poddle.pod="+pod+" | xargs -r podman volume rm").CombinedOutput()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless

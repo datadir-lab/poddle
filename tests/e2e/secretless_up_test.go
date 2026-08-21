@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,7 +42,12 @@ var upCases = []upCase{
 		inPod: `export IS_SANDBOX=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1; ` +
 			`echo '{"hasCompletedOnboarding":true,"theme":"dark"}' > $HOME/.claude.json; ` +
 			`claude -p "ping" --output-format json --max-turns 1 --dangerously-skip-permissions </dev/null`,
-		mock: mockAnthropicUp,
+		// The broker is a container and dials the upstream itself, so the mock
+		// binds 0.0.0.0 and is reached at host.containers.internal (see runUpCase),
+		// not the loopback mock.URL.
+		mock: func(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+			return mockAnthropicUpOn(t, "0.0.0.0:0", auths, mu)
+		},
 	},
 	// Add more providers here, e.g.:
 	//   {name: "openai", provider: "openai", harness: "codex", image: ..., tokenFile: "openai-token",
@@ -148,6 +154,13 @@ func runUpCase(t *testing.T, bin string, tc upCase) {
 	var mu sync.Mutex
 	var auths []string
 	mock := tc.mock(t, &auths, &mu)
+	// The broker container dials the upstream, so address the mock at
+	// host.containers.internal (it binds 0.0.0.0), not the loopback mock.URL.
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 
 	sentinel := "SENTINEL-UP-" + tc.name
 
@@ -167,7 +180,10 @@ func runUpCase(t *testing.T, bin string, tc upCase) {
 
 	pod := "poddle-up-e2e-" + tc.name
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
-	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
+	t.Cleanup(func() {
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per test (its state dir is this test's temp)
+	})
 
 	cmd := exec.Command(bin, "up", pod,
 		"--identity", "work",
@@ -177,7 +193,7 @@ func runUpCase(t *testing.T, bin string, tc upCase) {
 	)
 	cmd.Env = append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		tc.upstreamEnv+"="+mock.URL,
+		tc.upstreamEnv+"="+mockURL,
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

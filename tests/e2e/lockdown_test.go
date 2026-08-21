@@ -70,6 +70,7 @@ func TestE2E_Lockdown(t *testing.T) {
 		down.Env = env
 		_ = down.Run() // disconnects the broker from the lock net, then removes the pod
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per test (its state dir is this test's temp)
 		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
