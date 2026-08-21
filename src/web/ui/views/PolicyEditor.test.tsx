@@ -143,4 +143,48 @@ describe("PolicyEditor", () => {
     act(() => { btn.click(); });
     expect(onSetDefault).toHaveBeenLastCalledWith("");
   });
+
+  it("flags a wide-open policy, and the metadata fix adds the guard", () => {
+    // A named policy with no allow-list is wide open -> advisories fire.
+    const el = mount(<PolicyEditor policy={{ name: "open", egress: "redact" }} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} />);
+    mounted.push(el);
+    const texts = [...el.querySelectorAll(".advisory")].map((a) => a.textContent || "");
+    expect(texts.some((t) => t.includes("every host is reachable"))).toBe(true);
+    expect(texts.some((t) => t.includes("metadata endpoints are reachable"))).toBe(true);
+
+    // The one-click fix adds the two metadata hosts to the deny-list.
+    act(() => { findButton(el, "Block them").click(); });
+    const blocked = [...el.querySelectorAll("input[aria-label='Blocked host']")].map((i) => (i as HTMLInputElement).value);
+    expect(blocked).toContain("169.254.169.254");
+    expect(blocked).toContain("metadata.google.internal");
+  });
+
+  it("the request probe evaluates against the current draft", () => {
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} />);
+    mounted.push(el);
+    // POLICY allows api.example.com (GET only): a non-allowed host is denied,
+    // the allowed host (default probe method GET) passes.
+    setValue(el.querySelector(".probe__host") as HTMLInputElement, "evil.example");
+    expect(el.querySelector(".probe__result")?.textContent).toContain("deny");
+    setValue(el.querySelector(".probe__host") as HTMLInputElement, "api.example.com");
+    expect(el.querySelector(".probe__result")?.textContent).toContain("allow");
+  });
+
+  it("Duplicate hands onDuplicate the built policy", () => {
+    const onDuplicate = vi.fn();
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} onDuplicate={onDuplicate} />);
+    mounted.push(el);
+    act(() => { findButton(el, "Duplicate").click(); });
+    expect(onDuplicate).toHaveBeenCalledTimes(1);
+    expect((onDuplicate.mock.calls[0][0] as Policy).allow_upstreams).toEqual(["api.example.com"]);
+  });
+
+  it("treats a named policy as unsaved when isSaved is false (a duplicate seed)", () => {
+    const el = mount(<PolicyEditor policy={{ ...POLICY, name: "prod-copy" }} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} isSaved={false} onDuplicate={vi.fn()} onSetDefault={vi.fn()} />);
+    mounted.push(el);
+    // Delete / Duplicate / Set-as-default are hidden until the copy is saved.
+    expect(findButton(el, "Delete")).toBeFalsy();
+    expect(findButton(el, "Duplicate")).toBeFalsy();
+    expect((el.querySelector("#pol-name") as HTMLInputElement).value).toBe("prod-copy");
+  });
 });

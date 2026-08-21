@@ -343,6 +343,25 @@ var k = {
 		cy: "12",
 		r: "10"
 	}), /* @__PURE__ */ D("path", { d: "m4.9 4.9 14.2 14.2" })] }),
+	info: () => /* @__PURE__ */ D(e, { children: [
+		/* @__PURE__ */ D("circle", {
+			cx: "12",
+			cy: "12",
+			r: "10"
+		}),
+		/* @__PURE__ */ D("line", {
+			x1: "12",
+			y1: "16",
+			x2: "12",
+			y2: "12"
+		}),
+		/* @__PURE__ */ D("line", {
+			x1: "12",
+			y1: "8",
+			x2: "12.01",
+			y2: "8"
+		})
+	] }),
 	check: () => /* @__PURE__ */ D("path", { d: "M20 6 9 17l-5-5" }),
 	octagon: () => /* @__PURE__ */ D(e, { children: [
 		/* @__PURE__ */ D("polygon", { points: "7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86" }),
@@ -820,7 +839,7 @@ function H({ rows: e = 6 }) {
 }
 //#endregion
 //#region views/LiveDot.tsx
-function U({ status: e }) {
+function ee({ status: e }) {
 	let t = e === "live" ? "Live" : e === "down" ? "Reconnecting" : "Connecting";
 	return /* @__PURE__ */ D("span", {
 		class: "live live--" + e,
@@ -834,12 +853,12 @@ function U({ status: e }) {
 }
 //#endregion
 //#region views/Fact.tsx
-function W({ label: e, children: t }) {
+function U({ label: e, children: t }) {
 	return /* @__PURE__ */ D("div", { children: [/* @__PURE__ */ D("dt", { children: e }), /* @__PURE__ */ D("dd", { children: t })] });
 }
 //#endregion
 //#region views/csv.ts
-function G(e) {
+function W(e) {
 	let t = [
 		"seq",
 		"time",
@@ -856,13 +875,13 @@ function G(e) {
 	}, r = e.map((e) => t.map((t) => n(e[t])).join(","));
 	return [t.join(","), ...r].join("\n");
 }
-function K(e, t) {
-	let n = new Blob([G(t)], { type: "text/csv;charset=utf-8" }), r = URL.createObjectURL(n), i = document.createElement("a");
+function G(e, t) {
+	let n = new Blob([W(t)], { type: "text/csv;charset=utf-8" }), r = URL.createObjectURL(n), i = document.createElement("a");
 	i.href = r, i.download = e, document.body.appendChild(i), i.click(), i.remove(), setTimeout(() => URL.revokeObjectURL(r), 0);
 }
 //#endregion
 //#region views/AuditLogTable.tsx
-var q = [
+var K = [
 	{
 		value: "",
 		label: "All"
@@ -888,7 +907,7 @@ var q = [
 		tone: "deny"
 	}
 ];
-function J({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
+function q({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 	let [u, d] = a(t || i || ""), [f, p] = a(""), [m, h] = a("");
 	n(() => {
 		t ? d(t) : i && d(i);
@@ -910,7 +929,7 @@ function J({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 		};
 		for (let t of g) t.decision && t.decision in e && e[t.decision]++;
 		return e;
-	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = q.map((e) => ({
+	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = K.map((e) => ({
 		...e,
 		badge: b[e.value] ?? 0
 	})), C = /* @__PURE__ */ D("div", {
@@ -940,7 +959,7 @@ function J({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 				class: "btn btn--ghost btn--sm",
 				disabled: !x.length,
 				onClick: () => {
-					K("poddle-audit.csv", x), l?.(x);
+					G("poddle-audit.csv", x), l?.(x);
 				},
 				children: "Export CSV"
 			}),
@@ -1018,7 +1037,7 @@ function J({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 }
 //#endregion
 //#region views/PodFleetTable.tsx
-function Y({ pods: e, hist: t, onPod: n, emptyState: r }) {
+function J({ pods: e, hist: t, onPod: n, emptyState: r }) {
 	return /* @__PURE__ */ D("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ D("table", { children: [/* @__PURE__ */ D("thead", { children: /* @__PURE__ */ D("tr", { children: [
@@ -1117,7 +1136,7 @@ function Y({ pods: e, hist: t, onPod: n, emptyState: r }) {
 }
 //#endregion
 //#region views/PodDetailPanel.tsx
-function X({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBack: s, policyHref: c, onPolicyClick: l, controls: u }) {
+function Y({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBack: s, policyHref: c, onPolicyClick: l, controls: u }) {
 	return /* @__PURE__ */ D("div", { children: [
 		/* @__PURE__ */ D("div", {
 			class: "detail-head",
@@ -1148,21 +1167,21 @@ function X({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBac
 		n && /* @__PURE__ */ D("dl", {
 			class: "facts",
 			children: [
-				/* @__PURE__ */ D(W, {
+				/* @__PURE__ */ D(U, {
 					label: "size",
 					children: /* @__PURE__ */ D("span", {
 						class: "c-mono",
 						children: _(n.size)
 					})
 				}),
-				/* @__PURE__ */ D(W, {
+				/* @__PURE__ */ D(U, {
 					label: "mode",
 					children: /* @__PURE__ */ D("span", {
 						class: "c-mono",
 						children: n.mode ? _(n.mode) : "—"
 					})
 				}),
-				/* @__PURE__ */ D(W, {
+				/* @__PURE__ */ D(U, {
 					label: "policy",
 					children: n.policy ? /* @__PURE__ */ D("a", {
 						class: "fact-link c-mono",
@@ -1174,7 +1193,7 @@ function X({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBac
 						children: "none"
 					})
 				}),
-				/* @__PURE__ */ D(W, {
+				/* @__PURE__ */ D(U, {
 					label: "cpu",
 					children: /* @__PURE__ */ D("span", {
 						class: "perf-inline",
@@ -1184,7 +1203,7 @@ function X({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBac
 						})]
 					})
 				}),
-				/* @__PURE__ */ D(W, {
+				/* @__PURE__ */ D(U, {
 					label: "memory",
 					children: /* @__PURE__ */ D("span", {
 						class: "perf-inline",
@@ -1204,7 +1223,7 @@ function X({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBac
 			class: "section-title",
 			children: "Audit trail"
 		}),
-		/* @__PURE__ */ D(J, {
+		/* @__PURE__ */ D(q, {
 			events: i,
 			initialPod: t,
 			loading: a
@@ -1213,7 +1232,7 @@ function X({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBac
 }
 //#endregion
 //#region views/OverviewCards.tsx
-function Z({ stats: e }) {
+function X({ stats: e }) {
 	return /* @__PURE__ */ D("div", {
 		class: "cards",
 		children: [
@@ -1244,7 +1263,7 @@ function Z({ stats: e }) {
 }
 //#endregion
 //#region views/AttentionPanel.tsx
-function Q({ attention: t, onPod: n }) {
+function te({ attention: t, onPod: n }) {
 	return /* @__PURE__ */ D(e, { children: [/* @__PURE__ */ D("h2", {
 		class: "section-title",
 		children: "Attention"
@@ -1279,7 +1298,7 @@ function Q({ attention: t, onPod: n }) {
 }
 //#endregion
 //#region views/RedactionsTable.tsx
-function $({ redactions: t, onPod: n }) {
+function Z({ redactions: t, onPod: n }) {
 	return /* @__PURE__ */ D(e, { children: [/* @__PURE__ */ D("h2", {
 		class: "section-title",
 		children: "Secrets redacted"
@@ -1321,7 +1340,7 @@ function $({ redactions: t, onPod: n }) {
 }
 //#endregion
 //#region views/PolicyList.tsx
-function ee({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
+function Q({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
 	return /* @__PURE__ */ D("div", {
 		class: "list",
 		children: [n ? [
@@ -1365,7 +1384,7 @@ function ee({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, ne
 }
 //#endregion
 //#region views/DestinationsTable.tsx
-function te({ dests: e, loading: t, onSelect: n }) {
+function $({ dests: e, loading: t, onSelect: n }) {
 	return t ? /* @__PURE__ */ D(H, { rows: 6 }) : /* @__PURE__ */ D("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ D("table", { children: [/* @__PURE__ */ D("thead", { children: /* @__PURE__ */ D("tr", { children: [
@@ -1449,55 +1468,88 @@ var ne = [
 		label: "Off",
 		tone: "faint"
 	}
-];
-function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: l, templates: u, isDefault: d, onSetDefault: m }) {
-	let [h, g] = a(e.name), [_, v] = a(() => p(e)), [y, b] = a(e.deny_upstreams || []), [x, S] = a(e.egress || "redact"), [C, w] = a("");
+], re = ["169.254.169.254", "metadata.google.internal"];
+function ie(e) {
+	let t = [], n = e.allow_upstreams || [], r = e.deny_upstreams || [], i = e.methods || {}, a = n.length === 0;
+	if (a && e.egress !== "block" && t.push({
+		level: "warn",
+		msg: "No allowed destinations, so every host is reachable. Add destinations, or set egress to Block."
+	}), re.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
+		level: "warn",
+		msg: "Cloud metadata endpoints are reachable — a common credential-theft target.",
+		fix: "block-metadata"
+	}), !a) for (let e of Object.keys(i)) !e.startsWith(".") && !l(e, n) && t.push({
+		level: "info",
+		msg: `Method rule on "${e}" has no effect — it is not in the allowed destinations.`
+	});
+	for (let e of n) r.includes(e) && t.push({
+		level: "info",
+		msg: `"${e}" is both allowed and blocked — blocked wins, so it is effectively blocked.`
+	});
+	return e.egress === "off" && t.push({
+		level: "warn",
+		msg: "Secret scanning is off — outbound secrets are sent as-is, not redacted."
+	}), t;
+}
+function ae({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: l, templates: u, isSaved: m, isDefault: h, onSetDefault: g, onDuplicate: _ }) {
+	let [v, y] = a(e.name), [b, x] = a(e.description || ""), [S, C] = a(() => p(e)), [w, T] = a(e.deny_upstreams || []), [E, O] = a(e.egress || "redact"), [k, j] = a(""), [P, F] = a(""), [I, L] = a("GET");
 	n(() => {
-		g(e.name), v(p(e)), b(e.deny_upstreams || []), S(e.egress || "redact"), w("");
+		y(e.name), x(e.description || ""), C(p(e)), T(e.deny_upstreams || []), O(e.egress || "redact"), j("");
 	}, [e]);
-	let T = (e, t) => v((n) => n.map((n, r) => r === e ? {
+	let R = (e, t) => C((n) => n.map((n, r) => r === e ? {
 		...n,
 		...t
-	} : n)), E = (e, t) => v((n) => n.map((n, r) => r === e ? {
+	} : n)), z = (e, t) => C((n) => n.map((n, r) => r === e ? {
 		...n,
 		methods: n.methods.includes(t) ? n.methods.filter((e) => e !== t) : [...n.methods, t]
-	} : n)), O = () => v((e) => [...e, {
+	} : n)), B = () => C((e) => [...e, {
 		host: "",
 		methods: [],
 		open: !1
-	}]), k = (e) => v((t) => t.filter((t, n) => n !== e)), j = (e, t) => b((n) => n.map((n, r) => r === e ? t : n)), P = () => b((e) => [...e, ""]), F = (e) => b((t) => t.filter((t, n) => n !== e)), I = !e.name, L = !h && _.length === 0 && y.length === 0, R = (e) => {
-		g(e.id), v(p({
+	}]), V = (e) => C((t) => t.filter((t, n) => n !== e)), H = (e, t) => T((n) => n.map((n, r) => r === e ? t : n)), ee = () => T((e) => [...e, ""]), U = (e) => T((t) => t.filter((t, n) => n !== e)), W = m ?? !!e.name, G = !W, K = !v && S.length === 0 && w.length === 0, q = (e) => {
+		y(e.id), C(p({
 			name: e.id,
 			...e.policy
-		})), b(e.policy.deny_upstreams || []), S(e.policy.egress || "redact"), w("");
-	}, z = () => {
-		let e = _.map((e) => e.host.trim()).filter(Boolean), t = y.map((e) => e.trim()).filter(Boolean), n = {};
-		for (let e of _) {
+		})), T(e.policy.deny_upstreams || []), O(e.policy.egress || "redact"), j("");
+	}, J = () => {
+		let e = S.map((e) => e.host.trim()).filter(Boolean), t = w.map((e) => e.trim()).filter(Boolean), n = {};
+		for (let e of S) {
 			let t = e.host.trim();
 			t && e.methods.length && (n[t] = e.methods);
 		}
 		return {
-			name: h.trim(),
+			name: v.trim(),
+			description: b.trim() || void 0,
 			allow_upstreams: e,
 			deny_upstreams: t,
 			methods: n,
-			egress: x
+			egress: E
 		};
-	}, B = i.length > 0, V = r(() => B ? t.filter((e) => e.pod && i.includes(e.pod)) : t, [
+	}, Y = r(() => ie(J()), [
+		S,
+		w,
+		E
+	]), X = r(() => P.trim() ? d(J(), P.trim(), I) : null, [
+		P,
+		I,
+		S,
+		w,
+		E
+	]), te = () => T((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...re])]), Z = i.length > 0, Q = r(() => Z ? t.filter((e) => e.pod && i.includes(e.pod)) : t, [
 		t,
 		i,
-		B
-	]), H = r(() => f(z(), V), [
-		h,
-		_,
-		y,
-		x,
-		V
+		Z
+	]), $ = r(() => f(J(), Q), [
+		v,
+		S,
+		w,
+		E,
+		Q
 	]);
 	return /* @__PURE__ */ D("div", {
 		class: "editor",
 		children: [
-			I && L && u && u.length > 0 && /* @__PURE__ */ D("div", {
+			G && K && u && u.length > 0 && /* @__PURE__ */ D("div", {
 				class: "templates",
 				children: [
 					/* @__PURE__ */ D("div", {
@@ -1509,7 +1561,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 						children: u.map((e) => /* @__PURE__ */ D("button", {
 							type: "button",
 							class: "tmpl",
-							onClick: () => R(e),
+							onClick: () => q(e),
 							children: [/* @__PURE__ */ D("span", {
 								class: "tmpl__name",
 								children: e.label
@@ -1532,17 +1584,56 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					children: "Name"
 				}), /* @__PURE__ */ D("input", {
 					id: "pol-name",
-					value: h,
-					onInput: (e) => g(e.target.value)
+					value: v,
+					onInput: (e) => y(e.target.value)
 				})] }), /* @__PURE__ */ D("div", {
 					class: "narrow",
 					children: [/* @__PURE__ */ D("label", { children: "Egress mode" }), /* @__PURE__ */ D(M, {
-						value: x,
+						value: E,
 						options: ne,
-						onChange: S,
+						onChange: O,
 						ariaLabel: "egress mode"
 					})]
 				})]
+			}),
+			/* @__PURE__ */ D("label", {
+				for: "pol-desc",
+				children: ["Description ", /* @__PURE__ */ D("span", {
+					class: "label-hint",
+					children: "Optional — what this policy is for"
+				})]
+			}),
+			/* @__PURE__ */ D("input", {
+				id: "pol-desc",
+				value: b,
+				placeholder: "e.g. CI agents: model + package registries",
+				onInput: (e) => x(e.target.value)
+			}),
+			!K && Y.length > 0 && /* @__PURE__ */ D("div", {
+				class: "advisories",
+				children: Y.map((e, t) => /* @__PURE__ */ D("div", {
+					class: "advisory advisory--" + e.level,
+					children: [
+						/* @__PURE__ */ D("span", {
+							class: "advisory__icon",
+							"aria-hidden": "true",
+							children: /* @__PURE__ */ D(A, {
+								name: e.level === "warn" ? "ban" : "info",
+								size: 14
+							})
+						}),
+						/* @__PURE__ */ D("span", {
+							class: "advisory__msg",
+							children: e.msg
+						}),
+						e.fix === "block-metadata" && /* @__PURE__ */ D("button", {
+							type: "button",
+							class: "advisory__fix",
+							onClick: te,
+							children: "Block them"
+						})
+					]
+				}, t))
 			}),
 			/* @__PURE__ */ D("label", { children: ["Allowed destinations ", /* @__PURE__ */ D("span", {
 				class: "label-hint",
@@ -1551,11 +1642,11 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 			/* @__PURE__ */ D("div", {
 				class: "rules",
 				children: [
-					_.length === 0 && /* @__PURE__ */ D("p", {
+					S.length === 0 && /* @__PURE__ */ D("p", {
 						class: "rules__empty",
 						children: "No destinations yet — every host is allowed, subject to the blocked list and egress mode."
 					}),
-					_.map((e, t) => /* @__PURE__ */ D("div", {
+					S.map((e, t) => /* @__PURE__ */ D("div", {
 						class: "rule",
 						children: [/* @__PURE__ */ D("div", {
 							class: "rule__row",
@@ -1565,25 +1656,25 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 									value: e.host,
 									placeholder: "api.example.com",
 									"aria-label": "Allowed host",
-									onInput: (e) => T(t, { host: e.target.value })
+									onInput: (e) => R(t, { host: e.target.value })
 								}),
 								!e.open && (e.methods.length ? /* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__msum",
 									title: "Limited to " + e.methods.join(", ") + " — click to edit",
-									onClick: () => T(t, { open: !0 }),
+									onClick: () => R(t, { open: !0 }),
 									children: e.methods.length > 3 ? e.methods.length + " methods" : e.methods.join(", ")
 								}) : /* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__limit",
-									onClick: () => T(t, { open: !0 }),
+									onClick: () => R(t, { open: !0 }),
 									children: "＋ limit methods"
 								})),
 								/* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__rm",
 									"aria-label": "Remove destination",
-									onClick: () => k(t),
+									onClick: () => V(t),
 									children: "×"
 								})
 							]
@@ -1598,19 +1689,19 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 									type: "button",
 									class: "mchip" + (e.methods.includes(n) ? " on" : ""),
 									"aria-pressed": e.methods.includes(n),
-									onClick: () => E(t, n),
+									onClick: () => z(t, n),
 									children: n
 								}, n)),
 								/* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__mdone",
-									onClick: () => T(t, { open: !1 }),
+									onClick: () => R(t, { open: !1 }),
 									children: "Done"
 								}),
 								e.methods.length > 0 && /* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__mclear",
-									onClick: () => T(t, {
+									onClick: () => R(t, {
 										methods: [],
 										open: !1
 									}),
@@ -1622,7 +1713,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					/* @__PURE__ */ D("button", {
 						type: "button",
 						class: "addrow",
-						onClick: O,
+						onClick: B,
 						children: "＋ Add destination"
 					})
 				]
@@ -1633,7 +1724,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 			})] }),
 			/* @__PURE__ */ D("div", {
 				class: "rules",
-				children: [y.map((e, t) => /* @__PURE__ */ D("div", {
+				children: [w.map((e, t) => /* @__PURE__ */ D("div", {
 					class: "rule",
 					children: /* @__PURE__ */ D("div", {
 						class: "rule__row",
@@ -1642,19 +1733,19 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 							value: e,
 							placeholder: "metadata.google.internal",
 							"aria-label": "Blocked host",
-							onInput: (e) => j(t, e.target.value)
+							onInput: (e) => H(t, e.target.value)
 						}), /* @__PURE__ */ D("button", {
 							type: "button",
 							class: "rule__rm",
 							"aria-label": "Remove blocked host",
-							onClick: () => F(t),
+							onClick: () => U(t),
 							children: "×"
 						})]
 					})
 				}, t)), /* @__PURE__ */ D("button", {
 					type: "button",
 					class: "addrow",
-					onClick: P,
+					onClick: ee,
 					children: "＋ Add blocked host"
 				})]
 			}),
@@ -1665,26 +1756,26 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 						class: "dryrun__head",
 						children: [/* @__PURE__ */ D("span", {
 							class: "dryrun__title",
-							children: ["Dry-run · ", B ? `${i.length} pod${i.length === 1 ? "" : "s"} on this policy` : "all recent egress"]
+							children: ["Dry-run · ", Z ? `${i.length} pod${i.length === 1 ? "" : "s"} on this policy` : "all recent egress"]
 						}), /* @__PURE__ */ D("span", {
 							class: "dryrun__stat",
 							children: [
-								H.total,
+								$.total,
 								" request",
-								H.total === 1 ? "" : "s",
+								$.total === 1 ? "" : "s",
 								" ·",
 								" ",
 								/* @__PURE__ */ D("span", {
-									class: H.denied ? "dryrun__deny" : "dryrun__ok",
-									children: [H.denied, " would be denied"]
+									class: $.denied ? "dryrun__deny" : "dryrun__ok",
+									children: [$.denied, " would be denied"]
 								})
 							]
 						})]
 					}),
-					H.total === 0 ? /* @__PURE__ */ D("div", {
+					$.total === 0 ? /* @__PURE__ */ D("div", {
 						class: "dryrun__empty",
-						children: B ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."
-					}) : H.denied === 0 ? /* @__PURE__ */ D("div", {
+						children: Z ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."
+					}) : $.denied === 0 ? /* @__PURE__ */ D("div", {
 						class: "dryrun__pass",
 						children: [/* @__PURE__ */ D(A, {
 							name: "check",
@@ -1692,7 +1783,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 						}), " Every request passes these rules."]
 					}) : /* @__PURE__ */ D("ul", {
 						class: "dryrun__list",
-						children: [H.rows.slice(0, 8).map((e) => /* @__PURE__ */ D("li", { children: [
+						children: [$.rows.slice(0, 8).map((e) => /* @__PURE__ */ D("li", { children: [
 							/* @__PURE__ */ D(N, { decision: "deny" }),
 							/* @__PURE__ */ D("span", {
 								class: "c-mono dryrun__dest",
@@ -1706,11 +1797,11 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 								class: "dryrun__n",
 								children: ["×", e.count]
 							})
-						] }, e.method + e.upstream)), H.rows.length > 8 && /* @__PURE__ */ D("li", {
+						] }, e.method + e.upstream)), $.rows.length > 8 && /* @__PURE__ */ D("li", {
 							class: "dryrun__more",
 							children: [
 								"+",
-								H.rows.length - 8,
+								$.rows.length - 8,
 								" more destinations"
 							]
 						})]
@@ -1718,16 +1809,51 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					/* @__PURE__ */ D("p", {
 						class: "dryrun__note",
 						children: [
-							B ? "Replays these rules over the recent requests made by the pods that run this policy." : "No pods run this policy yet — previewed against all recent egress.",
+							Z ? "Replays these rules over the recent requests made by the pods that run this policy." : "No pods run this policy yet — previewed against all recent egress.",
 							" ",
 							"Evaluates allow/deny and method rules; secret redaction depends on request contents and is not simulated."
 						]
 					})
 				]
 			}),
-			C && /* @__PURE__ */ D("div", {
+			/* @__PURE__ */ D("div", {
+				class: "probe",
+				children: [
+					/* @__PURE__ */ D("div", {
+						class: "probe__label",
+						children: "Test a request"
+					}),
+					/* @__PURE__ */ D("div", {
+						class: "probe__row",
+						children: [/* @__PURE__ */ D("input", {
+							class: "probe__host",
+							value: P,
+							placeholder: "host, e.g. api.github.com",
+							"aria-label": "Test request host",
+							onInput: (e) => F(e.target.value)
+						}), /* @__PURE__ */ D(M, {
+							value: I,
+							options: o.map((e) => ({
+								value: e,
+								label: e
+							})),
+							onChange: L,
+							ariaLabel: "test request method"
+						})]
+					}),
+					X && /* @__PURE__ */ D("div", {
+						class: "probe__result " + (X.allow ? "ok" : "bad"),
+						role: "status",
+						children: [/* @__PURE__ */ D(N, { decision: X.allow ? "allow" : "deny" }), /* @__PURE__ */ D("span", {
+							class: "probe__reason",
+							children: X.allow ? "This request would be allowed." : X.reason
+						})]
+					})
+				]
+			}),
+			k && /* @__PURE__ */ D("div", {
 				class: "err",
-				children: C
+				children: k
 			}),
 			/* @__PURE__ */ D("div", {
 				class: "actions",
@@ -1735,40 +1861,46 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					/* @__PURE__ */ D("button", {
 						class: "btn btn--primary",
 						onClick: async () => {
-							if (!h.trim()) {
-								w("Name is required.");
+							if (!v.trim()) {
+								j("Name is required.");
 								return;
 							}
-							let e = await s(z());
-							e.ok || w(e.error || "Save failed");
+							let e = await s(J());
+							e.ok || j(e.error || "Save failed");
 						},
 						children: "Save"
 					}),
-					e.name && /* @__PURE__ */ D("button", {
+					W && /* @__PURE__ */ D("button", {
 						class: "btn btn--danger",
 						onClick: async () => {
 							await c();
 						},
 						children: "Delete"
 					}),
-					e.name && m && /* @__PURE__ */ D("button", {
+					W && _ && /* @__PURE__ */ D("button", {
 						type: "button",
-						class: "btn btn--ghost btn--default" + (d ? " is-default" : ""),
-						title: d ? "This policy is applied to pods started with no --policy. Click to clear." : "Apply this policy to any pod started with no --policy.",
-						onClick: () => m(d ? "" : e.name),
-						children: d ? "★ Default" : "Set as default"
+						class: "btn btn--ghost",
+						onClick: () => _(J()),
+						children: "Duplicate"
+					}),
+					W && g && /* @__PURE__ */ D("button", {
+						type: "button",
+						class: "btn btn--ghost btn--default" + (h ? " is-default" : ""),
+						title: h ? "This policy is applied to pods started with no --policy. Click to clear." : "Apply this policy to any pod started with no --policy.",
+						onClick: () => g(h ? "" : e.name),
+						children: h ? "★ Default" : "Set as default"
 					})
 				]
 			}),
-			l ? l(h) : /* @__PURE__ */ D("div", {
+			l ? l(v) : /* @__PURE__ */ D("div", {
 				class: "hint",
 				children: [
 					"Reference from a pod: ",
-					/* @__PURE__ */ D("code", { children: ["poddle up --policy ", h || "<name>"] }),
+					/* @__PURE__ */ D("code", { children: ["poddle up --policy ", v || "<name>"] }),
 					", or ",
 					/* @__PURE__ */ D("code", { children: [
 						"policy = \"",
-						h || "<name>",
+						v || "<name>",
 						"\""
 					] }),
 					" in a template."
@@ -1779,7 +1911,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 }
 //#endregion
 //#region views/PodControls.tsx
-function ie({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
+function oe({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 	let [s, c] = a(null), [l, u] = a(!1), [d, f] = a(null), p = async (e) => {
 		u(!0);
 		let t = await r(e);
@@ -1876,7 +2008,7 @@ function ie({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 }
 //#endregion
 //#region views/CommandPalette.tsx
-function ae({ open: e, onClose: t, commands: r }) {
+function se({ open: e, onClose: t, commands: r }) {
 	let [o, s] = a(""), [c, l] = a(0), u = i(null);
 	n(() => {
 		if (!e) return;
@@ -1955,7 +2087,7 @@ function ae({ open: e, onClose: t, commands: r }) {
 }
 //#endregion
 //#region views/ToastHost.tsx
-function oe({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
+function ce({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	return e.length === 0 ? null : /* @__PURE__ */ D("div", {
 		class: "toasts",
 		role: "region",
@@ -2006,4 +2138,4 @@ function oe({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	});
 }
 //#endregion
-export { Q as AttentionPanel, J as AuditLogTable, ae as CommandPalette, x as DECISIONS, N as DecisionBadge, te as DestinationsTable, L as EgressChart, W as Fact, z as FleetLoad, o as HTTP_METHODS, k as ICONS, A as Icon, P as IntegrityBadge, F as IntegrityPanel, U as LiveDot, B as MixBar, Z as OverviewCards, ie as PodControls, X as PodDetailPanel, Y as PodFleetTable, I as PoddleMark, re as PolicyEditor, ee as PolicyList, R as PostureBar, c as RANGE_MS, $ as RedactionsTable, M as SegmentedControl, V as SkelCards, H as SkelTable, O as Sparkline, j as StatCard, s as TIME_RANGES, oe as ToastHost, T as bucketEvents, _ as cap1, d as decide, S as decisionCounts, C as destinations, K as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, w as rowKey, m as secretsFrom, h as summarise, b as threshTone, G as toCsv, p as toRows };
+export { te as AttentionPanel, q as AuditLogTable, se as CommandPalette, x as DECISIONS, N as DecisionBadge, $ as DestinationsTable, L as EgressChart, U as Fact, z as FleetLoad, o as HTTP_METHODS, k as ICONS, A as Icon, P as IntegrityBadge, F as IntegrityPanel, ee as LiveDot, B as MixBar, X as OverviewCards, oe as PodControls, Y as PodDetailPanel, J as PodFleetTable, I as PoddleMark, ae as PolicyEditor, Q as PolicyList, R as PostureBar, c as RANGE_MS, Z as RedactionsTable, M as SegmentedControl, V as SkelCards, H as SkelTable, O as Sparkline, j as StatCard, s as TIME_RANGES, ce as ToastHost, T as bucketEvents, _ as cap1, d as decide, S as decisionCounts, C as destinations, G as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, w as rowKey, m as secretsFrom, h as summarise, b as threshTone, W as toCsv, p as toRows };

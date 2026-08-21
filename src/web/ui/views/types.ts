@@ -8,7 +8,7 @@ export type Event = {
   status?: number; decision?: string; detail?: string;
 };
 export type Policy = {
-  name: string; allow_upstreams?: string[]; deny_upstreams?: string[];
+  name: string; description?: string; allow_upstreams?: string[]; deny_upstreams?: string[];
   methods?: Record<string, string[]>; egress?: string;
 };
 export type Pod = {
