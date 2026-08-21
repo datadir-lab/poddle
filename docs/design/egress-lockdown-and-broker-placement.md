@@ -185,12 +185,27 @@ dual_homed=yes` — the static binary runs `daemon` in `distroless/static-debian
 `GET /health` returns `{"ok":true}` over the host-bind-mounted control socket, and
 the container dual-homes (`poddle-egress` + `poddle-lock-<pod>`).
 
-**Autoscaler needs podman.** poddled's opt-in autoscaler shells to `podman`
-(`podman.New(exec.OS{},"")`). A containerized broker has no podman, so the host
-podman socket is **bind-mounted** into the broker container (e.g.
-`$XDG_RUNTIME_DIR/podman/podman.sock`) and poddled points at it. This is a host
-*file* mount, never network-reachable by pods, so the control-plane property
-holds; and the broker already holds every secret, so it adds no blast radius.
+**Autoscaler runs on the host, not in the broker.** poddled's opt-in autoscaler
+shells to `podman`/`poddle move`, which the distroless broker container cannot do.
+Rather than hand the secret-holding broker a podman socket, the autoscaler is
+**split out onto the host**: `up`/`task --autoscale` spawn a detached
+`poddle daemon autoscaled` process (single-instance via a unix-socket lock beside
+the control socket) that reads live pod pressure from host podman, grows headless
+pods with `poddle move`, and reports grow/warn events back to the broker over its
+control socket (`POST /events`) so `daemon status` and the audit log still surface
+them. Consequence and security win: the broker container mounts **no podman
+socket at all** — it does data-plane + secrets only, and has zero pod-lifecycle
+capability. This is the clean long-term split (broker = secrets/gateway/audit;
+host = pod lifecycle).
+
+**Every locked pod egresses through the broker (not just policy pods).** Because a
+locked pod sits on an `--internal` net with no resolver or route of its own, its
+arbitrary egress must go through the broker's forward proxy — so `buildSpec`
+injects `HTTP(S)_PROXY` (pointing at the broker's forward channel) for **every**
+brokered pod, not only those with a policy. Without a policy it is default-allow
+but still audited and non-bypassable; a policy restricts it. Otherwise a locked
+pod couldn't even install its agent harness (npm/pip get `ENOTFOUND`). This is the
+concrete realization of "non-bypassable always; restricted with a policy."
 
 **Lifecycle / fail-closed.**
 
