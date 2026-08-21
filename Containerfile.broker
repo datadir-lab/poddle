@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.25.13 AS build
+WORKDIR /src
+COPY . .
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOTOOLCHAIN=local \
+    go build -trimpath -o /out/poddle ./src/cli
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/poddle /usr/local/bin/poddle
+ENTRYPOINT ["/usr/local/bin/poddle", "daemon", "--socket", "/run/poddle/poddled.sock"]

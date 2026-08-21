@@ -1,0 +1,76 @@
+name: Publish poddle-broker
+
+# Publishes the poddle-broker container image (Containerfile.broker) to ghcr.io
+# via the built-in GITHUB_TOKEN (packages: write) - no long-lived registry
+# secret. Runs after the Release workflow succeeds (goreleaser + all install
+# smoke tests green), so ghcr never gets an image built from an unverified
+# release. Also runnable on demand against an existing tag.
+#
+# Image tag = the CLI's own reported version (release tag with the leading "v"
+# stripped, e.g. v0.1.1 -> 0.1.1) so EnsureRunning can resolve
+# ghcr.io/datadir-lab/poddle-broker:<version> straight from `poddle version`.
+# Multi-arch (linux/amd64 + linux/arm64): QEMU emulation is needed because the
+# Containerfile's build stage isn't pinned to $BUILDPLATFORM, so it actually
+# executes under the target arch during the arm64 leg.
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish (e.g. v0.1.1)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write # push the image to ghcr.io
+
+concurrency:
+  group: publish-broker
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to ghcr
+    # Manual, or only when the whole Release run (incl. smoke) succeeded on a tag.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.TAG }} # the released tag, so the image matches the release
+
+      - name: Set up QEMU (arm64 emulation for the multi-arch build)
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          platforms: arm64
+
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build the multi-arch manifest
+        run: |
+          set -eu
+          VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          podman build \
+            --platform linux/amd64,linux/arm64 \
+            --manifest "ghcr.io/datadir-lab/poddle-broker:${VERSION}" \
+            -f Containerfile.broker .
+
+      - name: Push the manifest (version + latest)
+        run: |
+          set -eu
+          podman manifest push --all \
+            "ghcr.io/datadir-lab/poddle-broker:${VERSION}" \
+            "docker://ghcr.io/datadir-lab/poddle-broker:${VERSION}"
+          podman manifest push --all \
+            "ghcr.io/datadir-lab/poddle-broker:${VERSION}" \
+            "docker://ghcr.io/datadir-lab/poddle-broker:latest"
