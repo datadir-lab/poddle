@@ -339,6 +339,22 @@ func (d *Daemon) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, out)
 	})
 
+	// Host-pushed autoscale events: the autoscaler now runs on the host (it
+	// shells podman / `poddle move`, which the broker container cannot), so it
+	// POSTs its grow/warn activity here to keep `daemon status` and the audit
+	// log complete.
+	mux.HandleFunc("POST /events", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Msg string `json:"msg"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		d.recordEvent(body.Msg)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Audit control API.
 	mux.HandleFunc("POST /audit", func(w http.ResponseWriter, r *http.Request) {
 		var e audit.Event

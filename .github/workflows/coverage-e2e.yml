@@ -48,6 +48,7 @@ jobs:
           - e2e-audit
           - e2e-policy
           - e2e-forward
+          - e2e-lockdown
           - e2e-secure
           - e2e-poddled
           - e2e-resize

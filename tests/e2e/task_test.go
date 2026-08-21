@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +36,14 @@ func TestE2E_Task_RunsAgentHeadless(t *testing.T) {
 
 	var mu sync.Mutex
 	var auths []string
-	mock := mockAnthropicUp(t, &auths, &mu)
+	mock := mockAnthropicUpOn(t, "0.0.0.0:0", &auths, &mu)
+	// The broker container dials the upstream, so address the mock at
+	// host.containers.internal (it binds 0.0.0.0), not the loopback mock.URL.
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 	const sentinel = "SENTINEL-TASK"
 
 	cfg := t.TempDir()
@@ -50,13 +58,12 @@ func TestE2E_Task_RunsAgentHeadless(t *testing.T) {
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		"PODDLE_SOCKET="+filepath.Join(cfg, "poddled.sock"),
-		"PODDLE_ANTHROPIC_BASE_URL="+mock.URL)
+		"PODDLE_ANTHROPIC_BASE_URL="+mockURL)
 
 	cmd := exec.Command(bin, "task", "ping",
 		"--identity", "work",
@@ -105,7 +112,12 @@ func TestE2E_Task_DetachRunsInBackground(t *testing.T) {
 
 	var mu sync.Mutex
 	var auths []string
-	mock := mockAnthropicUp(t, &auths, &mu)
+	mock := mockAnthropicUpOn(t, "0.0.0.0:0", &auths, &mu)
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 	const sentinel = "SENTINEL-TASKD"
 	cfg := taskIdentity(t, sentinel)
 
@@ -113,13 +125,12 @@ func TestE2E_Task_DetachRunsInBackground(t *testing.T) {
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		"PODDLE_SOCKET="+filepath.Join(cfg, "poddled.sock"),
-		"PODDLE_ANTHROPIC_BASE_URL="+mock.URL)
+		"PODDLE_ANTHROPIC_BASE_URL="+mockURL)
 
 	// --detach returns promptly, leaving the agent running in the background.
 	cmd := exec.Command(bin, "task", "ping",

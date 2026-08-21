@@ -31,10 +31,14 @@ func NewMoveCmd(a *app.App, b podBroker) *cobra.Command {
 			info, _ := a.Engine.PodInfo(name) // reconstruct the pod from its own labels
 			_ = b.RevokePod(name)             // best-effort: retire the old shell's handles
 
+			bn, ok := a.Engine.(brokerNet)
+			if !ok {
+				return fmt.Errorf("egress lockdown needs the podman engine")
+			}
 			// Seed defaults from the existing pod so a context-free move (no cwd,
 			// no template — e.g. the daemon's autoscaler) preserves everything but
 			// the size. Precedence: explicit flag > --template > pod label > default.
-			spec, h, _, err := buildSpec(cmd, a, b, buildOpts{
+			spec, h, _, err := buildSpec(cmd, a, b, bn, buildOpts{
 				name: name, templateName: templateName,
 				image:        orLabel(cmd, "image", image, info.Image),
 				size:         orLabel(cmd, "size", size, info.Size),

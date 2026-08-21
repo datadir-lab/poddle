@@ -33,15 +33,19 @@ func TestE2E_Poddled_DaemonStatus(t *testing.T) {
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/debian:stable-slim\"\nconnectors = [\"svc\"]\n")
 
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model. This
+	// test never dials the connector mock through the broker, so it stays on
+	// its default loopback bind.
 	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"))
+		"XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-status-e2e"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	up := exec.Command(bin, "up", pod, "--detach")

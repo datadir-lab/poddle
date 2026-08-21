@@ -50,6 +50,13 @@ func (p *Provider) List() ([]sandbox.Sandbox, error) {
 // `tail -f /dev/null` (portable across busybox/coreutils) to stay alive so it
 // can be attached to.
 func (p *Provider) Create(s sandbox.Spec) (string, error) {
+	netName := ""
+	if s.Network != nil {
+		// The lock network is pre-created by the up-flow (EnsurePodLockNetwork)
+		// before Create runs, so the broker can connect to it and read its IP.
+		netName = "poddle-lock-" + s.Name
+	}
+
 	args := p.podman("run", "-d",
 		"--name", s.Name,
 		"--label", "poddle.managed=true",
@@ -65,6 +72,9 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		"--label", "poddle.harness="+s.Harness,
 		"--label", "poddle.policy="+s.PolicyName,
 	)
+	if netName != "" {
+		args = append(args, "--network", netName)
+	}
 	if s.CPUs > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%g", s.CPUs))
 	}
@@ -107,6 +117,133 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 		}
 	}
 	return id, nil
+}
+
+// BrokerConfig is everything needed to launch the shared egress-broker
+// container: it's dual-homed onto the shared egress network (for outbound
+// internet) and, per pod, onto that pod's internal lock network (so locked
+// pods can reach it without any other route out).
+type BrokerConfig struct {
+	Name      string // "poddle-broker"
+	Image     string // resolved ref (PODDLE_BROKER_IMAGE or ghcr default)
+	EgressNet string // "poddle-egress"
+	RunDir    string // host dir bind-mounted to /run/poddle (holds the control socket)
+	StateDir  string // host dir bind-mounted to /state (holds audit.db)
+}
+
+// EnsureEgressNetwork creates the shared network the broker uses to reach the
+// internet, if it doesn't already exist. Idempotent: an already-existing
+// network is fine.
+func (p *Provider) EnsureEgressNetwork(name string) error {
+	res, err := p.Runner.Run("podman", p.podman("network", "create", name)...)
+	if err != nil {
+		if strings.Contains(res.Stderr, "already exists") {
+			return nil
+		}
+		return fmt.Errorf("podman network create: %w: %s", err, res.Stderr)
+	}
+	return nil
+}
+
+// EnsureBroker launches the shared broker container, detached, dual-homed
+// onto the egress network with the control/state dirs bind-mounted in. It holds
+// all secrets and mounts no podman socket — pod-lifecycle work runs on the host
+// (`poddle daemon autoscaled`) instead. Idempotent: a no-op if the broker is
+// already running.
+func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
+	// One query distinguishes running / stopped / absent, so a crashed or
+	// stopped broker is restarted rather than wedging every future `up` on a
+	// name conflict. Singleton by name (this is also what guarantees the audit
+	// log's single writer).
+	ps, err := p.Runner.Run("podman", p.podman("ps", "-a",
+		"--filter", "name="+cfg.Name,
+		"--format", "{{.Names}} {{.State}}")...)
+	if err != nil {
+		return fmt.Errorf("podman ps: %w: %s", err, ps.Stderr)
+	}
+	switch state := strings.TrimSpace(ps.Stdout); {
+	case state == "":
+		// absent -> create it below
+	case strings.Contains(state, "running") || strings.Contains(state, "Up"):
+		return nil // already running
+	default:
+		// present but stopped/exited/created -> restart it, don't recreate
+		if r, err := p.Runner.Run("podman", p.podman("start", cfg.Name)...); err != nil {
+			return fmt.Errorf("podman start %s: %w: %s", cfg.Name, err, r.Stderr)
+		}
+		return nil
+	}
+
+	args := p.podman("run", "-d",
+		"--name", cfg.Name,
+		"--network", cfg.EgressNet,
+		"-e", "XDG_STATE_HOME=/state",
+		"-v", cfg.RunDir+":/run/poddle",
+		"-v", cfg.StateDir+":/state",
+		cfg.Image,
+	)
+
+	res, err := p.Runner.Run("podman", args...)
+	if err != nil {
+		if strings.Contains(res.Stderr, "already in use") {
+			return nil // a concurrent first-`up` won the create race; fine
+		}
+		return fmt.Errorf("podman run: %w: %s", err, res.Stderr)
+	}
+	return nil
+}
+
+// EnsurePodLockNetwork creates the internal (no-internet) network a locked
+// pod's egress is pinned to, and returns its name. Idempotent: an
+// already-existing network is fine.
+func (p *Provider) EnsurePodLockNetwork(pod string) (string, error) {
+	name := "poddle-lock-" + pod
+	res, err := p.Runner.Run("podman", p.podman("network", "create", "--internal", name)...)
+	if err != nil {
+		if strings.Contains(res.Stderr, "already exists") {
+			return name, nil
+		}
+		return "", fmt.Errorf("podman network create --internal: %w: %s", err, res.Stderr)
+	}
+	return name, nil
+}
+
+// ConnectBrokerToPod attaches the broker container to a pod's internal lock
+// network, so the pod can reach the broker despite having no other route out.
+func (p *Provider) ConnectBrokerToPod(brokerName, pod string) error {
+	res, err := p.Runner.Run("podman", p.podman("network", "connect", "poddle-lock-"+pod, brokerName)...)
+	if err != nil {
+		// Idempotent: the shared broker stays attached across a pod's lifetime,
+		// so `move`/autoscale-grow (which re-run buildSpec without a `down`)
+		// re-connect an already-connected broker. That is success, not failure.
+		if strings.Contains(res.Stderr, "already connected") {
+			return nil
+		}
+		return fmt.Errorf("podman network connect: %w: %s", err, res.Stderr)
+	}
+	return nil
+}
+
+// BrokerIPOnPod returns the broker's IP address on a pod's internal lock
+// network, so the pod can be told where to reach it.
+func (p *Provider) BrokerIPOnPod(brokerName, pod string) (string, error) {
+	tmpl := fmt.Sprintf(`{{(index .NetworkSettings.Networks "poddle-lock-%s").IPAddress}}`, pod)
+	res, err := p.Runner.Run("podman", p.podman("inspect", "-f", tmpl, brokerName)...)
+	if err != nil {
+		return "", fmt.Errorf("podman inspect: %w: %s", err, res.Stderr)
+	}
+	ip := strings.TrimSpace(res.Stdout)
+	if ip == "" {
+		return "", fmt.Errorf("podman inspect: broker %q has no address on poddle-lock-%s", brokerName, pod)
+	}
+	return ip, nil
+}
+
+// DisconnectBrokerFromPod detaches the broker from a pod's lock network on
+// teardown. Best-effort: errors (e.g. already disconnected) are ignored.
+func (p *Provider) DisconnectBrokerFromPod(brokerName, pod string) error {
+	_, _ = p.Runner.Run("podman", p.podman("network", "disconnect", "poddle-lock-"+pod, brokerName)...)
+	return nil
 }
 
 // Attach opens an interactive shell inside the sandbox (bash if present, else sh).
@@ -297,12 +434,16 @@ func (p *Provider) RemoveVolumesForPod(pod string) error {
 		return fmt.Errorf("podman volume ls: %w: %s", err, res.Stderr)
 	}
 	names := strings.Fields(res.Stdout)
-	if len(names) == 0 {
-		return nil
+	if len(names) > 0 {
+		if r, err := p.Runner.Run("podman", p.podman(append([]string{"volume", "rm"}, names...)...)...); err != nil {
+			return fmt.Errorf("podman volume rm: %w: %s", err, r.Stderr)
+		}
 	}
-	if r, err := p.Runner.Run("podman", p.podman(append([]string{"volume", "rm"}, names...)...)...); err != nil {
-		return fmt.Errorf("podman volume rm: %w: %s", err, r.Stderr)
-	}
+	// Best-effort: detach the shared broker first so the subsequent network rm
+	// isn't blocked by a still-attached container, then remove the pod's
+	// egress-lockdown network, if any.
+	_ = p.DisconnectBrokerFromPod("poddle-broker", pod)
+	_, _ = p.Runner.Run("podman", p.podman("network", "rm", "poddle-lock-"+pod)...)
 	return nil
 }
 

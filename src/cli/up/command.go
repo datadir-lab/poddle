@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 
@@ -14,29 +13,21 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/brokerendpoint"
 	"github.com/datadir-lab/poddle/src/internal/config"
 	"github.com/datadir-lab/poddle/src/internal/connector"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
+	"github.com/datadir-lab/poddle/src/internal/poddled"
 	"github.com/datadir-lab/poddle/src/internal/policy"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 	"github.com/datadir-lab/poddle/src/internal/secure"
 )
 
-// defaultPodBrokerHost is how a pod addresses the host running the broker from
-// inside a local podman/docker container.
-const defaultPodBrokerHost = "host.containers.internal"
-
-// podBrokerHost returns the address a pod uses to reach the broker. For local
-// pods that's host.containers.internal; for a remote pod (on another host) the
-// broker isn't local to it, so PODDLE_BROKER_ADDR sets the routable address the
-// remote pod should dial (e.g. this machine's LAN IP).
-func podBrokerHost() string {
-	if a := os.Getenv("PODDLE_BROKER_ADDR"); a != "" {
-		return a
-	}
-	return defaultPodBrokerHost
-}
+// ensureHostAutoscaler starts the host-side reactive autoscaler for the daemon
+// when a pod opts in (`up --autoscale`). A package var so tests can stub the
+// spawn instead of launching a real detached process.
+var ensureHostAutoscaler = poddled.EnsureHostAutoscaler
 
 // podBroker is the persistent-broker capability `up` needs: ensure poddled is
 // running, learn its pod-facing gateway address, and issue a pod-scoped handle
@@ -53,6 +44,16 @@ type podBroker interface {
 	Audit(e audit.Event) error
 	SetPolicy(pod string, p *policy.Policy) error
 	Egress(pod string) (token, addr string, err error)
+}
+
+// brokerNet puts the shared broker on a pod's internal lock network and resolves
+// the broker's IP there — the pod's sole route out under egress lockdown.
+// *podman.Provider satisfies it, so the engine doubles as this seam; tests pass
+// a stub. It's an interface so buildSpec stays unit-testable without podman.
+type brokerNet interface {
+	EnsurePodLockNetwork(pod string) (string, error)
+	ConnectBrokerToPod(brokerName, pod string) error
+	BrokerIPOnPod(brokerName, pod string) (string, error)
 }
 
 // NewCmd builds the up command. --identity resolves an auth provider; --harness
@@ -74,7 +75,11 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 			if len(args) > 0 {
 				name = args[0]
 			}
-			spec, _, _, err := buildSpec(cmd, a, b, buildOpts{
+			bn, ok := a.Engine.(brokerNet)
+			if !ok {
+				return fmt.Errorf("egress lockdown needs the podman engine")
+			}
+			spec, _, _, err := buildSpec(cmd, a, b, bn, buildOpts{
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				allowSelect: !detach && execCmd == "" && a.Prompter != nil,
@@ -95,6 +100,12 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
 			_ = b.Audit(audit.Event{Pod: name, Kind: audit.KindPodUp, Detail: "size=" + spec.Size + " image=" + spec.Image, Decision: audit.DecisionAllow})
+
+			// The autoscaler runs on the host now (the broker container has no
+			// podman); spawn it, detached, when this pod opted in.
+			if spec.Autoscale {
+				ensureHostAutoscaler(poddled.SocketPath())
+			}
 
 			if execCmd != "" {
 				return a.Engine.Exec(id, execCmd)
@@ -147,7 +158,7 @@ func stateVolName(pod, dir string) string {
 // issues broker handles (identity + connectors) against poddled — returning a
 // ready-to-create spec and the resolved harness. It does not create the pod, so
 // both `up` and `task` share it.
-func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbox.Spec, harness.Harness, config.Template, error) {
+func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buildOpts) (sandbox.Spec, harness.Harness, config.Template, error) {
 	fail := func(err error) (sandbox.Spec, harness.Harness, config.Template, error) {
 		return sandbox.Spec{}, nil, config.Template{}, err
 	}
@@ -260,6 +271,20 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		if err := b.EnsureRunning(); err != nil {
 			return fail(fmt.Errorf("start poddled: %w", err))
 		}
+		// Put the shared broker on this pod's internal lock network and learn its
+		// IP there — that IP is the pod's ONLY route out. Fail-closed: any error
+		// aborts the pod rather than leaving its egress unpinned.
+		if _, err := bn.EnsurePodLockNetwork(o.name); err != nil {
+			return fail(fmt.Errorf("lock network: %w", err))
+		}
+		if err := bn.ConnectBrokerToPod("poddle-broker", o.name); err != nil {
+			return fail(fmt.Errorf("connect broker: %w", err))
+		}
+		brokerIP, err := bn.BrokerIPOnPod("poddle-broker", o.name)
+		if err != nil {
+			return fail(fmt.Errorf("broker peer ip: %w", err))
+		}
+
 		addr, err := b.Gateway()
 		if err != nil {
 			return fail(fmt.Errorf("broker gateway: %w", err))
@@ -268,7 +293,11 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 		if err != nil {
 			return fail(fmt.Errorf("broker address %q: %w", addr, err))
 		}
-		podBrokerAddr := net.JoinHostPort(podBrokerHost(), port)
+		// Every pod-facing address is pinned to the broker's peer IP on the lock
+		// net; ports records each egress channel the pod actually uses so the
+		// allow-list (below) covers exactly those and nothing else.
+		ports := map[brokerendpoint.Channel]string{brokerendpoint.Gateway: port}
+		podBrokerAddr := net.JoinHostPort(brokerIP, port)
 
 		if identityName != "" {
 			if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
@@ -287,18 +316,24 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 			}
 			switch def.Transport {
 			case "l4-redis":
-				if redisPodAddr, err = podL4Addr(redisPodAddr, b.RedisAddr); err != nil {
+				if redisPodAddr, err = podL4Addr(redisPodAddr, brokerIP, b.RedisAddr); err != nil {
 					return fail(err)
 				}
 				if err := applyRedisDatastore(b, conn, def, o.name, redisPodAddr, &spec); err != nil {
 					return fail(err)
 				}
+				if _, p, err := net.SplitHostPort(redisPodAddr); err == nil {
+					ports[brokerendpoint.Redis] = p
+				}
 			case "l4-postgres":
-				if pgPodAddr, err = podL4Addr(pgPodAddr, b.PostgresAddr); err != nil {
+				if pgPodAddr, err = podL4Addr(pgPodAddr, brokerIP, b.PostgresAddr); err != nil {
 					return fail(err)
 				}
 				if err := applyPostgresDatastore(b, conn, def, o.name, pgPodAddr, &spec); err != nil {
 					return fail(err)
+				}
+				if _, p, err := net.SplitHostPort(pgPodAddr); err == nil {
+					ports[brokerendpoint.Postgres] = p
 				}
 			default:
 				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, &spec); err != nil {
@@ -317,24 +352,33 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, o buildOpts) (sandbo
 			if err := b.SetPolicy(o.name, pol); err != nil {
 				return fail(err)
 			}
-			// Route the pod's arbitrary (non-brokered) egress through the broker's
-			// forward proxy so the policy's destination rules govern it too. The
-			// broker's own host is excluded (NO_PROXY) so brokered traffic goes
-			// direct to the gateway.
-			if token, addr, err := b.Egress(o.name); err == nil {
-				if _, port, err := net.SplitHostPort(addr); err == nil {
-					proxy := "http://" + token + ":x@" + net.JoinHostPort(podBrokerHost(), port)
-					if spec.Env == nil {
-						spec.Env = map[string]string{}
-					}
-					for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
-						spec.Env[k] = proxy
-					}
-					spec.Env["NO_PROXY"] = podBrokerHost()
-					spec.Env["no_proxy"] = podBrokerHost()
+		}
+		// Route ALL of the pod's arbitrary (non-brokered) egress through the
+		// broker's forward proxy. Egress lockdown makes the broker the sole exit,
+		// so a locked pod must reach the internet only THROUGH the broker: with a
+		// policy the destination rules govern it, without one it is default-allow
+		// but still audited and non-bypassable. Unconditional because a locked pod
+		// on the --internal net has no resolver/route of its own — without this it
+		// cannot even install its agent harness (npm/pip get ENOTFOUND). The
+		// broker's own peer IP is excluded (NO_PROXY) so brokered traffic reaches
+		// the gateway directly.
+		if token, addr, err := b.Egress(o.name); err == nil {
+			if _, port, err := net.SplitHostPort(addr); err == nil {
+				proxy := "http://" + token + ":x@" + net.JoinHostPort(brokerIP, port)
+				if spec.Env == nil {
+					spec.Env = map[string]string{}
 				}
+				for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+					spec.Env[k] = proxy
+				}
+				spec.Env["NO_PROXY"] = brokerIP
+				spec.Env["no_proxy"] = brokerIP
+				ports[brokerendpoint.Forward] = port
 			}
 		}
+		// Pin the pod's egress allow-list to exactly the broker peer's channels.
+		ep := brokerendpoint.NewPeer(brokerIP, ports)
+		spec.Network = &sandbox.Network{AllowList: ep.AllowList()}
 	}
 	return spec, h, tpl, nil
 }
@@ -476,8 +520,9 @@ func applyPostgresDatastore(b podBroker, conn connector.Connection, def connecto
 }
 
 // podL4Addr returns cached if set, else fetches the daemon's L4 address and
-// rewrites its host to how a pod reaches the broker.
-func podL4Addr(cached string, fetch func() (string, error)) (string, error) {
+// rewrites its host to the broker's peer IP on the pod's lock network — how a
+// locked pod reaches the broker.
+func podL4Addr(cached, brokerIP string, fetch func() (string, error)) (string, error) {
 	if cached != "" {
 		return cached, nil
 	}
@@ -489,7 +534,7 @@ func podL4Addr(cached string, fetch func() (string, error)) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("l4 address %q: %w", addr, err)
 	}
-	return net.JoinHostPort(podBrokerHost(), port), nil
+	return net.JoinHostPort(brokerIP, port), nil
 }
 
 const (

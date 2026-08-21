@@ -53,6 +53,33 @@ func TestDaemon_Egress(t *testing.T) {
 	}
 }
 
+func TestDaemon_Events_RecordedInStatus(t *testing.T) {
+	srv, _ := testServer(t)
+	// The host autoscaler POSTs its activity here; it must surface in /status.
+	body := `{"msg":"autoscale: grew \"box\" weak->strong at 92% mem"}`
+	resp, err := http.Post(srv.URL+"/events", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /events = %d, want 204", resp.StatusCode)
+	}
+
+	sr, err := http.Get(srv.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sr.Body.Close()
+	var s Status
+	if err := json.NewDecoder(sr.Body).Decode(&s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Events) != 1 || !strings.Contains(s.Events[0], "grew") {
+		t.Errorf("status events = %v, want the pushed grow event", s.Events)
+	}
+}
+
 func TestDaemon_SetPolicy(t *testing.T) {
 	srv, _ := testServer(t)
 	body, _ := json.Marshal(policy.Policy{Name: "guard"})
@@ -102,7 +129,7 @@ func TestDaemon_PodPolicies(t *testing.T) {
 
 func TestDaemon_BadJSON_Returns400(t *testing.T) {
 	srv, _ := testServer(t)
-	for _, path := range []string{"/pods/box/policy", "/pods/box/handles", "/audit"} {
+	for _, path := range []string{"/pods/box/policy", "/pods/box/handles", "/audit", "/events"} {
 		resp, err := http.Post(srv.URL+path, "application/json", strings.NewReader("{not json"))
 		if err != nil {
 			t.Fatal(err)

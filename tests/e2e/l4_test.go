@@ -35,8 +35,8 @@ func TestE2E_L4_RedisThroughBroker(t *testing.T) {
 	const realPass = "REALPASS-e2e"
 	const upstreamPort = "16379"
 	_ = exec.Command("podman", "rm", "-f", "poddle-redis-upstream").Run()
-	// Host networking so the broker (a host process) reaches redis at
-	// 127.0.0.1:<port> — rootless nested podman doesn't publish -p to that loopback.
+	// Host networking so redis binds 0.0.0.0, reachable both from the test
+	// process at 127.0.0.1 and from the broker container at host.containers.internal.
 	up := exec.Command("podman", "run", "-d", "--name", "poddle-redis-upstream", "--network=host",
 		"docker.io/library/redis:7", "redis-server", "--requirepass", realPass, "--port", upstreamPort)
 	if out, err := up.CombinedOutput(); err != nil {
@@ -48,22 +48,23 @@ func TestE2E_L4_RedisThroughBroker(t *testing.T) {
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "cache")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
-		"connector = \"redis\"\nbase_url = \"redis://127.0.0.1:"+upstreamPort+"\"\nowner = \"local\"\n")
+		"connector = \"redis\"\nbase_url = \"redis://host.containers.internal:"+upstreamPort+"\"\nowner = \"local\"\n")
 	writeFile(t, filepath.Join(connDir, "redis-token"), realPass)
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/redis:7\"\nconnectors = [\"cache\"]\n")
 
-	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"))
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-l4-redis"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	upCmd := exec.Command(bin, "up", pod, "--detach")
@@ -112,6 +113,8 @@ func TestE2E_L4_PostgresThroughBroker(t *testing.T) {
 	const realPass = "REALPGPASS-e2e"
 	const pgPort = "15432"
 	_ = exec.Command("podman", "rm", "-f", "poddle-pg-upstream").Run()
+	// Host networking so postgres binds 0.0.0.0, reachable both from the test
+	// process at 127.0.0.1 and from the broker container at host.containers.internal.
 	up := exec.Command("podman", "run", "-d", "--name", "poddle-pg-upstream", "--network=host",
 		"-e", "POSTGRES_PASSWORD="+realPass,
 		"docker.io/library/postgres:16", "-c", "port="+pgPort)
@@ -124,22 +127,23 @@ func TestE2E_L4_PostgresThroughBroker(t *testing.T) {
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "db")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
-		"connector = \"postgres\"\nbase_url = \"postgres://127.0.0.1:"+pgPort+"/postgres\"\nuser = \"postgres\"\nowner = \"local\"\n")
+		"connector = \"postgres\"\nbase_url = \"postgres://host.containers.internal:"+pgPort+"/postgres\"\nuser = \"postgres\"\nowner = \"local\"\n")
 	writeFile(t, filepath.Join(connDir, "postgres-token"), realPass)
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/postgres:16\"\nconnectors = [\"db\"]\n")
 
-	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"))
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-l4-pg"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	upCmd := exec.Command(bin, "up", pod, "--detach")

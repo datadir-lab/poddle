@@ -94,6 +94,22 @@ func (f *fakeCreator) RemoveVolumesForPod(pod string) error {
 func (f *fakeCreator) PodInfo(id string) (sandbox.PodInfo, error) { return f.podInfo, nil }
 func (f *fakeCreator) ExecTTY(id, command string) error           { f.ttyExeced = command; return nil }
 
+// The brokerNet seam: the real engine is *podman.Provider (which has these), so
+// the fake engine must satisfy it too, resolving a fixed broker peer IP.
+func (f *fakeCreator) EnsurePodLockNetwork(pod string) (string, error) {
+	return "poddle-lock-" + pod, nil
+}
+func (f *fakeCreator) ConnectBrokerToPod(_, _ string) error      { return nil }
+func (f *fakeCreator) BrokerIPOnPod(_, _ string) (string, error) { return "10.89.9.9", nil }
+
+// stubNet is a no-op brokerNet for buildSpec unit tests, resolving a fixed
+// broker peer IP on the pod's lock network.
+type stubNet struct{}
+
+func (stubNet) EnsurePodLockNetwork(pod string) (string, error) { return "poddle-lock-" + pod, nil }
+func (stubNet) ConnectBrokerToPod(_, _ string) error            { return nil }
+func (stubNet) BrokerIPOnPod(_, _ string) (string, error)       { return "10.89.9.9", nil }
+
 // spyBroker satisfies up's podBroker seam and records the call order.
 type spyBroker struct {
 	log *[]string
@@ -169,6 +185,13 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 }
 
 func TestUp_AutoscaleFlag(t *testing.T) {
+	// Stub the host-autoscaler spawn so the test never launches a real detached
+	// process, and assert `up --autoscale` ensures it is running.
+	var gotSocket string
+	orig := ensureHostAutoscaler
+	ensureHostAutoscaler = func(socket string) { gotSocket = socket }
+	defer func() { ensureHostAutoscaler = orig }()
+
 	f := &fakeCreator{}
 	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"ibox", "--autoscale", "--detach"})
@@ -177,6 +200,9 @@ func TestUp_AutoscaleFlag(t *testing.T) {
 	}
 	if !f.spec.Autoscale {
 		t.Error("up --autoscale should set spec.Autoscale (interactive pods get warn-only)")
+	}
+	if gotSocket == "" {
+		t.Error("up --autoscale should ensure the host autoscaler is running")
 	}
 }
 
@@ -404,8 +430,9 @@ func TestUp_Connector_WiredIntoPodBeforeClone(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	// The connector's git rewrite must be the FIRST setup step (before the clone).
-	wantGit := `git config --global url."http://poddle_spy:x@host.containers.internal:12345/".insteadOf "http://192.168.1.166:3000/"`
+	// The connector's git rewrite must be the FIRST setup step (before the clone),
+	// pinned to the broker's lock-net peer IP (10.89.9.9 from the fake engine).
+	wantGit := `git config --global url."http://poddle_spy:x@10.89.9.9:12345/".insteadOf "http://192.168.1.166:3000/"`
 	if len(f.spec.Setup) == 0 || f.spec.Setup[0] != wantGit {
 		t.Errorf("connector rewrite should be first in setup, got:\n%v", f.spec.Setup)
 	}
@@ -487,7 +514,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// exec replaces attach; the handle persists (poddled outlives up — no revoke).
-	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up", "exec"}
+	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up", "exec"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -518,7 +545,7 @@ func TestUp_DetachWithIdentity_Works(t *testing.T) {
 		t.Errorf("detached pod should be created, got %q", f.spec.Name)
 	}
 	// Detached: handle issued + pod created, but NOT attached and NOT revoked.
-	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up"}
+	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -545,13 +572,13 @@ func TestUp_Identity_IssuesHandleAndAttaches(t *testing.T) {
 	}
 	// Handles are issued before create/attach and persist (poddled outlives up).
 	// once the (instant, faked) attached session ends.
-	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up", "attach"}
+	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up", "attach"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
 }
 
-func TestUp_Identity_PodUsesHostAlias(t *testing.T) {
+func TestUp_Identity_PodUsesBrokerPeerIP(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
 		t.Fatal(err)
@@ -562,16 +589,17 @@ func TestUp_Identity_PodUsesHostAlias(t *testing.T) {
 	}}
 
 	var log []string
-	f := &fakeCreator{log: &log}
-	spy := &spyBroker{log: &log} // Addr() → 127.0.0.1:12345
+	f := &fakeCreator{log: &log} // BrokerIPOnPod() → 10.89.9.9
+	spy := &spyBroker{log: &log} // Gateway() → 127.0.0.1:12345
 	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: testHarnesses()}, spy)
 	c.SetArgs([]string{"mybox", "--identity", "work"})
 
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	// The pod must reach the broker via the container host alias, not loopback.
-	want := "http://host.containers.internal:12345"
+	// The pod must reach the broker via its IP on the pod's internal lock net —
+	// its sole route out — not loopback or the host alias.
+	want := "http://10.89.9.9:12345"
 	if got := f.spec.Env["BROKER_ADDR"]; got != want {
 		t.Errorf("pod broker URL = %q, want %q", got, want)
 	}

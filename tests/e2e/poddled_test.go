@@ -22,36 +22,52 @@ func TestE2E_Poddled_DetachRunDown(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
 
+	// The mock is bound 0.0.0.0 and reached at host.containers.internal: `run`
+	// curls $WOODPECKER_SERVER (the broker) FROM INSIDE the pod, and the broker
+	// container itself dials this mock to relay the request.
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0:0: %v", err)
+	}
 	var mu sync.Mutex
 	var auths []string
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mock := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		auths = append(auths, r.Header.Get("Authorization"))
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
+	_ = mock.Listener.Close()
+	mock.Listener = ln
+	mock.Start()
 	t.Cleanup(mock.Close)
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
-		"connector = \"woodpecker\"\nbase_url = \""+mock.URL+"\"\nowner = \"local\"\n")
+		"connector = \"woodpecker\"\nbase_url = \""+mockURL+"\"\nowner = \"local\"\n")
 	writeFile(t, filepath.Join(connDir, "woodpecker-token"), "SENTINEL")
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/node:22\"\nconnectors = [\"svc\"]\n")
 
-	// Isolate this test's daemon socket under a throwaway XDG_RUNTIME_DIR.
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
 	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"))
+		"XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-poddled-loop"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run() // best-effort: stop the daemon
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	// 1. up --detach: create the pod, auto-start poddled, issue the handle, exit.
@@ -95,45 +111,28 @@ func TestE2E_Poddled_DetachRunDown(t *testing.T) {
 		t.Errorf("upstream never saw the real token; got %v", got)
 	}
 
-	// 4. Capture the pod's handle + the gateway address (the daemon binds
-	// 0.0.0.0, so the host reaches it at 127.0.0.1:<port>).
-	cap := exec.Command(bin, "run", pod, `printf 'HANDLE=%s GATEWAY=%s\n' "$WOODPECKER_TOKEN" "$WOODPECKER_SERVER"`)
-	cap.Env = env
-	capOut, err := cap.CombinedOutput()
-	if err != nil {
-		t.Fatalf("capture failed: %v\n%s", err, capOut)
-	}
-	var handle, gateway string
-	for _, f := range strings.Fields(string(capOut)) {
-		if v, ok := strings.CutPrefix(f, "HANDLE="); ok {
-			handle = v
-		}
-		if v, ok := strings.CutPrefix(f, "GATEWAY="); ok {
-			gateway = v
-		}
-	}
-	_, port, err := net.SplitHostPort(strings.TrimPrefix(gateway, "http://"))
-	if err != nil || handle == "" {
-		t.Fatalf("could not read handle/gateway from pod: handle=%q gateway=%q", handle, gateway)
-	}
-	gwURL := "http://127.0.0.1:" + port
-
-	// Before down, the handle is valid — the gateway proxies (not 401).
-	if code := gwStatus(t, gwURL, handle); code == http.StatusUnauthorized {
-		t.Fatalf("handle should be valid before down, got 401")
-	}
-
-	// 5. down: revoke + remove.
+	// 4. down: revoke + remove. The gateway/data-plane listener now lives INSIDE
+	// the broker container on the pod's internal lock net, so it is no longer
+	// reachable from the host at 127.0.0.1 — we can't dial it to check handle
+	// validity (that host-side gwStatus probe is intentionally dropped). Validity
+	// BEFORE down is already proven above: the `run` at step 2 reached the service
+	// through the broker with the real token. Revocation AFTER down is asserted via
+	// the daemon's audit log (handle.revoke), not a host-side gateway probe.
 	down := exec.Command(bin, "down", pod)
 	down.Env = env
 	if out, err := down.CombinedOutput(); err != nil {
 		t.Fatalf("down failed: %v\n%s", err, out)
 	}
 
-	// The handle is now revoked at the (still-running) daemon → 401.
-	if code := gwStatus(t, gwURL, handle); code != http.StatusUnauthorized {
-		t.Errorf("handle should be revoked after down, gateway returned %d", code)
+	// down revoked the pod's handles at the (still-running) daemon: the audit log
+	// records a handle.revoke for the pod.
+	rev := exec.Command(bin, "daemon", "audit", "--pod", pod)
+	rev.Env = env
+	revOut, _ := rev.CombinedOutput()
+	if !strings.Contains(string(revOut), "handle.revoke") {
+		t.Errorf("down should revoke the pod's handles (want a handle.revoke audit event for %q):\n%s", pod, revOut)
 	}
+
 	// And the pod is gone.
 	ps, _ := exec.Command("podman", "ps", "-a", "--format", "{{.Names}}").CombinedOutput()
 	if strings.Contains(string(ps), pod) {

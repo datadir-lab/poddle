@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,9 +40,13 @@ func TestE2E_Autoscale_WarnsInteractive(t *testing.T) {
 		"image = \"docker.io/library/debian:stable-slim\"\nconnectors = [\"svc\"]\n")
 
 	statsFile := filepath.Join(xdg, "stats.json")
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model. This
+	// test never dials the connector mock through the broker, so it stays on
+	// its default loopback bind.
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"),
 		"PODDLE_AUTOSCALE_STATS="+statsFile,
 		"PODDLE_AUTOSCALE_INTERVAL=1s")
 
@@ -49,7 +54,8 @@ func TestE2E_Autoscale_WarnsInteractive(t *testing.T) {
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("pkill", "-f", "daemon autoscaled").Run() // fresh host autoscaler per test
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	up := exec.Command(bin, "up", pod, "--autoscale", "--detach")
@@ -96,14 +102,21 @@ func TestE2E_Autoscale_GrowsHeadless(t *testing.T) {
 
 	var mu sync.Mutex
 	var auths []string
-	mock := mockAnthropicUp(t, &auths, &mu)
+	mock := mockAnthropicUpOn(t, "0.0.0.0:0", &auths, &mu)
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 	cfg := taskIdentity(t, "SENTINEL-AUTOSCALE")
 
 	statsFile := filepath.Join(cfg, "stats.json")
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		"XDG_RUNTIME_DIR="+filepath.Join(cfg, "run"),
-		"PODDLE_ANTHROPIC_BASE_URL="+mock.URL,
+		"PODDLE_ANTHROPIC_BASE_URL="+mockURL,
 		"PODDLE_AUTOSCALE_STATS="+statsFile,
 		"PODDLE_AUTOSCALE_INTERVAL=1s")
 
@@ -113,7 +126,8 @@ func TestE2E_Autoscale_GrowsHeadless(t *testing.T) {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
 		_, _ = exec.Command("sh", "-c",
 			"podman volume ls -q --filter label=poddle.pod="+pod+" | xargs -r podman volume rm").CombinedOutput()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("pkill", "-f", "daemon autoscaled").Run() // fresh host autoscaler per test
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
 	// A headless, autoscale-opted-in task pod (starts weak).

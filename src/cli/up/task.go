@@ -9,6 +9,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/audit"
+	"github.com/datadir-lab/poddle/src/internal/poddled"
 )
 
 // TaskLogPath is where a detached task's output is written inside the pod;
@@ -40,7 +41,11 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 			if name == "" {
 				name = "poddle-task-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 			}
-			spec, h, tpl, err := buildSpec(cmd, a, b, buildOpts{
+			bn, ok := a.Engine.(brokerNet)
+			if !ok {
+				return fmt.Errorf("egress lockdown needs the podman engine")
+			}
+			spec, h, tpl, err := buildSpec(cmd, a, b, bn, buildOpts{
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				requireIdentity: true, // an autonomous agent needs an LLM login
@@ -65,6 +70,12 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 				return err
 			}
 			_ = b.Audit(audit.Event{Pod: name, Kind: audit.KindPodTask, Detail: "size=" + spec.Size, Decision: audit.DecisionAllow})
+
+			// The reactive autoscaler runs on the host (the broker container has
+			// no podman); spawn it, detached, when this task pod opted in.
+			if spec.Autoscale {
+				ensureHostAutoscaler(poddled.SocketPath())
+			}
 
 			// before_task hook: burst the pod's CPU up for the run. CPU only —
 			// shrinking memory below live usage would OOM the pod; the memory

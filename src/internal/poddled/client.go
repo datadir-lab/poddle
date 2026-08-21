@@ -9,20 +9,32 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/exec"
+	"github.com/datadir-lab/poddle/src/internal/podman"
 	"github.com/datadir-lab/poddle/src/internal/policy"
 )
 
+// brokerLauncher is the podman surface EnsureRunning needs to bring up the
+// broker container (satisfied by *podman.Provider).
+type brokerLauncher interface {
+	EnsureEgressNetwork(name string) error
+	EnsureBroker(cfg podman.BrokerConfig) error
+}
+
 // Client talks to a running poddled over its Unix control socket, and can
-// auto-start the daemon if it isn't up.
+// auto-start the daemon (as a container) if it isn't up.
 type Client struct {
 	socket string
 	http   *http.Client
+	// launcher brings up the broker container. Nil means EnsureRunning
+	// constructs the default (podman.New(exec.OS{}, "")); tests inject a fake.
+	launcher brokerLauncher
 }
 
 // NewClient returns a client for the socket at path (SocketPath() if empty).
@@ -55,25 +67,44 @@ func (c *Client) Health() error {
 	return nil
 }
 
-// EnsureRunning starts poddled (this binary's `daemon` subcommand, detached) if
-// it isn't already healthy, then waits for it to come up.
+// EnsureRunning starts poddled — as a dual-homed broker container via podman,
+// egress-lockdown's placement — if it isn't already healthy, then waits for it
+// to come up. Fail-closed: if the network or broker can't be brought up, the
+// error is returned and there is no fallback to spawning a host process.
 func (c *Client) EnsureRunning() error {
 	if c.Health() == nil {
 		return nil
 	}
-	self, err := os.Executable()
-	if err != nil {
+	// The broker container bind-mounts RunDir (its control socket) and StateDir
+	// (its audit db); podman refuses to bind-mount a source that does not exist,
+	// and podman itself needs XDG_RUNTIME_DIR present before any network/run call.
+	// Creating RunDir also materializes its parent (XDG_RUNTIME_DIR). The old
+	// host-process daemon created these in Serve(); the container launch must too.
+	runDir := filepath.Dir(c.socket)
+	stateDir := filepath.Dir(AuditDBPath())
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		return fmt.Errorf("broker run dir: %w", err)
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return fmt.Errorf("broker state dir: %w", err)
+	}
+	l := c.launcher
+	if l == nil {
+		l = podman.New(exec.OS{}, "")
+	}
+	if err := l.EnsureEgressNetwork("poddle-egress"); err != nil {
 		return err
 	}
-	cmd := exec.Command(self, "daemon", "--socket", c.socket)
-	cmd.SysProcAttr = detachAttrs()
-	if devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0); err == nil {
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, devnull
+	cfg := podman.BrokerConfig{
+		Name:      "poddle-broker",
+		Image:     resolveBrokerImage(),
+		EgressNet: "poddle-egress",
+		RunDir:    runDir,
+		StateDir:  stateDir,
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("spawn poddled: %w", err)
+	if err := l.EnsureBroker(cfg); err != nil {
+		return err
 	}
-	_ = cmd.Process.Release() // it outlives this process
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -83,6 +114,15 @@ func (c *Client) EnsureRunning() error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("poddled did not become healthy on %s", c.socket)
+}
+
+// resolveBrokerImage resolves the broker container image ref: PODDLE_BROKER_IMAGE
+// if set, else the ghcr default at :latest.
+func resolveBrokerImage() string {
+	if img := os.Getenv("PODDLE_BROKER_IMAGE"); img != "" {
+		return img
+	}
+	return "ghcr.io/datadir-lab/poddle-broker:latest"
 }
 
 // gatewayInfo fetches the daemon's pod-facing addresses.
@@ -221,6 +261,22 @@ func (c *Client) Audit(e audit.Event) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("audit: %s", resp.Status)
+	}
+	return nil
+}
+
+// PushEvent records a host-autoscaler activity line as a daemon event, surfaced
+// by `daemon status` and mirrored into the audit log. Mirrors Audit's shape;
+// used by the host autoscaler so its grow/warn output reaches the broker.
+func (c *Client) PushEvent(msg string) error {
+	b, _ := json.Marshal(map[string]string{"msg": msg})
+	resp, err := c.http.Post(c.uri("/events"), "application/json", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("push event: %s", resp.Status)
 	}
 	return nil
 }

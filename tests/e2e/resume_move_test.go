@@ -3,9 +3,9 @@
 package e2e
 
 import (
+	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -25,7 +25,12 @@ func TestE2E_ResumeMove_Headless(t *testing.T) {
 
 	var mu sync.Mutex
 	var auths []string
-	mock := mockAnthropicUp(t, &auths, &mu)
+	mock := mockAnthropicUpOn(t, "0.0.0.0:0", &auths, &mu)
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 	const sentinel = "SENTINEL-RESUME"
 	cfg := taskIdentity(t, sentinel)
 
@@ -40,13 +45,15 @@ func TestE2E_ResumeMove_Headless(t *testing.T) {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
 		_, _ = exec.Command("sh", "-c",
 			"podman volume ls -q --filter label=poddle.pod="+pod+" | xargs -r podman volume rm").CombinedOutput()
-		_ = exec.Command("pkill", "-f", "daemon --socket").Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+cfg,
-		"XDG_RUNTIME_DIR="+filepath.Join(cfg, "run"),
-		"PODDLE_ANTHROPIC_BASE_URL="+mock.URL)
+		"PODDLE_ANTHROPIC_BASE_URL="+mockURL)
 
 	run := func(args ...string) (string, error) {
 		c := exec.Command(bin, args...)

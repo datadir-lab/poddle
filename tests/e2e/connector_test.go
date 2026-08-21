@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"encoding/base64"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,16 +24,37 @@ const (
 // client will usually fail parsing the empty 200 — the request + auth are what
 // we assert. Git's no-auth first hop is answered by the broker's 401+challenge,
 // so this upstream only ever sees the post-swap (real-credential) request.
+//
+// The broker is a container, so the mock binds 0.0.0.0 and is dialed by the
+// broker at host.containers.internal (see brokerURL).
 func mockService(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		*auths = append(*auths, r.Header.Get("Authorization"))
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// brokerURL rebuilds a 0.0.0.0-bound httptest server's URL as the broker
+// container would reach it: via host.containers.internal, not 127.0.0.1/0.0.0.0.
+func brokerURL(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	return "http://host.containers.internal:" + port
 }
 
 func basicWant(user string) func(string) string {
@@ -124,12 +146,13 @@ func runConnCase(t *testing.T, bin string, tc connCase) {
 	var mu sync.Mutex
 	var auths []string
 	mock := mockService(t, &auths, &mu)
+	mockAddr := brokerURL(t, mock)
 	const sentinel = "SENTINEL-CONN"
 
 	// A connection of this connector, upstream = the mock, in a throwaway dir.
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
-	meta := "connector = \"" + tc.connector + "\"\nbase_url = \"" + mock.URL + "\"\nowner = \"local\"\n"
+	meta := "connector = \"" + tc.connector + "\"\nbase_url = \"" + mockAddr + "\"\nowner = \"local\"\n"
 	if tc.user != "" {
 		meta += "user = \"" + tc.user + "\"\n"
 	}
@@ -142,9 +165,12 @@ func runConnCase(t *testing.T, bin string, tc connCase) {
 
 	pod := "poddle-conn-" + tc.name
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
-	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", pod).Run() })
+	t.Cleanup(func() {
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per test (its state dir is this test's temp)
+	})
 
-	cmd := exec.Command(bin, "up", pod, "--exec", tc.inPod(mock.URL))
+	cmd := exec.Command(bin, "up", pod, "--exec", tc.inPod(mockAddr))
 	cmd.Dir = proj
 	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
 	out, err := cmd.CombinedOutput()

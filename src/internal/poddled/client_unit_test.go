@@ -149,6 +149,34 @@ func TestClientUnit_Audit_BadStatus(t *testing.T) {
 	}
 }
 
+func TestClientUnit_PushEvent(t *testing.T) {
+	var gotMethod, gotPath, gotBody string
+	c := clientWithRT(func(r *http.Request) (*http.Response, error) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		return httpResp(http.StatusNoContent, ""), nil
+	})
+	if err := c.PushEvent("autoscale: grew \"box\" weak->strong"); err != nil {
+		t.Fatalf("PushEvent: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/events" {
+		t.Errorf("request = %s %s, want POST /events", gotMethod, gotPath)
+	}
+	if !strings.Contains(gotBody, `"msg"`) || !strings.Contains(gotBody, "grew") {
+		t.Errorf("body missing the event msg: %q", gotBody)
+	}
+}
+
+func TestClientUnit_PushEvent_BadStatus(t *testing.T) {
+	c := clientWithRT(func(*http.Request) (*http.Response, error) {
+		return httpResp(http.StatusInternalServerError, ""), nil
+	})
+	if err := c.PushEvent("x"); err == nil {
+		t.Error("expected error on non-204 status")
+	}
+}
+
 func TestClientUnit_Audits_BuildsQuery(t *testing.T) {
 	var gotQuery string
 	c := clientWithRT(func(r *http.Request) (*http.Response, error) {
