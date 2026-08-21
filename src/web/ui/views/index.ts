@@ -28,3 +28,5 @@ export * from "./PolicyList";
 export * from "./DestinationsTable";
 export * from "./PolicyEditor";
 export * from "./PodControls";
+export * from "./CommandPalette";
+export * from "./ToastHost";

@@ -6,13 +6,14 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
-import type { Stats } from "@poddle/ui/views";
+import type { Stats, Cmd, Toast } from "@poddle/ui/views";
 import {
-  SegmentedControl, DecisionBadge, IntegrityBadge, IntegrityPanel,
+  SegmentedControl, IntegrityBadge, IntegrityPanel,
   Icon, PoddleMark, EgressChart, PostureBar, FleetLoad,
   SkelCards, SkelTable, LiveDot,
   OverviewCards, AttentionPanel, RedactionsTable, PodFleetTable, PodDetailPanel,
   AuditLogTable, PolicyList, DestinationsTable, PolicyEditor, PodControls,
+  CommandPalette, ToastHost,
   summarise, group, decisionCounts, destinations,
   TIME_RANGES, RANGE_MS,
 } from "@poddle/ui/views";
@@ -463,103 +464,6 @@ function ThemeToggle() {
   );
 }
 
-// CommandPalette is a ⌘K/Ctrl-K launcher: fuzzy-jump to any view, pod, policy,
-// or destination. Pods/policies are fetched once on open; destinations come from
-// the audit stream already in memory.
-type Cmd = { id: string; label: string; hint: string; icon: string; run: () => void };
-function CommandPalette({ open, onClose, events }: { open: boolean; onClose: () => void; events: Event[] }) {
-  const [q, setQ] = useState("");
-  const [sel, setSel] = useState(0);
-  const [pods, setPods] = useState<Pod[]>([]);
-  const [pols, setPols] = useState<Policy[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setQ(""); setSel(0);
-    api.pods().then((p) => setPods(asArray<Pod>(p))).catch(() => {});
-    api.policies().then((p) => setPols(asArray<Policy>(p))).catch(() => {});
-    const id = setTimeout(() => inputRef.current?.focus(), 0);
-    return () => clearTimeout(id);
-  }, [open]);
-
-  const cmds: Cmd[] = useMemo(() => {
-    const nav: Cmd[] = NAV.map((n) => ({ id: "nav:" + n.key, label: n.label, hint: "view", icon: n.icon, run: () => navigate(n.to) }));
-    const podCmds: Cmd[] = pods.map((p) => ({ id: "pod:" + p.name, label: p.name, hint: "pod", icon: "pods", run: () => navigate("/pods/" + encodeURIComponent(p.name)) }));
-    const polCmds: Cmd[] = pols.map((p) => ({ id: "pol:" + p.name, label: p.name, hint: "policy", icon: "policies", run: () => navigate("/policies/" + encodeURIComponent(p.name)) }));
-    const destCmds: Cmd[] = destinations(events).slice(0, 20).map((d) => ({ id: "dest:" + d.upstream, label: d.upstream, hint: "destination", icon: "globe", run: () => navigate("/audit?q=" + encodeURIComponent(d.upstream)) }));
-    const theme: Cmd = {
-      id: "theme", label: "Toggle light / dark theme", hint: "action", icon: "theme",
-      run: () => { const r = document.documentElement; const t = r.getAttribute("data-theme") === "dark" ? "light" : "dark"; r.setAttribute("data-theme", t); try { localStorage.setItem("poddle-theme", t); } catch {} },
-    };
-    return [...nav, ...podCmds, ...polCmds, ...destCmds, theme];
-  }, [pods, pols, events]);
-
-  const s = q.toLowerCase();
-  const shown = q ? cmds.filter((c) => c.label.toLowerCase().includes(s) || c.hint.includes(s)) : cmds;
-  const selClamped = Math.min(sel, Math.max(0, shown.length - 1));
-
-  if (!open) return null;
-
-  const run = (c: Cmd) => { onClose(); c.run(); };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => Math.min(i + 1, shown.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setSel((i) => Math.max(i - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); if (shown[selClamped]) run(shown[selClamped]); }
-    else if (e.key === "Escape") { e.preventDefault(); onClose(); }
-  };
-
-  return (
-    <div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette" onClick={onClose}>
-      <div class="cmdk__panel" onClick={(e) => e.stopPropagation()}>
-        <div class="cmdk__search">
-          <span class="cmdk__searchic" aria-hidden="true"><Icon name="search" size={16} /></span>
-          <input ref={inputRef} class="cmdk__input" placeholder="Jump to a view, pod, policy, or destination…"
-            value={q} aria-label="Command palette search"
-            onInput={(e) => { setQ((e.target as HTMLInputElement).value); setSel(0); }} onKeyDown={onKey} />
-        </div>
-        <ul class="cmdk__list">
-          {shown.length === 0 && <li class="cmdk__empty">No matches.</li>}
-          {shown.slice(0, 40).map((c, i) => (
-            <li key={c.id}>
-              <button type="button" class={"cmdk__item" + (i === selClamped ? " on" : "")}
-                onMouseEnter={() => setSel(i)} onClick={() => run(c)}>
-                <span class="cmdk__ic" aria-hidden="true"><Icon name={c.icon} size={15} /></span>
-                <span class="cmdk__lb">{c.label}</span>
-                <span class="cmdk__hint">{c.hint}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-// ToastHost surfaces live denials/blocks the moment they stream in, so the
-// console tells you rather than waiting to be checked. Each links to the audit.
-type Toast = { id: number; pod: string; decision: string; upstream: string };
-function ToastHost({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
-  if (toasts.length === 0) return null;
-  return (
-    <div class="toasts" role="region" aria-label="Live alerts">
-      {toasts.map((t) => {
-        const to = "/audit?q=" + encodeURIComponent(t.upstream || t.pod);
-        return (
-          <div key={t.id} class="toast" role="status">
-            <span class="toast__ic" aria-hidden="true"><Icon name={t.decision === "block" ? "octagon" : "ban"} size={16} /></span>
-            <div class="toast__body">
-              <div class="toast__title"><span class="c-pod">{t.pod}</span> <DecisionBadge decision={t.decision} /></div>
-              <a class="toast__link c-mono" href={to} onClick={linkTo(to)}>{t.upstream || "egress"}</a>
-            </div>
-            <button type="button" class="toast__close" aria-label="Dismiss alert" onClick={() => onDismiss(t.id)}>×</button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function App() {
   const route = useRoute();
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -600,6 +504,27 @@ function App() {
     return () => removeEventListener("keydown", on);
   }, []);
 
+  // The command palette's pod/policy commands are fetched once per open (not
+  // polled) — destinations come from the audit stream already in memory.
+  const [palettePods, setPalettePods] = useState<Pod[]>([]);
+  const [palettePols, setPalettePols] = useState<Policy[]>([]);
+  useEffect(() => {
+    if (!paletteOpen) return;
+    api.pods().then((p) => setPalettePods(asArray<Pod>(p))).catch(() => {});
+    api.policies().then((p) => setPalettePols(asArray<Policy>(p))).catch(() => {});
+  }, [paletteOpen]);
+  const commands: Cmd[] = useMemo(() => {
+    const nav = NAV.map((n) => ({ id: "nav:" + n.key, label: n.label, hint: "view", icon: n.icon, run: () => navigate(n.to) }));
+    const podCmds = palettePods.map((p) => ({ id: "pod:" + p.name, label: p.name, hint: "pod", icon: "pods", run: () => navigate("/pods/" + encodeURIComponent(p.name)) }));
+    const polCmds = palettePols.map((p) => ({ id: "pol:" + p.name, label: p.name, hint: "policy", icon: "policies", run: () => navigate("/policies/" + encodeURIComponent(p.name)) }));
+    const destCmds = destinations(events).slice(0, 20).map((d) => ({ id: "dest:" + d.upstream, label: d.upstream, hint: "destination", icon: "globe", run: () => navigate("/audit?q=" + encodeURIComponent(d.upstream)) }));
+    const theme: Cmd = {
+      id: "theme", label: "Toggle light / dark theme", hint: "action", icon: "theme",
+      run: () => { const r = document.documentElement; const t = r.getAttribute("data-theme") === "dark" ? "light" : "dark"; r.setAttribute("data-theme", t); try { localStorage.setItem("poddle-theme", t); } catch {} },
+    };
+    return [...nav, ...podCmds, ...polCmds, ...destCmds, theme];
+  }, [palettePods, palettePols, events]);
+
   return (
     <div class={"app" + (collapsed ? " app--collapsed" : "")}>
       <Sidebar active={active} v={vf.verify} collapsed={collapsed} />
@@ -634,8 +559,9 @@ function App() {
           {route.view === "policies" && <PolicyView selected={route.name} events={events} />}
         </main>
       </div>
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} events={events} />
-      <ToastHost toasts={toasts} onDismiss={dismiss} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      <ToastHost toasts={toasts} onDismiss={dismiss}
+        href={(t) => "/audit?q=" + encodeURIComponent(t.upstream || t.pod)} linkTo={linkTo} />
     </div>
   );
 }
