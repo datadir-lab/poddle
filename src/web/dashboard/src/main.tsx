@@ -1258,25 +1258,27 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
         </div>
       )}
       <div class="layout">
-        <div class="list">
-          {loading
-            ? [0, 1, 2].map((i) => <span class="list__skel skel" key={i} aria-hidden="true" />)
-            : policies.map((p) => {
-                const n = usage(p.name);
-                return (
-                  <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
-                    class={"list__row" + (selected === p.name ? " on" : "")}>
-                    <span>{p.name}{def === p.name && <span class="list__default" title="Default — applied to pods started with no --policy">★</span>}</span>
-                    {n > 0 && <span class="list__meta" title={`${n} running pod${n === 1 ? "" : "s"} use this policy`}>{n} pod{n === 1 ? "" : "s"}</span>}
-                  </a>
-                );
-              })}
-          <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
-          <div class="list__foot">
-            {def
-              ? <>Default <a href={`/policies/${encodeURIComponent(def)}`} onClick={linkTo(`/policies/${encodeURIComponent(def)}`)}>{def}</a> — new pods with no <code>--policy</code> inherit it.</>
-              : <>No default — pods started with no <code>--policy</code> run ungoverned.</>}
+        <div class="list-col">
+          <div class="list">
+            {loading
+              ? [0, 1, 2].map((i) => <span class="list__skel skel" key={i} aria-hidden="true" />)
+              : policies.map((p) => {
+                  const n = usage(p.name);
+                  return (
+                    <a key={p.name} href={`/policies/${encodeURIComponent(p.name)}`} onClick={linkTo(`/policies/${encodeURIComponent(p.name)}`)}
+                      class={"list__row" + (selected === p.name ? " on" : "")}>
+                      <span class="list__name">{p.name}{def === p.name && <span class="list__default" title="Default policy — applied to pods started without a policy" aria-label="default">★</span>}</span>
+                      {n > 0 && <span class="list__meta" title={`${n} running pod${n === 1 ? "" : "s"} use this policy`}>{n} pod{n === 1 ? "" : "s"}</span>}
+                    </a>
+                  );
+                })}
+            <a href="/policies/new" onClick={linkTo("/policies/new")} class="new">＋ New policy</a>
           </div>
+          <p class="list-note">
+            {def
+              ? <>New pods started without a policy use <strong>{def}</strong>.</>
+              : <>New pods started without a policy run ungoverned.</>}
+          </p>
         </div>
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}

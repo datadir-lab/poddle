@@ -228,17 +228,17 @@ test("policies: designate a default policy and see it marked, then clear it", as
   await mockPods(page);
   await page.goto("/policies");
 
-  // No default yet: the footer explains unpoliced pods run ungoverned.
-  await expect(page.locator(".list__foot")).toContainText("No default");
+  // No default yet: the caption explains unpoliced pods run ungoverned.
+  await expect(page.locator(".list-note")).toContainText("ungoverned");
 
   // Open "prod" and set it as the default.
   await page.locator(".list a", { hasText: "prod" }).first().click();
   await page.getByRole("button", { name: "Set as default", exact: true }).click();
 
-  // The button flips to the active state; the list stars prod and the footer names it.
+  // The button flips to the active state; the list stars prod and the caption names it.
   await expect(page.getByRole("button", { name: /★ Default/ })).toBeVisible();
   await expect(page.locator(".list__row", { hasText: "prod" }).locator(".list__default")).toBeVisible();
-  await expect(page.locator(".list__foot")).toContainText("prod");
+  await expect(page.locator(".list-note")).toContainText("prod");
 
   // The choice really reached the server (PUT body), not just local state.
   expect(current).toBe("prod");
@@ -246,7 +246,7 @@ test("policies: designate a default policy and see it marked, then clear it", as
   // Clicking again clears it.
   await page.getByRole("button", { name: /★ Default/ }).click();
   await expect(page.getByRole("button", { name: "Set as default", exact: true })).toBeVisible();
-  await expect(page.locator(".list__foot")).toContainText("No default");
+  await expect(page.locator(".list-note")).toContainText("ungoverned");
   expect(current).toBe("");
 });
 

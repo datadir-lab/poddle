@@ -456,9 +456,10 @@ td.perf { text-align: right; white-space: nowrap; }
 .list__meta { flex: none; font: 500 0.68rem/1 var(--font-sans); color: var(--faint); background: var(--surface); border-radius: 999px; padding: 0.2rem 0.5rem; }
 .list a.on .list__meta { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .list__default { margin-left: 0.35rem; color: var(--accent); font-size: 0.8rem; }
-.list__foot { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); font-size: 0.76rem; line-height: 1.5; color: var(--faint); }
-.list__foot code { font-family: var(--mono); font-size: 0.72rem; }
-.list__foot a { color: var(--accent); }
+/* The list column stacks the policy card and a caption explaining the default. */
+.list-col { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.list-note { margin: 0 0.15rem; font: 500 0.73rem/1.5 var(--font-sans); color: var(--faint); }
+.list-note strong { color: var(--ink); font-weight: 600; font-family: var(--mono); font-size: 0.72rem; }
 
 /* governance insight banner (e.g. running pods with no policy) */
 .insight {
