@@ -59,3 +59,34 @@ func (c *colocated) AllowList() []HostPort {
 	}
 	return out
 }
+
+type peer struct {
+	ip    string
+	ports map[Channel]string
+}
+
+// NewPeer resolves channels for a broker reachable at brokerIP (its address on
+// the pod's internal net). ports maps each present channel to the broker's
+// listening port ("16379"). Addr(ch) = brokerIP:port; AllowList = those host:ports.
+// A channel absent from ports yields ("", error) from Addr and is omitted from AllowList.
+func NewPeer(brokerIP string, ports map[Channel]string) Endpoint {
+	return &peer{ip: brokerIP, ports: ports}
+}
+
+func (p *peer) Addr(ch Channel) (string, error) {
+	port, ok := p.ports[ch]
+	if !ok {
+		return "", fmt.Errorf("brokerendpoint: no port for channel %d", ch)
+	}
+	return net.JoinHostPort(p.ip, port), nil
+}
+
+func (p *peer) AllowList() []HostPort {
+	var out []HostPort
+	for ch := Gateway; ch <= Postgres; ch++ {
+		if port, ok := p.ports[ch]; ok {
+			out = append(out, HostPort{Host: p.ip, Port: port})
+		}
+	}
+	return out
+}
