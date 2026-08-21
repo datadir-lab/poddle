@@ -25,10 +25,10 @@ func TestStateVolName(t *testing.T) {
 }
 
 func TestPodL4Addr(t *testing.T) {
-	t.Setenv("PODDLE_BROKER_ADDR", "10.0.0.9") // fixed pod-facing broker host
+	const brokerIP = "10.0.0.9" // the broker's IP on the pod's lock network
 
 	t.Run("cached short-circuits fetch", func(t *testing.T) {
-		got, err := podL4Addr("cached:1234", func() (string, error) {
+		got, err := podL4Addr("cached:1234", brokerIP, func() (string, error) {
 			t.Fatal("fetch should not be called when a cached address is present")
 			return "", nil
 		})
@@ -37,8 +37,8 @@ func TestPodL4Addr(t *testing.T) {
 		}
 	})
 
-	t.Run("rewrites host, keeps port", func(t *testing.T) {
-		got, err := podL4Addr("", func() (string, error) { return "127.0.0.1:15432", nil })
+	t.Run("rewrites host to the broker peer IP, keeps port", func(t *testing.T) {
+		got, err := podL4Addr("", brokerIP, func() (string, error) { return "127.0.0.1:15432", nil })
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -48,13 +48,13 @@ func TestPodL4Addr(t *testing.T) {
 	})
 
 	t.Run("fetch error is wrapped", func(t *testing.T) {
-		if _, err := podL4Addr("", func() (string, error) { return "", os.ErrClosed }); err == nil {
+		if _, err := podL4Addr("", brokerIP, func() (string, error) { return "", os.ErrClosed }); err == nil {
 			t.Error("expected error when fetch fails")
 		}
 	})
 
 	t.Run("unparseable address is rejected", func(t *testing.T) {
-		if _, err := podL4Addr("", func() (string, error) { return "no-port-here", nil }); err == nil {
+		if _, err := podL4Addr("", brokerIP, func() (string, error) { return "no-port-here", nil }); err == nil {
 			t.Error("expected error for an address without a port")
 		}
 	})

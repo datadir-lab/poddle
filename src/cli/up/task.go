@@ -40,7 +40,11 @@ func NewTaskCmd(a *app.App, b podBroker) *cobra.Command {
 			if name == "" {
 				name = "poddle-task-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 			}
-			spec, h, tpl, err := buildSpec(cmd, a, b, buildOpts{
+			bn, ok := a.Engine.(brokerNet)
+			if !ok {
+				return fmt.Errorf("egress lockdown needs the podman engine")
+			}
+			spec, h, tpl, err := buildSpec(cmd, a, b, bn, buildOpts{
 				name: name, image: image, size: size, identityName: identityName,
 				harnessName: harnessName, templateName: templateName,
 				requireIdentity: true, // an autonomous agent needs an LLM login
