@@ -4,7 +4,7 @@ import { TIME_RANGES, RANGE_MS } from "./types";
 import { SegmentedControl } from "./SegmentedControl";
 import { DecisionBadge } from "./DecisionBadge";
 import { SkelTable } from "./Skeletons";
-import { cap1, humanKind, relTime } from "./aggregate";
+import { cap1, humanKind, absTime } from "./aggregate";
 import { downloadCsv } from "./csv";
 
 const DECISION_FILTER: SegOption[] = [
@@ -90,7 +90,7 @@ export function AuditLogTable({ events, initialPod, initialQ, loading, onExport 
             )}
             {shown.slice(0, 800).map((e) => (
               <tr key={e.seq} class="auditrow">
-                <td class="c-time" title={new Date(e.time).toLocaleString()}>{relTime(e.time)}</td>
+                <td class="c-time" title={new Date(e.time).toLocaleString()}>{absTime(e.time)}</td>
                 <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
                 <td>{humanKind(e.kind)}</td>
                 <td><DecisionBadge decision={e.decision} /></td>

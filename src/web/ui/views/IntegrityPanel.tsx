@@ -1,6 +1,6 @@
 import type { Verify } from "./types";
 import { Icon } from "./Icon";
-import { relTime } from "./aggregate";
+import { absTime } from "./aggregate";
 
 // IntegrityPanel is the provenance centerpiece of the Audit view: it states the
 // hash-chain verdict in plain language, shows when it was last checked, and lets
@@ -23,7 +23,7 @@ export function IntegrityPanel({ verify, checkedAt, recheck, count }: { verify: 
       </div>
       <dl class="integrity__meta">
         <div><dt>Events</dt><dd>{count}</dd></div>
-        <div><dt>Last verified</dt><dd>{checkedAt ? relTime(new Date(checkedAt).toISOString()) : "…"}</dd></div>
+        <div><dt>Last verified</dt><dd>{checkedAt ? absTime(new Date(checkedAt).toISOString()) : "…"}</dd></div>
       </dl>
       <button type="button" class="btn btn--ghost btn--sm integrity__btn" onClick={recheck}>Re-verify</button>
     </div>
