@@ -1,7 +1,7 @@
 import { useMemo, useState } from "preact/hooks";
 import type { Event } from "./types";
 import { bucketEvents } from "./chart";
-import { relTime } from "./aggregate";
+import { absTime } from "./aggregate";
 
 // EgressChart: request volume over time as stacked columns — the allowed share
 // (accent, anchored to the baseline) with the redacted/blocked share (amber)
@@ -47,12 +47,12 @@ export function EgressChart({ events }: { events: Event[] }) {
             </g>
           );
         })}
-        <text class="axlabel" x={padX} y={H - 6} text-anchor="start">{relTime(new Date(bk[0].t0).toISOString())}</text>
+        <text class="axlabel" x={padX} y={H - 6} text-anchor="start">{absTime(new Date(bk[0].t0).toISOString(), false)}</text>
         <text class="axlabel" x={padX + plotW} y={H - 6} text-anchor="end">now</text>
       </svg>
       {active && (
         <div class="tip" style={`left:${(((hi! + 0.5) / n) * 100).toFixed(2)}%`} aria-hidden="true">
-          <div class="tip__t">{relTime(new Date(active.t0).toISOString())} · {active.req} total</div>
+          <div class="tip__t">{absTime(new Date(active.t0).toISOString(), false)} · {active.req} total</div>
           <div class="tip__row"><span class="tip__k"><span class="dotmark dotmark--req" />Allowed</span><span class="tip__v">{active.req - active.intervened}</span></div>
           <div class="tip__row"><span class="tip__k"><span class="dotmark dotmark--int" />Intervened</span><span class="tip__v">{active.intervened}</span></div>
         </div>

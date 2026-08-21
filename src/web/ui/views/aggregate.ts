@@ -41,7 +41,7 @@ export const cap1 = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) :
 // humanKind turns a dotted event kind into a readable label: "pod.up" -> "Pod up".
 export const humanKind = (k: string) => cap1((k || "").replace(/\./g, " "));
 
-// relTime renders an event's age compactly (the absolute time goes in a tooltip).
+// relTime renders an event's age compactly (kept for consumers that want it).
 export function relTime(iso: string): string {
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (s < 5) return "just now";
@@ -51,6 +51,18 @@ export function relTime(iso: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return h + "h ago";
   return Math.floor(h / 24) + "d ago";
+}
+
+// absTime renders an absolute wall-clock time (24-hour). It shows the time alone
+// for today's events and prefixes the date otherwise, so a log reads precisely
+// without a tooltip. withSeconds=false (charts) drops the seconds.
+export function absTime(iso: string, withSeconds = true): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(withSeconds ? { second: "2-digit" } : {}), hour12: false });
+  return sameDay ? time : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
 }
 
 // threshTone maps a live % (of the pod's limit) to a severity tone so the
