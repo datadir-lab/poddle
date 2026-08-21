@@ -2,6 +2,7 @@ package poddled
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -126,6 +127,28 @@ func TestEnsureRunning_CallsEgressNetworkBeforeBroker_WithDerivedConfig(t *testi
 	}
 	if fl.brokerCfg.Image == "" {
 		t.Error("BrokerConfig.Image must be resolved, not empty")
+	}
+}
+
+// EnsureRunning must create the broker's RunDir and StateDir (and, implicitly,
+// their parents — e.g. a test/CI XDG_RUNTIME_DIR) before launching, because
+// podman refuses to bind-mount a source path that does not exist. Regression
+// test for the containerized-launch bug where these were never created.
+func TestEnsureRunning_CreatesRunAndStateDirs(t *testing.T) {
+	base := t.TempDir()
+	sockDir := filepath.Join(base, "run", "poddle") // does not exist yet
+	t.Setenv("XDG_STATE_HOME", filepath.Join(base, "state"))
+	c := NewClient(filepath.Join(sockDir, "poddled.sock"))
+	c.launcher = &fakeLauncher{brokerErr: errors.New("stop after dirs are made")}
+
+	_ = c.EnsureRunning()
+
+	if _, err := os.Stat(sockDir); err != nil {
+		t.Errorf("EnsureRunning must create the run dir %q: %v", sockDir, err)
+	}
+	wantStateDir := filepath.Dir(AuditDBPath())
+	if _, err := os.Stat(wantStateDir); err != nil {
+		t.Errorf("EnsureRunning must create the state dir %q: %v", wantStateDir, err)
 	}
 }
 

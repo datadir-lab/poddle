@@ -75,6 +75,19 @@ func (c *Client) EnsureRunning() error {
 	if c.Health() == nil {
 		return nil
 	}
+	// The broker container bind-mounts RunDir (its control socket) and StateDir
+	// (its audit db); podman refuses to bind-mount a source that does not exist,
+	// and podman itself needs XDG_RUNTIME_DIR present before any network/run call.
+	// Creating RunDir also materializes its parent (XDG_RUNTIME_DIR). The old
+	// host-process daemon created these in Serve(); the container launch must too.
+	runDir := filepath.Dir(c.socket)
+	stateDir := filepath.Dir(AuditDBPath())
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		return fmt.Errorf("broker run dir: %w", err)
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return fmt.Errorf("broker state dir: %w", err)
+	}
 	l := c.launcher
 	if l == nil {
 		l = podman.New(exec.OS{}, "")
@@ -86,8 +99,8 @@ func (c *Client) EnsureRunning() error {
 		Name:       "poddle-broker",
 		Image:      resolveBrokerImage(),
 		EgressNet:  "poddle-egress",
-		RunDir:     filepath.Dir(c.socket),
-		StateDir:   filepath.Dir(AuditDBPath()),
+		RunDir:     runDir,
+		StateDir:   stateDir,
 		PodmanSock: hostPodmanSock(),
 	}
 	if err := l.EnsureBroker(cfg); err != nil {
