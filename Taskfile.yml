@@ -128,6 +128,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_ForwardProxy ./tests/e2e/...
 
+  e2e-lockdown:
+    desc: Egress-lockdown e2e (needs podman) — a pod cannot escape the broker or reach the control plane
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Lockdown ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
