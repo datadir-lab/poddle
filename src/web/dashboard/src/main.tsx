@@ -31,7 +31,7 @@ type Event = {
   status?: number; decision?: string; detail?: string;
 };
 type Policy = {
-  name: string; allow_upstreams?: string[]; deny_upstreams?: string[];
+  name: string; description?: string; allow_upstreams?: string[]; deny_upstreams?: string[];
   methods?: Record<string, string[]>; egress?: string;
 };
 type Pod = {
@@ -373,11 +373,14 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
   const [def, setDef] = useState<string>(""); // the default policy name ("" = none)
+  const [seed, setSeed] = useState<Policy | null>(null); // a Duplicate pre-fills the blank editor
   const { pods } = usePods();
   const load = () => api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => setPolicies([])).finally(() => setLoading(false));
   const loadDefault = () => api.defaultPolicy().then((d) => setDef((d && d.name) || "")).catch(() => {});
   const setDefault = async (name: string) => { setDef(name); await api.setDefaultPolicy(name).catch(() => {}); loadDefault(); };
   useEffect(() => { load(); loadDefault(); }, []);
+  useEffect(() => { if (selected !== "new") setSeed(null); }, [selected]); // a duplicate seed only lives on the new-policy view
+  const duplicate = (p: Policy) => { setSeed({ ...p, name: p.name + "-copy" }); navigate("/policies/new"); };
 
   // Fleet governance: how many running pods each policy governs, and which run
   // with none (a real risk — an unpoliced pod's egress is unrestricted).
@@ -396,10 +399,10 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   // poll and audit-stream re-renders — otherwise a fresh "new" draft (or a new
   // find result) would remount the editor and wipe what the user is typing.
   const sel: Policy | null = useMemo(
-    () => selected === "new" ? { name: "", egress: "redact" }
+    () => selected === "new" ? (seed || { name: "", egress: "redact" })
       : selected ? (policies.find((p) => p.name === selected) || null)
         : null,
-    [selected, policies],
+    [selected, policies, seed],
   );
   const hrefFor = (name: string) => `/policies/${encodeURIComponent(name)}`;
 
@@ -429,7 +432,7 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
         </div>
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
-              templates={POLICY_TEMPLATES} isDefault={!!sel.name && def === sel.name} onSetDefault={setDefault}
+              templates={POLICY_TEMPLATES} isSaved={selected !== "new"} isDefault={selected !== "new" && def === sel.name} onSetDefault={setDefault} onDuplicate={duplicate}
               onSave={(p) => api.putPolicy(p).then((r) => {
                 if (r.ok) { load(); navigate(`/policies/${encodeURIComponent(p.name)}`); }
                 return { ok: r.ok, error: r.ok ? undefined : "Save failed: " + r.status };

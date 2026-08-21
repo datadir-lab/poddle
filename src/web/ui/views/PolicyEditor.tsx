@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { AllowRow, Event, Policy, PolicyTemplate, SegOption } from "./types";
 import { HTTP_METHODS } from "./types";
-import { dryRun, toRows } from "./policy-eval";
+import { decide, dryRun, matchHost, toRows } from "./policy-eval";
 import { SegmentedControl } from "./SegmentedControl";
 import { Icon } from "./Icon";
 import { DecisionBadge } from "./DecisionBadge";
@@ -14,6 +14,44 @@ const EGRESS_MODES: SegOption[] = [
   { value: "block", label: "Block", tone: "deny" },
   { value: "off", label: "Off", tone: "faint" },
 ];
+
+// The cloud metadata endpoints — a top credential-theft target; the "Block them"
+// advisory fix adds these to the deny-list.
+const METADATA_HOSTS = ["169.254.169.254", "metadata.google.internal"];
+
+// lintPolicy inspects a (draft) policy for common misconfigurations — the
+// editor's governance coach. Access-control reasoning only, using the same
+// matchHost semantics the engine enforces.
+type Advisory = { level: "warn" | "info"; msg: string; fix?: "block-metadata" };
+function lintPolicy(p: Policy): Advisory[] {
+  const out: Advisory[] = [];
+  const allow = p.allow_upstreams || [];
+  const deny = p.deny_upstreams || [];
+  const methods = p.methods || {};
+  const allowAll = allow.length === 0;
+
+  if (allowAll && p.egress !== "block") {
+    out.push({ level: "warn", msg: "No allowed destinations, so every host is reachable. Add destinations, or set egress to Block." });
+  }
+  const metaOpen = METADATA_HOSTS.some((h) => !matchHost(h, deny) && (allowAll || matchHost(h, allow)));
+  if (metaOpen) {
+    out.push({ level: "warn", msg: "Cloud metadata endpoints are reachable — a common credential-theft target.", fix: "block-metadata" });
+  }
+  if (!allowAll) {
+    for (const h of Object.keys(methods)) {
+      if (!h.startsWith(".") && !matchHost(h, allow)) {
+        out.push({ level: "info", msg: `Method rule on "${h}" has no effect — it is not in the allowed destinations.` });
+      }
+    }
+  }
+  for (const a of allow) {
+    if (deny.includes(a)) out.push({ level: "info", msg: `"${a}" is both allowed and blocked — blocked wins, so it is effectively blocked.` });
+  }
+  if (p.egress === "off") {
+    out.push({ level: "warn", msg: "Secret scanning is off — outbound secrets are sent as-is, not redacted." });
+  }
+  return out;
+}
 
 // PolicyEditor is the visual policy builder: name, egress mode, an allow-list of
 // destinations (each optionally restricted to a set of HTTP methods), a
@@ -28,23 +66,28 @@ const EGRESS_MODES: SegOption[] = [
 // starting points on a fresh, still-blank policy; `isDefault`/`onSetDefault`
 // let the container mark this policy as the fleet default — all injected, so no
 // template set or default-policy transport lives in this file.
-export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint, templates, isDefault, onSetDefault }: {
+export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint, templates, isSaved, isDefault, onSetDefault, onDuplicate }: {
   policy: Policy; events: Event[]; scopePods: string[];
   onSave: (p: Policy) => Promise<{ ok: boolean; error?: string }>;
   onDelete: () => Promise<void>;
   hint?: (name: string) => ComponentChildren;
   templates?: PolicyTemplate[];
+  isSaved?: boolean;
   isDefault?: boolean;
   onSetDefault?: (name: string) => void;
+  onDuplicate?: (p: Policy) => void;
 }) {
   const [name, setName] = useState(policy.name);
+  const [desc, setDesc] = useState(policy.description || "");
   const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
   const [egress, setEgress] = useState(policy.egress || "redact");
   const [err, setErr] = useState("");
+  const [probeHost, setProbeHost] = useState("");
+  const [probeMethod, setProbeMethod] = useState("GET");
 
   useEffect(() => {
-    setName(policy.name); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
+    setName(policy.name); setDesc(policy.description || ""); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
     setEgress(policy.egress || "redact"); setErr("");
   }, [policy]);
 
@@ -56,9 +99,13 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const addDeny = () => setDenies((d) => [...d, ""]);
   const removeDeny = (i: number) => setDenies((d) => d.filter((_, j) => j !== i));
 
+  // Whether this is a persisted policy. The container passes isSaved (a "new"
+  // policy can carry a name via a Duplicate seed); fall back to the name for
+  // standalone use of the component.
+  const saved = isSaved ?? !!policy.name;
   // Templates offer a starting point on a fresh policy; picking one fills the
   // builder (and the operator can then rename/tweak). Shown only while blank.
-  const isNew = !policy.name;
+  const isNew = !saved;
   const blank = !name && allows.length === 0 && denies.length === 0;
   const applyTemplate = (t: PolicyTemplate) => {
     setName(t.id);
@@ -74,8 +121,14 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
     const methods: Record<string, string[]> = {};
     for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
-    return { name: name.trim(), allow_upstreams, deny_upstreams, methods, egress };
+    return { name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress };
   };
+
+  // Governance advisories on the live draft, and a single-request probe that runs
+  // the same client engine as the dry-run — both recompute as the rules change.
+  const advisories = useMemo(() => lintPolicy(draft()), [allows, denies, egress]);
+  const probe = useMemo(() => (probeHost.trim() ? decide(draft(), probeHost.trim(), probeMethod) : null), [probeHost, probeMethod, allows, denies, egress]);
+  const blockMetadata = () => setDenies((d) => [...new Set([...d.map((x) => x.trim()).filter(Boolean), ...METADATA_HOSTS])]);
 
   // Live dry-run against recent traffic, recomputed as the rules change.
   // Scope the dry-run to the traffic of the pods that run this policy. With none
@@ -121,6 +174,21 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
           <SegmentedControl value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
         </div>
       </div>
+
+      <label for="pol-desc">Description <span class="label-hint">Optional — what this policy is for</span></label>
+      <input id="pol-desc" value={desc} placeholder="e.g. CI agents: model + package registries" onInput={(e) => setDesc((e.target as HTMLInputElement).value)} />
+
+      {!blank && advisories.length > 0 && (
+        <div class="advisories">
+          {advisories.map((a, i) => (
+            <div class={"advisory advisory--" + a.level} key={i}>
+              <span class="advisory__icon" aria-hidden="true"><Icon name={a.level === "warn" ? "ban" : "info"} size={14} /></span>
+              <span class="advisory__msg">{a.msg}</span>
+              {a.fix === "block-metadata" && <button type="button" class="advisory__fix" onClick={blockMetadata}>Block them</button>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <label>Allowed destinations <span class="label-hint">Default-deny once any are set · ".example.com" matches any subdomain</span></label>
       <div class="rules">
@@ -195,11 +263,27 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
         </p>
       </div>
 
+      <div class="probe">
+        <div class="probe__label">Test a request</div>
+        <div class="probe__row">
+          <input class="probe__host" value={probeHost} placeholder="host, e.g. api.github.com" aria-label="Test request host"
+            onInput={(e) => setProbeHost((e.target as HTMLInputElement).value)} />
+          <SegmentedControl value={probeMethod} options={HTTP_METHODS.map((m) => ({ value: m, label: m }))} onChange={setProbeMethod} ariaLabel="test request method" />
+        </div>
+        {probe && (
+          <div class={"probe__result " + (probe.allow ? "ok" : "bad")} role="status">
+            <DecisionBadge decision={probe.allow ? "allow" : "deny"} />
+            <span class="probe__reason">{probe.allow ? "This request would be allowed." : probe.reason}</span>
+          </div>
+        )}
+      </div>
+
       {err && <div class="err">{err}</div>}
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
-        {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
-        {policy.name && onSetDefault && (
+        {saved && <button class="btn btn--danger" onClick={del}>Delete</button>}
+        {saved && onDuplicate && <button type="button" class="btn btn--ghost" onClick={() => onDuplicate(draft())}>Duplicate</button>}
+        {saved && onSetDefault && (
           <button type="button" class={"btn btn--ghost btn--default" + (isDefault ? " is-default" : "")}
             title={isDefault
               ? "This policy is applied to pods started with no --policy. Click to clear."

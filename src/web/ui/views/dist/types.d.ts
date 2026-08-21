@@ -13,6 +13,7 @@ export type Event = {
 };
 export type Policy = {
     name: string;
+    description?: string;
     allow_upstreams?: string[];
     deny_upstreams?: string[];
     methods?: Record<string, string[]>;

@@ -193,16 +193,18 @@ test("policies: a template saved through the editor persists and round-trips (re
   // collide with the shared file-backed store.
   await page.getByRole("button", { name: /AI provider only/ }).click();
   await page.locator("#pol-name").fill("e2e-tmpl-provider");
+  await page.locator("#pol-desc").fill("e2e provider policy");
   await page.getByRole("button", { name: "Save" }).click();
 
   // It persisted through the file store and the save deep-linked to it.
   await expect(page).toHaveURL(/\/policies\/e2e-tmpl-provider$/);
   await expect(page.locator(".list")).toContainText("e2e-tmpl-provider");
 
-  // Reload to re-read from disk: the template's allow-list and metadata deny-list
-  // survived the round-trip through the TOML store, not just in-memory state.
+  // Reload to re-read from disk: the template's allow-list, metadata deny-list,
+  // and the description survived the round-trip through the TOML store.
   await page.reload();
   await expect(page).toHaveURL(/\/policies\/e2e-tmpl-provider$/);
+  await expect(page.locator("#pol-desc")).toHaveValue("e2e provider policy");
   await expect(page.locator("input[aria-label='Allowed host']").first()).toHaveValue("api.anthropic.com");
   const denyVals = await page.locator("input[aria-label='Blocked host']").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
   expect(denyVals).toContain("169.254.169.254");
@@ -248,6 +250,61 @@ test("policies: designate a default policy and see it marked, then clear it", as
   await expect(page.getByRole("button", { name: "Set as default", exact: true })).toBeVisible();
   await expect(page.locator(".list-note")).toContainText("ungoverned");
   expect(current).toBe("");
+});
+
+test("policies: the editor flags governance issues and the metadata fix works", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // A named policy with no allow-list is wide open — two advisories fire.
+  await page.locator("#pol-name").fill("lint-test");
+  const adv = page.locator(".advisory");
+  await expect(adv.filter({ hasText: "every host is reachable" })).toBeVisible();
+  const metaAdv = adv.filter({ hasText: "metadata endpoints are reachable" });
+  await expect(metaAdv).toBeVisible();
+
+  // The one-click fix adds the metadata hosts to Always Blocked and clears the advisory.
+  await metaAdv.getByRole("button", { name: "Block them" }).click();
+  await expect(page.locator("input[aria-label='Blocked host']")).toHaveCount(2);
+  await expect(page.locator(".advisory", { hasText: "metadata endpoints are reachable" })).toHaveCount(0);
+});
+
+test("policies: the test-request probe shows the live decision", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // Allow only api.anthropic.com; then probe two hosts.
+  await page.locator("#pol-name").fill("probe-test");
+  await page.getByRole("button", { name: /Add destination/ }).click();
+  await page.locator(".rule__host").first().fill("api.anthropic.com");
+
+  await page.locator(".probe__host").fill("evil.example");
+  await expect(page.locator(".probe__result")).toContainText("deny");
+  await expect(page.locator(".probe__result")).toContainText("not allow-listed");
+
+  await page.locator(".probe__host").fill("api.anthropic.com");
+  await expect(page.locator(".probe__result")).toContainText("allow");
+});
+
+test("policies: Duplicate opens a pre-filled, unsaved new policy", async ({ page }) => {
+  const POLS = [{ name: "prod", description: "prod egress", egress: "block", allow_upstreams: ["api.anthropic.com"], deny_upstreams: ["169.254.169.254"], methods: {} }];
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/prod");
+
+  await page.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await expect(page).toHaveURL(/\/policies\/new$/);
+  // Pre-filled from prod with a "-copy" name and its rules...
+  await expect(page.locator("#pol-name")).toHaveValue("prod-copy");
+  await expect(page.locator("input[aria-label='Allowed host']").first()).toHaveValue("api.anthropic.com");
+  // ...but it is unsaved, so Delete/Duplicate are hidden.
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Duplicate", exact: true })).toHaveCount(0);
 });
 
 test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
