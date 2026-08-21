@@ -307,6 +307,34 @@ test("policies: Duplicate opens a pre-filled, unsaved new policy", async ({ page
   await expect(page.getByRole("button", { name: "Duplicate", exact: true })).toHaveCount(0);
 });
 
+test("policies: bulk-govern binds the default to every ungoverned pod", async ({ page }) => {
+  const PODS = [
+    { name: "loose1", state: "running", size: "weak", mode: "headless", policy: "", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+    { name: "loose2", state: "running", size: "weak", mode: "headless", policy: "", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+    { name: "gov", state: "running", size: "weak", mode: "headless", policy: "ci", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
+  ];
+  const POLS = [{ name: "ci", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} }];
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: PODS }));
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await page.route("**/v1/default-policy", (r) => r.fulfill({ json: { name: "ci" } }));
+  const bound: string[] = [];
+  await page.route(/\/v1\/pods\/[^/]+\/policy$/, (r) => {
+    const m = r.request().url().match(/\/pods\/([^/]+)\/policy/);
+    if (m) bound.push(decodeURIComponent(m[1]));
+    return r.fulfill({ status: 204, body: "" });
+  });
+  await mockAudit(page);
+  await page.goto("/policies");
+
+  // The banner names the unpoliced pods and offers a one-click bind to the default.
+  await expect(page.locator(".insight")).toContainText("2 running pods with no policy");
+  await page.getByRole("button", { name: /Govern all with ci/ }).click();
+
+  // Both ungoverned pods were bound to the default (the governed one was not touched).
+  await expect(page.locator(".insight__done")).toContainText("Bound ci to 2 pods");
+  expect(bound.sort()).toEqual(["loose1", "loose2"]);
+});
+
 test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
   await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await mockAudit(page);
