@@ -323,6 +323,21 @@ func (d *Daemon) Handler() http.Handler {
 		d.rec(audit.Event{Pod: pod, Kind: audit.KindPolicyAllow, Detail: "policy " + p.Name + " bound", Decision: audit.DecisionAllow})
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// The effective (in-memory) policy bound to each pod. Container labels are
+	// immutable, so a rebind cannot change poddle.policy on a running pod — this
+	// is how the dashboard's pods list reflects the current binding instead of the
+	// stale label it was created with.
+	mux.HandleFunc("GET /pods/policies", func(w http.ResponseWriter, r *http.Request) {
+		d.mu.Lock()
+		out := make(map[string]string, len(d.podPolicy))
+		for pod, p := range d.podPolicy {
+			if p != nil && p.Name != "" {
+				out[pod] = p.Name
+			}
+		}
+		d.mu.Unlock()
+		writeJSON(w, http.StatusOK, out)
+	})
 
 	// Audit control API.
 	mux.HandleFunc("POST /audit", func(w http.ResponseWriter, r *http.Request) {

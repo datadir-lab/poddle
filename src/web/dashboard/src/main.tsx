@@ -1318,7 +1318,7 @@ function Fact({ label, children }: { label: string; children: any }) {
 // rebind its governing policy (POST …/policy) and revoke its credentials
 // (DELETE …). The pod poll (3s) reflects the new binding on its own.
 type Pending = { type: "bind"; name: string } | { type: "revoke" } | null;
-function PodControls({ pod, policies }: { pod: Pod; policies: Policy[] }) {
+function PodControls({ pod, policies, onRebound }: { pod: Pod; policies: Policy[]; onRebound?: (name: string) => void }) {
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -1329,7 +1329,12 @@ function PodControls({ pod, policies }: { pod: Pod; policies: Policy[] }) {
     setBusy(true);
     const res = await api.bindPodPolicy(pod.name, p).catch(() => null);
     setBusy(false); setPending(null);
-    setStatus(res && res.ok ? { ok: true, msg: `Now governed by ${name}.` } : { ok: false, msg: `Could not bind ${name}.` });
+    if (res && res.ok) {
+      onRebound?.(name); // reflect the new binding at once; the pods poll confirms it
+      setStatus({ ok: true, msg: `Now governed by ${name}.` });
+    } else {
+      setStatus({ ok: false, msg: `Could not bind ${name}.` });
+    }
   };
   const revoke = async () => {
     setBusy(true);
@@ -1385,8 +1390,13 @@ function PodControls({ pod, policies }: { pod: Pod; policies: Policy[] }) {
 function PodDetailView({ name, events, loading }: { name: string; events: Event[]; loading: boolean }) {
   const { pods, hist } = usePods();
   const [policies, setPolicies] = useState<Policy[]>([]);
+  // Optimistic binding: a rebind takes effect at the daemon immediately, but the
+  // pods poll is up to 3s behind. Reflect the new policy at once so the "current"
+  // marker moves the moment the bind succeeds; the poll then confirms it.
+  const [override, setOverride] = useState<string | null>(null);
   useEffect(() => { api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => {}); }, []);
-  const pod = pods.find((p) => p.name === name);
+  const rawPod = pods.find((p) => p.name === name);
+  const pod = rawPod && override != null ? { ...rawPod, policy: override } : rawPod;
   const h = hist[name] || { cpu: [], mem: [] };
   return (
     <div>
@@ -1416,7 +1426,7 @@ function PodDetailView({ name, events, loading }: { name: string; events: Event[
       {pod && pod.state === "running" && (
         <>
           <h2 class="section-title">Controls</h2>
-          <PodControls pod={pod} policies={policies} />
+          <PodControls pod={pod} policies={policies} onRebound={setOverride} />
         </>
       )}
 

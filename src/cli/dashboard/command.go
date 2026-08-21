@@ -73,6 +73,16 @@ func Handler(sock string, policies policy.Store, pods PodsSource) http.Handler {
 			if list == nil {
 				list = []sandbox.PodView{}
 			}
+			// A pod's poddle.policy label is fixed at creation, so a rebind can't
+			// change it. Overlay the daemon's live binding so the dashboard shows
+			// the policy actually in force, not the one the pod started with.
+			if eff := daemonPodPolicies(sock); len(eff) > 0 {
+				for i := range list {
+					if name, ok := eff[list[i].Name]; ok {
+						list[i].Policy = name
+					}
+				}
+			}
 			writeJSON(w, list)
 		})
 	}
@@ -162,6 +172,33 @@ func registerPolicyAPI(mux *http.ServeMux, policies policy.Store) {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// daemonPodPolicies fetches the daemon's effective pod->policy-name map over the
+// Unix socket. Best-effort: a missing or unreachable daemon yields nil, and the
+// pods list falls back to the immutable container labels.
+func daemonPodPolicies(sock string) map[string]string {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+			},
+		},
+	}
+	resp, err := client.Get("http://unix/pods/policies")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var m map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // NewCmd builds `poddle dashboard`.
