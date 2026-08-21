@@ -328,23 +328,28 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 			if err := b.SetPolicy(o.name, pol); err != nil {
 				return fail(err)
 			}
-			// Route the pod's arbitrary (non-brokered) egress through the broker's
-			// forward proxy so the policy's destination rules govern it too. The
-			// broker's own peer IP is excluded (NO_PROXY) so brokered traffic goes
-			// direct to the gateway.
-			if token, addr, err := b.Egress(o.name); err == nil {
-				if _, port, err := net.SplitHostPort(addr); err == nil {
-					proxy := "http://" + token + ":x@" + net.JoinHostPort(brokerIP, port)
-					if spec.Env == nil {
-						spec.Env = map[string]string{}
-					}
-					for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
-						spec.Env[k] = proxy
-					}
-					spec.Env["NO_PROXY"] = brokerIP
-					spec.Env["no_proxy"] = brokerIP
-					ports[brokerendpoint.Forward] = port
+		}
+		// Route ALL of the pod's arbitrary (non-brokered) egress through the
+		// broker's forward proxy. Egress lockdown makes the broker the sole exit,
+		// so a locked pod must reach the internet only THROUGH the broker: with a
+		// policy the destination rules govern it, without one it is default-allow
+		// but still audited and non-bypassable. Unconditional because a locked pod
+		// on the --internal net has no resolver/route of its own — without this it
+		// cannot even install its agent harness (npm/pip get ENOTFOUND). The
+		// broker's own peer IP is excluded (NO_PROXY) so brokered traffic reaches
+		// the gateway directly.
+		if token, addr, err := b.Egress(o.name); err == nil {
+			if _, port, err := net.SplitHostPort(addr); err == nil {
+				proxy := "http://" + token + ":x@" + net.JoinHostPort(brokerIP, port)
+				if spec.Env == nil {
+					spec.Env = map[string]string{}
 				}
+				for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+					spec.Env[k] = proxy
+				}
+				spec.Env["NO_PROXY"] = brokerIP
+				spec.Env["no_proxy"] = brokerIP
+				ports[brokerendpoint.Forward] = port
 			}
 		}
 		// Pin the pod's egress allow-list to exactly the broker peer's channels.

@@ -504,7 +504,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// exec replaces attach; the handle persists (poddled outlives up — no revoke).
-	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up", "exec"}
+	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up", "exec"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -535,7 +535,7 @@ func TestUp_DetachWithIdentity_Works(t *testing.T) {
 		t.Errorf("detached pod should be created, got %q", f.spec.Name)
 	}
 	// Detached: handle issued + pod created, but NOT attached and NOT revoked.
-	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up"}
+	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -562,7 +562,7 @@ func TestUp_Identity_IssuesHandleAndAttaches(t *testing.T) {
 	}
 	// Handles are issued before create/attach and persist (poddled outlives up).
 	// once the (instant, faked) attached session ends.
-	want := []string{"ensure", "gateway", "issue", "create", "audit:pod.up", "attach"}
+	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up", "attach"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
