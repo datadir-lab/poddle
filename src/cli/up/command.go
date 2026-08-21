@@ -18,10 +18,16 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/connector"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
+	"github.com/datadir-lab/poddle/src/internal/poddled"
 	"github.com/datadir-lab/poddle/src/internal/policy"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 	"github.com/datadir-lab/poddle/src/internal/secure"
 )
+
+// ensureHostAutoscaler starts the host-side reactive autoscaler for the daemon
+// when a pod opts in (`up --autoscale`). A package var so tests can stub the
+// spawn instead of launching a real detached process.
+var ensureHostAutoscaler = poddled.EnsureHostAutoscaler
 
 // podBroker is the persistent-broker capability `up` needs: ensure poddled is
 // running, learn its pod-facing gateway address, and issue a pod-scoped handle
@@ -94,6 +100,12 @@ func NewCmd(a *app.App, b podBroker) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
 			_ = b.Audit(audit.Event{Pod: name, Kind: audit.KindPodUp, Detail: "size=" + spec.Size + " image=" + spec.Image, Decision: audit.DecisionAllow})
+
+			// The autoscaler runs on the host now (the broker container has no
+			// podman); spawn it, detached, when this pod opted in.
+			if spec.Autoscale {
+				ensureHostAutoscaler(poddled.SocketPath())
+			}
 
 			if execCmd != "" {
 				return a.Engine.Exec(id, execCmd)

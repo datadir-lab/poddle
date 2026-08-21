@@ -124,12 +124,11 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 // internet) and, per pod, onto that pod's internal lock network (so locked
 // pods can reach it without any other route out).
 type BrokerConfig struct {
-	Name       string // "poddle-broker"
-	Image      string // resolved ref (PODDLE_BROKER_IMAGE or ghcr default)
-	EgressNet  string // "poddle-egress"
-	RunDir     string // host dir bind-mounted to /run/poddle (holds the control socket)
-	StateDir   string // host dir bind-mounted to /state (holds audit.db)
-	PodmanSock string // host podman socket path, bind-mounted for the autoscaler ("" = omit)
+	Name      string // "poddle-broker"
+	Image     string // resolved ref (PODDLE_BROKER_IMAGE or ghcr default)
+	EgressNet string // "poddle-egress"
+	RunDir    string // host dir bind-mounted to /run/poddle (holds the control socket)
+	StateDir  string // host dir bind-mounted to /state (holds audit.db)
 }
 
 // EnsureEgressNetwork creates the shared network the broker uses to reach the
@@ -147,8 +146,9 @@ func (p *Provider) EnsureEgressNetwork(name string) error {
 }
 
 // EnsureBroker launches the shared broker container, detached, dual-homed
-// onto the egress network with the control/state dirs (and optionally the
-// host podman socket) bind-mounted in. Idempotent: a no-op if the broker is
+// onto the egress network with the control/state dirs bind-mounted in. It holds
+// all secrets and mounts no podman socket — pod-lifecycle work runs on the host
+// (`poddle daemon autoscaled`) instead. Idempotent: a no-op if the broker is
 // already running.
 func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 	// One query distinguishes running / stopped / absent, so a crashed or
@@ -180,14 +180,8 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		"-e", "XDG_STATE_HOME=/state",
 		"-v", cfg.RunDir+":/run/poddle",
 		"-v", cfg.StateDir+":/state",
+		cfg.Image,
 	)
-	if cfg.PodmanSock != "" {
-		args = append(args,
-			"-v", cfg.PodmanSock+":/run/podman/podman.sock",
-			"-e", "PODDLE_PODMAN_URL=unix:///run/podman/podman.sock",
-		)
-	}
-	args = append(args, cfg.Image)
 
 	res, err := p.Runner.Run("podman", args...)
 	if err != nil {

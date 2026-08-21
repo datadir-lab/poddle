@@ -11,8 +11,6 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
-	"github.com/datadir-lab/poddle/src/internal/exec"
-	"github.com/datadir-lab/poddle/src/internal/podman"
 )
 
 // AuditDBPath is where the daemon keeps its audit log: under XDG_STATE_HOME when
@@ -68,18 +66,10 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 		return err
 	}
 
-	// Reactive autoscaler: watch opted-in pods and grow headless ones under
-	// sustained memory pressure (warn interactive ones). Label-gated, so it is a
-	// no-op unless a pod opted in with --autoscale. Its activity is recorded as
-	// daemon events surfaced by `poddle daemon status`.
-	as := &Autoscaler{
-		Interval: autoscaleInterval(), Cooldown: 60 * time.Second,
-		HighWater: 85, Sustain: 3,
-		Stats: productionStats(podman.New(exec.OS{}, os.Getenv("PODDLE_PODMAN_URL"))),
-		Move:  selfMover(),
-		Log:   func(format string, args ...any) { d.recordEvent(fmt.Sprintf(format, args...)) },
-	}
-	go as.Run(ctx)
+	// The reactive autoscaler now runs on the HOST (`poddle daemon autoscaled`,
+	// auto-started by `up --autoscale`): it shells podman / `poddle move`, which
+	// this distroless broker container cannot. It pushes its activity back over
+	// the control API (POST /events) so `daemon status` still surfaces it.
 	if err := os.MkdirAll(filepath.Dir(sockPath), 0o700); err != nil {
 		return err
 	}

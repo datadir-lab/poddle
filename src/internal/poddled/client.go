@@ -96,12 +96,11 @@ func (c *Client) EnsureRunning() error {
 		return err
 	}
 	cfg := podman.BrokerConfig{
-		Name:       "poddle-broker",
-		Image:      resolveBrokerImage(),
-		EgressNet:  "poddle-egress",
-		RunDir:     runDir,
-		StateDir:   stateDir,
-		PodmanSock: hostPodmanSock(),
+		Name:      "poddle-broker",
+		Image:     resolveBrokerImage(),
+		EgressNet: "poddle-egress",
+		RunDir:    runDir,
+		StateDir:  stateDir,
 	}
 	if err := l.EnsureBroker(cfg); err != nil {
 		return err
@@ -124,22 +123,6 @@ func resolveBrokerImage() string {
 		return img
 	}
 	return "ghcr.io/datadir-lab/poddle-broker:latest"
-}
-
-// hostPodmanSock returns the host's rootless podman control socket path if it
-// exists, so EnsureBroker can bind-mount it in for the in-container
-// autoscaler; "" if not found (EnsureBroker then omits the mount and the
-// autoscaler no-ops).
-func hostPodmanSock() string {
-	dir := os.Getenv("XDG_RUNTIME_DIR")
-	if dir == "" {
-		return ""
-	}
-	sock := filepath.Join(dir, "podman", "podman.sock")
-	if _, err := os.Stat(sock); err != nil {
-		return ""
-	}
-	return sock
 }
 
 // gatewayInfo fetches the daemon's pod-facing addresses.
@@ -278,6 +261,22 @@ func (c *Client) Audit(e audit.Event) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("audit: %s", resp.Status)
+	}
+	return nil
+}
+
+// PushEvent records a host-autoscaler activity line as a daemon event, surfaced
+// by `daemon status` and mirrored into the audit log. Mirrors Audit's shape;
+// used by the host autoscaler so its grow/warn output reaches the broker.
+func (c *Client) PushEvent(msg string) error {
+	b, _ := json.Marshal(map[string]string{"msg": msg})
+	resp, err := c.http.Post(c.uri("/events"), "application/json", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("push event: %s", resp.Status)
 	}
 	return nil
 }

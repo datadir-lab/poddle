@@ -42,7 +42,7 @@ func TestEnsureBroker_RunsDetachedDualHomeMounts(t *testing.T) {
 	p := New(f, "")
 	err := p.EnsureBroker(BrokerConfig{
 		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
-		RunDir: "/run/x", StateDir: "/state/x", PodmanSock: "/podsock",
+		RunDir: "/run/x", StateDir: "/state/x",
 	})
 	if err != nil {
 		t.Fatalf("EnsureBroker: %v", err)
@@ -51,7 +51,7 @@ func TestEnsureBroker_RunsDetachedDualHomeMounts(t *testing.T) {
 	for _, want := range []string{
 		"run -d", "--name poddle-broker", "--network poddle-egress",
 		"-v /run/x:/run/poddle", "-v /state/x:/state",
-		"-v /podsock:", "poddle-broker:dev",
+		"poddle-broker:dev",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q in:\n%s", want, joined)
@@ -91,7 +91,10 @@ func TestEnsureBroker_StartsStoppedBroker(t *testing.T) {
 	}
 }
 
-func TestEnsureBroker_OmitsPodmanSockMountWhenEmpty(t *testing.T) {
+func TestEnsureBroker_NeverMountsPodmanSock(t *testing.T) {
+	// Security invariant: the broker holds all secrets and does no pod-lifecycle
+	// work, so it must never be handed a podman socket. The autoscaler runs on
+	// the host instead.
 	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
 	p := New(f, "")
 	err := p.EnsureBroker(BrokerConfig{
@@ -101,8 +104,12 @@ func TestEnsureBroker_OmitsPodmanSockMountWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureBroker: %v", err)
 	}
-	if got := joinCalls(f); strings.Contains(got, "podman.sock") {
-		t.Errorf("must not mount a podman socket when PodmanSock is empty:\n%s", got)
+	got := joinCalls(f)
+	if strings.Contains(got, "podman.sock") {
+		t.Errorf("broker must never mount a podman socket:\n%s", got)
+	}
+	if strings.Contains(got, "PODDLE_PODMAN_URL") {
+		t.Errorf("broker must not receive a podman URL env:\n%s", got)
 	}
 }
 

@@ -185,6 +185,13 @@ func TestUp_CreatesAndAttaches(t *testing.T) {
 }
 
 func TestUp_AutoscaleFlag(t *testing.T) {
+	// Stub the host-autoscaler spawn so the test never launches a real detached
+	// process, and assert `up --autoscale` ensures it is running.
+	var gotSocket string
+	orig := ensureHostAutoscaler
+	ensureHostAutoscaler = func(socket string) { gotSocket = socket }
+	defer func() { ensureHostAutoscaler = orig }()
+
 	f := &fakeCreator{}
 	c := NewCmd(&app.App{Engine: f, Harnesses: testHarnesses()}, stubBroker{})
 	c.SetArgs([]string{"ibox", "--autoscale", "--detach"})
@@ -193,6 +200,9 @@ func TestUp_AutoscaleFlag(t *testing.T) {
 	}
 	if !f.spec.Autoscale {
 		t.Error("up --autoscale should set spec.Autoscale (interactive pods get warn-only)")
+	}
+	if gotSocket == "" {
+		t.Error("up --autoscale should ensure the host autoscaler is running")
 	}
 }
 

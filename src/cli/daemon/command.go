@@ -40,6 +40,31 @@ func NewCmd() *cobra.Command {
 	c.Flags().StringVar(&forwardBind, "forward-bind", "0.0.0.0:0", "egress forward-proxy bind address pods reach (HTTP_PROXY)")
 	c.AddCommand(statusCmd())
 	c.AddCommand(auditCmd())
+	c.AddCommand(autoscaledCmd())
+	return c
+}
+
+// autoscaledCmd builds `poddle daemon autoscaled`: run the reactive autoscaler
+// on the host (where podman and the poddle binary live). It is host-side because
+// it shells `podman ps` / `poddle move`, which the distroless broker container
+// cannot. Normally auto-started by `up --autoscale`, not invoked by hand.
+func autoscaledCmd() *cobra.Command {
+	var socket string
+	c := &cobra.Command{
+		Use:    "autoscaled",
+		Short:  "Run the host-side reactive autoscaler (usually auto-started)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if socket == "" {
+				socket = poddled.SocketPath()
+			}
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			return poddled.RunHostAutoscaler(ctx, socket)
+		},
+	}
+	c.Flags().StringVar(&socket, "socket", "", "control socket path (default: XDG_RUNTIME_DIR/poddle/poddled.sock)")
 	return c
 }
 
