@@ -74,6 +74,12 @@ export type AllowRow = {
     methods: string[];
     open: boolean;
 };
+export type PolicyTemplate = {
+    id: string;
+    label: string;
+    hint: string;
+    policy: Omit<Policy, "name">;
+};
 export type DryRow = {
     upstream: string;
     method: string;

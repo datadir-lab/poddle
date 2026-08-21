@@ -1,5 +1,5 @@
 import type { Pod, Policy } from "./types";
-export declare function PodControls({ pod, policies, onBind, onRevoke }: {
+export declare function PodControls({ pod, policies, onBind, onRevoke, onRebound }: {
     pod: Pod;
     policies: Policy[];
     onBind: (policyName: string) => Promise<{
@@ -10,4 +10,5 @@ export declare function PodControls({ pod, policies, onBind, onRevoke }: {
         ok: boolean;
         msg: string;
     }>;
+    onRebound?: (name: string) => void;
 }): import("preact").JSX.Element;

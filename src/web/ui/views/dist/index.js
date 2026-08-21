@@ -1321,7 +1321,7 @@ function $({ redactions: t, onPod: n }) {
 }
 //#endregion
 //#region views/PolicyList.tsx
-function ee({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o }) {
+function ee({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
 	return /* @__PURE__ */ D("div", {
 		class: "list",
 		children: [n ? [
@@ -1337,7 +1337,15 @@ function ee({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, ne
 				href: i(e.name),
 				onClick: o(i(e.name)),
 				class: "list__row" + (t === e.name ? " on" : ""),
-				children: [/* @__PURE__ */ D("span", { children: e.name }), n > 0 && /* @__PURE__ */ D("span", {
+				children: [/* @__PURE__ */ D("span", {
+					class: "list__name",
+					children: [e.name, s === e.name && /* @__PURE__ */ D("span", {
+						class: "list__default",
+						title: "Default policy — applied to pods started without a policy",
+						"aria-label": "default",
+						children: "★"
+					})]
+				}), n > 0 && /* @__PURE__ */ D("span", {
 					class: "list__meta",
 					title: `${n} running pod${n === 1 ? "" : "s"} use this policy`,
 					children: [
@@ -1442,48 +1450,81 @@ var ne = [
 		tone: "faint"
 	}
 ];
-function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: l }) {
-	let [u, d] = a(e.name), [m, h] = a(() => p(e)), [g, _] = a(e.deny_upstreams || []), [v, y] = a(e.egress || "redact"), [b, x] = a("");
+function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: l, templates: u, isDefault: d, onSetDefault: m }) {
+	let [h, g] = a(e.name), [_, v] = a(() => p(e)), [y, b] = a(e.deny_upstreams || []), [x, S] = a(e.egress || "redact"), [C, w] = a("");
 	n(() => {
-		d(e.name), h(p(e)), _(e.deny_upstreams || []), y(e.egress || "redact"), x("");
+		g(e.name), v(p(e)), b(e.deny_upstreams || []), S(e.egress || "redact"), w("");
 	}, [e]);
-	let S = (e, t) => h((n) => n.map((n, r) => r === e ? {
+	let T = (e, t) => v((n) => n.map((n, r) => r === e ? {
 		...n,
 		...t
-	} : n)), C = (e, t) => h((n) => n.map((n, r) => r === e ? {
+	} : n)), E = (e, t) => v((n) => n.map((n, r) => r === e ? {
 		...n,
 		methods: n.methods.includes(t) ? n.methods.filter((e) => e !== t) : [...n.methods, t]
-	} : n)), w = () => h((e) => [...e, {
+	} : n)), O = () => v((e) => [...e, {
 		host: "",
 		methods: [],
 		open: !1
-	}]), T = (e) => h((t) => t.filter((t, n) => n !== e)), E = (e, t) => _((n) => n.map((n, r) => r === e ? t : n)), O = () => _((e) => [...e, ""]), k = (e) => _((t) => t.filter((t, n) => n !== e)), j = () => {
-		let e = m.map((e) => e.host.trim()).filter(Boolean), t = g.map((e) => e.trim()).filter(Boolean), n = {};
-		for (let e of m) {
+	}]), k = (e) => v((t) => t.filter((t, n) => n !== e)), j = (e, t) => b((n) => n.map((n, r) => r === e ? t : n)), P = () => b((e) => [...e, ""]), F = (e) => b((t) => t.filter((t, n) => n !== e)), I = !e.name, L = !h && _.length === 0 && y.length === 0, R = (e) => {
+		g(e.id), v(p({
+			name: e.id,
+			...e.policy
+		})), b(e.policy.deny_upstreams || []), S(e.policy.egress || "redact"), w("");
+	}, z = () => {
+		let e = _.map((e) => e.host.trim()).filter(Boolean), t = y.map((e) => e.trim()).filter(Boolean), n = {};
+		for (let e of _) {
 			let t = e.host.trim();
 			t && e.methods.length && (n[t] = e.methods);
 		}
 		return {
-			name: u.trim(),
+			name: h.trim(),
 			allow_upstreams: e,
 			deny_upstreams: t,
 			methods: n,
-			egress: v
+			egress: x
 		};
-	}, P = i.length > 0, F = r(() => P ? t.filter((e) => e.pod && i.includes(e.pod)) : t, [
+	}, B = i.length > 0, V = r(() => B ? t.filter((e) => e.pod && i.includes(e.pod)) : t, [
 		t,
 		i,
-		P
-	]), I = r(() => f(j(), F), [
-		u,
-		m,
-		g,
-		v,
-		F
+		B
+	]), H = r(() => f(z(), V), [
+		h,
+		_,
+		y,
+		x,
+		V
 	]);
 	return /* @__PURE__ */ D("div", {
 		class: "editor",
 		children: [
+			I && L && u && u.length > 0 && /* @__PURE__ */ D("div", {
+				class: "templates",
+				children: [
+					/* @__PURE__ */ D("div", {
+						class: "templates__label",
+						children: "Start from a template"
+					}),
+					/* @__PURE__ */ D("div", {
+						class: "templates__grid",
+						children: u.map((e) => /* @__PURE__ */ D("button", {
+							type: "button",
+							class: "tmpl",
+							onClick: () => R(e),
+							children: [/* @__PURE__ */ D("span", {
+								class: "tmpl__name",
+								children: e.label
+							}), /* @__PURE__ */ D("span", {
+								class: "tmpl__hint",
+								children: e.hint
+							})]
+						}, e.id))
+					}),
+					/* @__PURE__ */ D("div", {
+						class: "templates__or",
+						children: "or build one from scratch below"
+					})
+				]
+			}),
 			/* @__PURE__ */ D("div", {
 				class: "row",
 				children: [/* @__PURE__ */ D("div", { children: [/* @__PURE__ */ D("label", {
@@ -1491,14 +1532,14 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					children: "Name"
 				}), /* @__PURE__ */ D("input", {
 					id: "pol-name",
-					value: u,
-					onInput: (e) => d(e.target.value)
+					value: h,
+					onInput: (e) => g(e.target.value)
 				})] }), /* @__PURE__ */ D("div", {
 					class: "narrow",
 					children: [/* @__PURE__ */ D("label", { children: "Egress mode" }), /* @__PURE__ */ D(M, {
-						value: v,
+						value: x,
 						options: ne,
-						onChange: y,
+						onChange: S,
 						ariaLabel: "egress mode"
 					})]
 				})]
@@ -1510,11 +1551,11 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 			/* @__PURE__ */ D("div", {
 				class: "rules",
 				children: [
-					m.length === 0 && /* @__PURE__ */ D("p", {
+					_.length === 0 && /* @__PURE__ */ D("p", {
 						class: "rules__empty",
 						children: "No destinations yet — every host is allowed, subject to the blocked list and egress mode."
 					}),
-					m.map((e, t) => /* @__PURE__ */ D("div", {
+					_.map((e, t) => /* @__PURE__ */ D("div", {
 						class: "rule",
 						children: [/* @__PURE__ */ D("div", {
 							class: "rule__row",
@@ -1524,25 +1565,25 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 									value: e.host,
 									placeholder: "api.example.com",
 									"aria-label": "Allowed host",
-									onInput: (e) => S(t, { host: e.target.value })
+									onInput: (e) => T(t, { host: e.target.value })
 								}),
 								!e.open && (e.methods.length ? /* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__msum",
 									title: "Limited to " + e.methods.join(", ") + " — click to edit",
-									onClick: () => S(t, { open: !0 }),
+									onClick: () => T(t, { open: !0 }),
 									children: e.methods.length > 3 ? e.methods.length + " methods" : e.methods.join(", ")
 								}) : /* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__limit",
-									onClick: () => S(t, { open: !0 }),
+									onClick: () => T(t, { open: !0 }),
 									children: "＋ limit methods"
 								})),
 								/* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__rm",
 									"aria-label": "Remove destination",
-									onClick: () => T(t),
+									onClick: () => k(t),
 									children: "×"
 								})
 							]
@@ -1557,19 +1598,19 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 									type: "button",
 									class: "mchip" + (e.methods.includes(n) ? " on" : ""),
 									"aria-pressed": e.methods.includes(n),
-									onClick: () => C(t, n),
+									onClick: () => E(t, n),
 									children: n
 								}, n)),
 								/* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__mdone",
-									onClick: () => S(t, { open: !1 }),
+									onClick: () => T(t, { open: !1 }),
 									children: "Done"
 								}),
 								e.methods.length > 0 && /* @__PURE__ */ D("button", {
 									type: "button",
 									class: "rule__mclear",
-									onClick: () => S(t, {
+									onClick: () => T(t, {
 										methods: [],
 										open: !1
 									}),
@@ -1581,7 +1622,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					/* @__PURE__ */ D("button", {
 						type: "button",
 						class: "addrow",
-						onClick: w,
+						onClick: O,
 						children: "＋ Add destination"
 					})
 				]
@@ -1592,7 +1633,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 			})] }),
 			/* @__PURE__ */ D("div", {
 				class: "rules",
-				children: [g.map((e, t) => /* @__PURE__ */ D("div", {
+				children: [y.map((e, t) => /* @__PURE__ */ D("div", {
 					class: "rule",
 					children: /* @__PURE__ */ D("div", {
 						class: "rule__row",
@@ -1601,19 +1642,19 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 							value: e,
 							placeholder: "metadata.google.internal",
 							"aria-label": "Blocked host",
-							onInput: (e) => E(t, e.target.value)
+							onInput: (e) => j(t, e.target.value)
 						}), /* @__PURE__ */ D("button", {
 							type: "button",
 							class: "rule__rm",
 							"aria-label": "Remove blocked host",
-							onClick: () => k(t),
+							onClick: () => F(t),
 							children: "×"
 						})]
 					})
 				}, t)), /* @__PURE__ */ D("button", {
 					type: "button",
 					class: "addrow",
-					onClick: O,
+					onClick: P,
 					children: "＋ Add blocked host"
 				})]
 			}),
@@ -1624,26 +1665,26 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 						class: "dryrun__head",
 						children: [/* @__PURE__ */ D("span", {
 							class: "dryrun__title",
-							children: ["Dry-run · ", P ? `${i.length} pod${i.length === 1 ? "" : "s"} on this policy` : "all recent egress"]
+							children: ["Dry-run · ", B ? `${i.length} pod${i.length === 1 ? "" : "s"} on this policy` : "all recent egress"]
 						}), /* @__PURE__ */ D("span", {
 							class: "dryrun__stat",
 							children: [
-								I.total,
+								H.total,
 								" request",
-								I.total === 1 ? "" : "s",
+								H.total === 1 ? "" : "s",
 								" ·",
 								" ",
 								/* @__PURE__ */ D("span", {
-									class: I.denied ? "dryrun__deny" : "dryrun__ok",
-									children: [I.denied, " would be denied"]
+									class: H.denied ? "dryrun__deny" : "dryrun__ok",
+									children: [H.denied, " would be denied"]
 								})
 							]
 						})]
 					}),
-					I.total === 0 ? /* @__PURE__ */ D("div", {
+					H.total === 0 ? /* @__PURE__ */ D("div", {
 						class: "dryrun__empty",
-						children: P ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."
-					}) : I.denied === 0 ? /* @__PURE__ */ D("div", {
+						children: B ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."
+					}) : H.denied === 0 ? /* @__PURE__ */ D("div", {
 						class: "dryrun__pass",
 						children: [/* @__PURE__ */ D(A, {
 							name: "check",
@@ -1651,7 +1692,7 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 						}), " Every request passes these rules."]
 					}) : /* @__PURE__ */ D("ul", {
 						class: "dryrun__list",
-						children: [I.rows.slice(0, 8).map((e) => /* @__PURE__ */ D("li", { children: [
+						children: [H.rows.slice(0, 8).map((e) => /* @__PURE__ */ D("li", { children: [
 							/* @__PURE__ */ D(N, { decision: "deny" }),
 							/* @__PURE__ */ D("span", {
 								class: "c-mono dryrun__dest",
@@ -1665,11 +1706,11 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 								class: "dryrun__n",
 								children: ["×", e.count]
 							})
-						] }, e.method + e.upstream)), I.rows.length > 8 && /* @__PURE__ */ D("li", {
+						] }, e.method + e.upstream)), H.rows.length > 8 && /* @__PURE__ */ D("li", {
 							class: "dryrun__more",
 							children: [
 								"+",
-								I.rows.length - 8,
+								H.rows.length - 8,
 								" more destinations"
 							]
 						})]
@@ -1677,47 +1718,57 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 					/* @__PURE__ */ D("p", {
 						class: "dryrun__note",
 						children: [
-							P ? "Replays these rules over the recent requests made by the pods that run this policy." : "No pods run this policy yet — previewed against all recent egress.",
+							B ? "Replays these rules over the recent requests made by the pods that run this policy." : "No pods run this policy yet — previewed against all recent egress.",
 							" ",
 							"Evaluates allow/deny and method rules; secret redaction depends on request contents and is not simulated."
 						]
 					})
 				]
 			}),
-			b && /* @__PURE__ */ D("div", {
+			C && /* @__PURE__ */ D("div", {
 				class: "err",
-				children: b
+				children: C
 			}),
 			/* @__PURE__ */ D("div", {
 				class: "actions",
-				children: [/* @__PURE__ */ D("button", {
-					class: "btn btn--primary",
-					onClick: async () => {
-						if (!u.trim()) {
-							x("Name is required.");
-							return;
-						}
-						let e = await s(j());
-						e.ok || x(e.error || "Save failed");
-					},
-					children: "Save"
-				}), e.name && /* @__PURE__ */ D("button", {
-					class: "btn btn--danger",
-					onClick: async () => {
-						await c();
-					},
-					children: "Delete"
-				})]
+				children: [
+					/* @__PURE__ */ D("button", {
+						class: "btn btn--primary",
+						onClick: async () => {
+							if (!h.trim()) {
+								w("Name is required.");
+								return;
+							}
+							let e = await s(z());
+							e.ok || w(e.error || "Save failed");
+						},
+						children: "Save"
+					}),
+					e.name && /* @__PURE__ */ D("button", {
+						class: "btn btn--danger",
+						onClick: async () => {
+							await c();
+						},
+						children: "Delete"
+					}),
+					e.name && m && /* @__PURE__ */ D("button", {
+						type: "button",
+						class: "btn btn--ghost btn--default" + (d ? " is-default" : ""),
+						title: d ? "This policy is applied to pods started with no --policy. Click to clear." : "Apply this policy to any pod started with no --policy.",
+						onClick: () => m(d ? "" : e.name),
+						children: d ? "★ Default" : "Set as default"
+					})
+				]
 			}),
-			l ? l(u) : /* @__PURE__ */ D("div", {
+			l ? l(h) : /* @__PURE__ */ D("div", {
 				class: "hint",
 				children: [
 					"Reference from a pod: ",
-					/* @__PURE__ */ D("code", { children: ["poddle up --policy ", u || "<name>"] }),
+					/* @__PURE__ */ D("code", { children: ["poddle up --policy ", h || "<name>"] }),
 					", or ",
 					/* @__PURE__ */ D("code", { children: [
 						"policy = \"",
-						u || "<name>",
+						h || "<name>",
 						"\""
 					] }),
 					" in a template."
@@ -1728,15 +1779,15 @@ function re({ policy: e, events: t, scopePods: i, onSave: s, onDelete: c, hint: 
 }
 //#endregion
 //#region views/PodControls.tsx
-function ie({ pod: t, policies: n, onBind: r, onRevoke: i }) {
-	let [o, s] = a(null), [c, l] = a(!1), [u, d] = a(null), f = async (e) => {
-		l(!0);
+function ie({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
+	let [s, c] = a(null), [l, u] = a(!1), [d, f] = a(null), p = async (e) => {
+		u(!0);
 		let t = await r(e);
-		l(!1), s(null), d(t);
-	}, p = async () => {
-		l(!0);
+		t.ok && o?.(e), u(!1), c(null), f(t);
+	}, m = async () => {
+		u(!0);
 		let e = await i();
-		l(!1), s(null), d(e);
+		u(!1), c(null), f(e);
 	};
 	return /* @__PURE__ */ D("div", {
 		class: "controls",
@@ -1753,10 +1804,10 @@ function ie({ pod: t, policies: n, onBind: r, onRevoke: i }) {
 						children: "No policies defined yet."
 					}) : n.map((e) => /* @__PURE__ */ D("button", {
 						type: "button",
-						disabled: c || t.policy === e.name,
+						disabled: l || t.policy === e.name,
 						class: "chip" + (t.policy === e.name ? " chip--on" : ""),
 						onClick: () => {
-							d(null), s({
+							f(null), c({
 								type: "bind",
 								name: e.name
 							});
@@ -1776,20 +1827,20 @@ function ie({ pod: t, policies: n, onBind: r, onRevoke: i }) {
 				}), /* @__PURE__ */ D("button", {
 					type: "button",
 					class: "btn btn--danger btn--sm",
-					disabled: c,
+					disabled: l,
 					onClick: () => {
-						d(null), s({ type: "revoke" });
+						f(null), c({ type: "revoke" });
 					},
 					children: "Revoke credentials"
 				})]
 			}),
-			o && /* @__PURE__ */ D("div", {
+			s && /* @__PURE__ */ D("div", {
 				class: "controls__confirm",
 				children: [/* @__PURE__ */ D("span", {
 					class: "controls__confirmtext",
-					children: o.type === "bind" ? /* @__PURE__ */ D(e, { children: [
+					children: s.type === "bind" ? /* @__PURE__ */ D(e, { children: [
 						"Bind policy ",
-						/* @__PURE__ */ D("strong", { children: o.name }),
+						/* @__PURE__ */ D("strong", { children: s.name }),
 						" to ",
 						/* @__PURE__ */ D("strong", { children: t.name }),
 						"? The gateway enforces it on the pod's next request."
@@ -1802,23 +1853,23 @@ function ie({ pod: t, policies: n, onBind: r, onRevoke: i }) {
 					class: "controls__confirmbtns",
 					children: [/* @__PURE__ */ D("button", {
 						type: "button",
-						disabled: c,
-						class: "btn btn--sm " + (o.type === "revoke" ? "btn--danger" : "btn--primary"),
-						onClick: () => o.type === "bind" ? f(o.name) : p(),
-						children: c ? "Working…" : o.type === "bind" ? "Bind" : "Revoke"
+						disabled: l,
+						class: "btn btn--sm " + (s.type === "revoke" ? "btn--danger" : "btn--primary"),
+						onClick: () => s.type === "bind" ? p(s.name) : m(),
+						children: l ? "Working…" : s.type === "bind" ? "Bind" : "Revoke"
 					}), /* @__PURE__ */ D("button", {
 						type: "button",
 						class: "btn btn--ghost btn--sm",
-						disabled: c,
-						onClick: () => s(null),
+						disabled: l,
+						onClick: () => c(null),
 						children: "Cancel"
 					})]
 				})]
 			}),
-			u && /* @__PURE__ */ D("div", {
-				class: "controls__status " + (u.ok ? "ok" : "bad"),
+			d && /* @__PURE__ */ D("div", {
+				class: "controls__status " + (d.ok ? "ok" : "bad"),
 				role: "status",
-				children: u.msg
+				children: d.msg
 			})
 		]
 	});

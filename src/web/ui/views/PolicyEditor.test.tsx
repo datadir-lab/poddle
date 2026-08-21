@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { PolicyEditor } from "./PolicyEditor";
-import type { Policy } from "./types";
+import type { Policy, PolicyTemplate } from "./types";
 
 // PolicyEditor is presentational: the mutations are injected. These tests drive
 // the visual builder with fakes (no network) and assert the callback contract —
@@ -98,5 +98,49 @@ describe("PolicyEditor", () => {
     await act(async () => { findButton(el, "Delete").click(); });
 
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  const TEMPLATES: PolicyTemplate[] = [
+    { id: "provider-only", label: "AI provider only", hint: "Model only.", policy: { allow_upstreams: ["api.anthropic.com"], deny_upstreams: ["169.254.169.254"], methods: {}, egress: "redact" } },
+    { id: "locked-down", label: "Locked down", hint: "Fail closed.", policy: { allow_upstreams: ["api.anthropic.com"], deny_upstreams: ["169.254.169.254"], methods: {}, egress: "block" } },
+  ];
+  const NEW: Policy = { name: "", egress: "redact" };
+
+  it("a blank new policy offers the templates, and applying one fills the builder and hides the picker", () => {
+    const el = mount(<PolicyEditor policy={NEW} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} templates={TEMPLATES} />);
+    mounted.push(el);
+
+    // The picker offers one .tmpl per template on a blank draft.
+    expect(el.querySelectorAll(".tmpl").length).toBe(2);
+    act(() => { findButton(el, "Locked downFail closed.").click(); });
+
+    // Name + allow-list + deny-list populate; egress flips to the template's mode.
+    expect((el.querySelector("#pol-name") as HTMLInputElement).value).toBe("locked-down");
+    expect((el.querySelector("input.rule__host") as HTMLInputElement).value).toBe("api.anthropic.com");
+    expect((el.querySelector("input[aria-label='Blocked host']") as HTMLInputElement).value).toBe("169.254.169.254");
+    // The picker collapses once the builder is no longer blank.
+    expect(el.querySelectorAll(".tmpl").length).toBe(0);
+  });
+
+  it("the templates picker never shows for an existing (named) policy", () => {
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} templates={TEMPLATES} />);
+    mounted.push(el);
+    expect(el.querySelectorAll(".tmpl").length).toBe(0);
+  });
+
+  it("Set as default toggles via onSetDefault and reflects isDefault", () => {
+    const onSetDefault = vi.fn();
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} onSetDefault={onSetDefault} />);
+    mounted.push(el);
+    act(() => { findButton(el, "Set as default").click(); });
+    expect(onSetDefault).toHaveBeenCalledWith("prod");
+
+    // When already the default, the button reads "★ Default" and clears on click.
+    const el2 = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} isDefault onSetDefault={onSetDefault} />);
+    mounted.push(el2);
+    const btn = findButton(el2, "★ Default");
+    expect(btn).toBeTruthy();
+    act(() => { btn.click(); });
+    expect(onSetDefault).toHaveBeenLastCalledWith("");
   });
 });

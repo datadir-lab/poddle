@@ -239,6 +239,11 @@ td.perf { text-align: right; white-space: nowrap; }
 .list .new { color: var(--faint); font-family: var(--font-sans); font-weight: 500; }
 .list__meta { flex: none; font: 500 0.68rem/1 var(--font-sans); color: var(--faint); background: var(--surface); border-radius: 999px; padding: 0.2rem 0.5rem; }
 .list a.on .list__meta { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.list__default { margin-left: 0.35rem; color: var(--accent); font-size: 0.8rem; }
+/* The list column stacks the policy card and a caption explaining the default. */
+.list-col { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.list-note { margin: 0 0.15rem; font: 500 0.73rem/1.5 var(--font-sans); color: var(--faint); }
+.list-note strong { color: var(--ink); font-weight: 600; font-family: var(--mono); font-size: 0.72rem; }
 
 /* governance insight banner (e.g. running pods with no policy) */
 .insight {
@@ -351,6 +356,16 @@ td.perf { text-align: right; white-space: nowrap; }
 .addrow { align-self: flex-start; font: 600 0.82rem/1 var(--font-sans); color: var(--accent); background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: var(--radius-sm); padding: 0.5rem 0.8rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
 .addrow:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: var(--accent); }
 
+/* ---- policy starter templates ---- */
+.templates { margin-bottom: 1.6rem; }
+.templates__label { font: 600 0.7rem/1.3 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.6rem; }
+.templates__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+.tmpl { display: flex; flex-direction: column; gap: 0.25rem; text-align: left; padding: 0.75rem 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bone); cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+.tmpl:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tmpl__name { font: 600 0.9rem/1.2 var(--font-sans); color: var(--ink); }
+.tmpl__hint { font-size: 0.78rem; line-height: 1.45; color: var(--faint); }
+.templates__or { margin-top: 0.7rem; font-size: 0.8rem; color: var(--faint); }
+
 .actions { display: flex; gap: 0.6rem; margin-top: 1.5rem; }
 .btn--primary { background: var(--ink); color: var(--bone); }
 .btn--primary:hover { background: var(--ink-strong); }
@@ -398,6 +413,9 @@ td.perf { text-align: right; white-space: nowrap; }
 /* small ghost button (audit CSV export) */
 .btn--ghost { background: var(--card); color: var(--ink); border-color: var(--border); }
 .btn--ghost:hover { border-color: var(--faint); }
+/* "Set as default" toggle: quiet until it is the active default, then accented. */
+.btn--default { margin-left: auto; }
+.btn--default.is-default { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .btn--sm { padding: 0.42rem 0.7rem; font-size: 0.8rem; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 

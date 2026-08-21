@@ -7,7 +7,7 @@ import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
 import "@poddle/ui/views.css";
-import type { Stats, Cmd, Toast } from "@poddle/ui/views";
+import type { Stats, Cmd, Toast, PolicyTemplate } from "@poddle/ui/views";
 import {
   SegmentedControl, IntegrityBadge, IntegrityPanel,
   Icon, PoddleMark, EgressChart, PostureBar, FleetLoad,
@@ -55,6 +55,12 @@ const api = {
     }),
   delPolicy: (name: string) =>
     fetch(`${CFG.apiBase}/policies/${encodeURIComponent(name)}`, { method: "DELETE", headers: H }),
+  // The default policy: applied to a pod started with no --policy.
+  defaultPolicy: () => fetch(`${CFG.apiBase}/default-policy`, { headers: H }).then((r) => r.json()),
+  setDefaultPolicy: (name: string) =>
+    fetch(`${CFG.apiBase}/default-policy`, {
+      method: "PUT", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+    }),
   // Bind a policy to a live pod (the gateway enforces it on the next request).
   bindPodPolicy: (pod: string, p: Policy) =>
     fetch(`${CFG.apiBase}/pods/${encodeURIComponent(pod)}/policy`, {
@@ -308,12 +314,70 @@ function DestinationsView({ events, loading }: { events: Event[]; loading: boole
   );
 }
 
+// Starter templates for the most common agent-sandbox postures, ordered loosest
+// to strictest. Every one deny-lists the cloud metadata endpoints (a top
+// credential-theft target); most default to redact (strip secrets from the wire),
+// while the fail-closed pair hard-block a request that trips a secret instead. The
+// operator picks one, then tweaks and saves. Passed into the presentational
+// PolicyEditor as a prop (the template set is dashboard glue, not view code).
+const META_DENY = ["169.254.169.254", "metadata.google.internal"];
+// GitHub serves the API + git over `.github.com`, but LFS objects, release assets,
+// and raw files come from `.githubusercontent.com` — allow both or clones with LFS
+// silently break.
+const GITHUB = [".github.com", ".githubusercontent.com"];
+const CODING_ALLOW = ["api.anthropic.com", ...GITHUB, "registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "proxy.golang.org"];
+const POLICY_TEMPLATES: PolicyTemplate[] = [
+  {
+    id: "observe", label: "Observe (log & redact)",
+    hint: "Allow everything but strip secrets and block metadata. Watch Destinations, then tighten into an allow-list.",
+    policy: { allow_upstreams: [], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "container-ci", label: "Container / CI builds",
+    hint: "Pull images and OS packages to build and run Dockerfiles, plus the model.",
+    policy: { allow_upstreams: ["api.anthropic.com", ".docker.io", ".docker.com", "ghcr.io", ".githubusercontent.com", ".quay.io", ".pkg.dev", "deb.debian.org", ".ubuntu.com", ".alpinelinux.org"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "coding-agent", label: "Coding agent",
+    hint: "Model + GitHub + npm/PyPI/Go. The common CI or task sandbox.",
+    policy: { allow_upstreams: CODING_ALLOW, deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "github-rw", label: "GitHub read-write",
+    hint: "Clone, pull, and push to GitHub (incl. LFS) plus the model.",
+    policy: { allow_upstreams: ["api.anthropic.com", ...GITHUB], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "read-only", label: "Read-only GitHub",
+    hint: "Clone and read from GitHub (GET only) plus the model. No pushes.",
+    policy: { allow_upstreams: ["api.anthropic.com", ...GITHUB], deny_upstreams: META_DENY, methods: { ".github.com": ["GET"], ".githubusercontent.com": ["GET"] }, egress: "redact" },
+  },
+  {
+    id: "provider-only", label: "AI provider only",
+    hint: "Reach the model and nothing else. The tightest useful posture.",
+    policy: { allow_upstreams: ["api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "high-assurance", label: "High-assurance (fail-closed)",
+    hint: "Full coding reach, but any request carrying a secret is refused — fail-closed, not redacted.",
+    policy: { allow_upstreams: CODING_ALLOW, deny_upstreams: META_DENY, methods: {}, egress: "block" },
+  },
+  {
+    id: "locked-down", label: "Locked down",
+    hint: "Model only, and hard-fail any request that trips a secret — not just redact.",
+    policy: { allow_upstreams: ["api.anthropic.com"], deny_upstreams: META_DENY, methods: {}, egress: "block" },
+  },
+];
+
 function PolicyView({ selected, events }: { selected?: string; events: Event[] }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [def, setDef] = useState<string>(""); // the default policy name ("" = none)
   const { pods } = usePods();
   const load = () => api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => setPolicies([])).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
+  const loadDefault = () => api.defaultPolicy().then((d) => setDef((d && d.name) || "")).catch(() => {});
+  const setDefault = async (name: string) => { setDef(name); await api.setDefaultPolicy(name).catch(() => {}); loadDefault(); };
+  useEffect(() => { load(); loadDefault(); }, []);
 
   // Fleet governance: how many running pods each policy governs, and which run
   // with none (a real risk — an unpoliced pod's egress is unrestricted).
@@ -354,15 +418,23 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
         </div>
       )}
       <div class="layout">
-        <PolicyList policies={policies} selectedName={selected} loading={loading} usage={usage}
-          hrefFor={hrefFor} newHref="/policies/new" linkTo={linkTo} />
+        <div class="list-col">
+          <PolicyList policies={policies} selectedName={selected} loading={loading} usage={usage}
+            hrefFor={hrefFor} newHref="/policies/new" linkTo={linkTo} defaultName={def} />
+          <p class="list-note">
+            {def
+              ? <>New pods started without a policy use <strong>{def}</strong>.</>
+              : <>New pods started without a policy run ungoverned.</>}
+          </p>
+        </div>
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
+              templates={POLICY_TEMPLATES} isDefault={!!sel.name && def === sel.name} onSetDefault={setDefault}
               onSave={(p) => api.putPolicy(p).then((r) => {
                 if (r.ok) { load(); navigate(`/policies/${encodeURIComponent(p.name)}`); }
                 return { ok: r.ok, error: r.ok ? undefined : "Save failed: " + r.status };
               })}
-              onDelete={() => api.delPolicy(sel.name).then(() => { load(); navigate("/policies"); })} />
+              onDelete={() => api.delPolicy(sel.name).then(() => { load(); loadDefault(); navigate("/policies"); })} />
           : <div class="editor empty">Select a policy, or create one.</div>}
       </div>
     </div>
@@ -417,11 +489,16 @@ const goPod = (pod: string) => navigate("/pods/" + encodeURIComponent(pod));
 function PodDetailView({ name, events, loading }: { name: string; events: Event[]; loading: boolean }) {
   const { pods, hist } = usePods();
   const [policies, setPolicies] = useState<Policy[]>([]);
+  // Optimistic binding: a rebind takes effect at the daemon immediately, but the
+  // pods poll is up to 3s behind. Reflect the new policy at once so the "current"
+  // marker moves the moment the bind succeeds; the poll then confirms it.
+  const [override, setOverride] = useState<string | null>(null);
   useEffect(() => { api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => {}); }, []);
-  const pod = pods.find((p) => p.name === name);
+  const rawPod = pods.find((p) => p.name === name);
+  const pod = rawPod && override != null ? { ...rawPod, policy: override } : rawPod;
   const h = hist[name] || { cpu: [], mem: [] };
   const controls = pod && pod.state === "running"
-    ? <PodControls pod={pod} policies={policies}
+    ? <PodControls pod={pod} policies={policies} onRebound={setOverride}
         onBind={(name) => {
           const p = policies.find((x) => x.name === name);
           if (!p) return Promise.resolve({ ok: false, msg: "Unknown policy." });

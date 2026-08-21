@@ -8,10 +8,13 @@ import type { Pending, Pod, Policy } from "./types";
 // returns { ok, msg }. Both messages are rendered verbatim in the status line,
 // so the container owns the exact copy. `policies` renders the selectable
 // chips; `pod` supplies the current binding + the confirm-copy pod name.
-export function PodControls({ pod, policies, onBind, onRevoke }: {
+// `onRebound(name)` (optional) fires the moment a bind succeeds so the container
+// can reflect the new binding at once, ahead of the next pods poll.
+export function PodControls({ pod, policies, onBind, onRevoke, onRebound }: {
   pod: Pod; policies: Policy[];
   onBind: (policyName: string) => Promise<{ ok: boolean; msg: string }>;
   onRevoke: () => Promise<{ ok: boolean; msg: string }>;
+  onRebound?: (name: string) => void;
 }) {
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);
@@ -20,6 +23,7 @@ export function PodControls({ pod, policies, onBind, onRevoke }: {
   const bind = async (name: string) => {
     setBusy(true);
     const res = await onBind(name);
+    if (res.ok) onRebound?.(name); // reflect the new binding at once; the pods poll confirms it
     setBusy(false); setPending(null);
     setStatus(res);
   };

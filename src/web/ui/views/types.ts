@@ -49,6 +49,11 @@ export type Dest = {
 // reveals the method toggles even before any are picked.
 export type AllowRow = { host: string; methods: string[]; open: boolean };
 
+// A starter template for the policy builder: a labelled, hinted preset the
+// operator can apply to a blank new policy (the container owns the concrete
+// template set; the editor just renders and applies whichever are passed in).
+export type PolicyTemplate = { id: string; label: string; hint: string; policy: Omit<Policy, "name"> };
+
 // One aggregated "would be denied" row from a policy dry-run.
 export type DryRow = { upstream: string; method: string; reason: string; count: number };
 

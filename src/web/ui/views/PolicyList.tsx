@@ -8,8 +8,9 @@ import type { Policy } from "./types";
 // the browser's native "open in new tab" (no navigate()/preventDefault() logic
 // lives in this file). `usage` maps a policy name to how many running pods it
 // governs (the fleet-governance badge); `loading` renders the skeleton rows
-// while the policy list is still in flight.
-export function PolicyList({ policies, selectedName, loading, usage, hrefFor, newHref, linkTo }: {
+// while the policy list is still in flight. `defaultName` (when set) stars the
+// policy that governs pods started with no --policy.
+export function PolicyList({ policies, selectedName, loading, usage, hrefFor, newHref, linkTo, defaultName }: {
   policies: Policy[];
   selectedName?: string;
   loading: boolean;
@@ -17,6 +18,7 @@ export function PolicyList({ policies, selectedName, loading, usage, hrefFor, ne
   hrefFor: (name: string) => string;
   newHref: string;
   linkTo: (href: string) => (e: MouseEvent) => void;
+  defaultName?: string;
 }) {
   return (
     <div class="list">
@@ -27,7 +29,7 @@ export function PolicyList({ policies, selectedName, loading, usage, hrefFor, ne
             return (
               <a key={p.name} href={hrefFor(p.name)} onClick={linkTo(hrefFor(p.name))}
                 class={"list__row" + (selectedName === p.name ? " on" : "")}>
-                <span>{p.name}</span>
+                <span class="list__name">{p.name}{defaultName === p.name && <span class="list__default" title="Default policy — applied to pods started without a policy" aria-label="default">★</span>}</span>
                 {n > 0 && <span class="list__meta" title={`${n} running pod${n === 1 ? "" : "s"} use this policy`}>{n} pod{n === 1 ? "" : "s"}</span>}
               </a>
             );

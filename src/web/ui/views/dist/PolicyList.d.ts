@@ -1,5 +1,5 @@
 import type { Policy } from "./types";
-export declare function PolicyList({ policies, selectedName, loading, usage, hrefFor, newHref, linkTo }: {
+export declare function PolicyList({ policies, selectedName, loading, usage, hrefFor, newHref, linkTo, defaultName }: {
     policies: Policy[];
     selectedName?: string;
     loading: boolean;
@@ -7,4 +7,5 @@ export declare function PolicyList({ policies, selectedName, loading, usage, hre
     hrefFor: (name: string) => string;
     newHref: string;
     linkTo: (href: string) => (e: MouseEvent) => void;
+    defaultName?: string;
 }): import("preact").JSX.Element;

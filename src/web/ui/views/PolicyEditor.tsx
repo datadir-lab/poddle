@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { AllowRow, Event, Policy, SegOption } from "./types";
+import type { AllowRow, Event, Policy, PolicyTemplate, SegOption } from "./types";
 import { HTTP_METHODS } from "./types";
 import { dryRun, toRows } from "./policy-eval";
 import { SegmentedControl } from "./SegmentedControl";
@@ -24,12 +24,18 @@ const EGRESS_MODES: SegOption[] = [
 // feed the dry-run (scoped to the pods that run this policy, when any). `hint`
 // is an optional override for the CLI-reference footer — it receives the live
 // name so a consumer can render its own reference copy; the default is poddle's
-// own `poddle up --policy …` hint.
-export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint }: {
+// own `poddle up --policy …` hint. `templates` (when supplied) offer one-click
+// starting points on a fresh, still-blank policy; `isDefault`/`onSetDefault`
+// let the container mark this policy as the fleet default — all injected, so no
+// template set or default-policy transport lives in this file.
+export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint, templates, isDefault, onSetDefault }: {
   policy: Policy; events: Event[]; scopePods: string[];
   onSave: (p: Policy) => Promise<{ ok: boolean; error?: string }>;
   onDelete: () => Promise<void>;
   hint?: (name: string) => ComponentChildren;
+  templates?: PolicyTemplate[];
+  isDefault?: boolean;
+  onSetDefault?: (name: string) => void;
 }) {
   const [name, setName] = useState(policy.name);
   const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
@@ -49,6 +55,18 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const patchDeny = (i: number, v: string) => setDenies((d) => d.map((x, j) => (j === i ? v : x)));
   const addDeny = () => setDenies((d) => [...d, ""]);
   const removeDeny = (i: number) => setDenies((d) => d.filter((_, j) => j !== i));
+
+  // Templates offer a starting point on a fresh policy; picking one fills the
+  // builder (and the operator can then rename/tweak). Shown only while blank.
+  const isNew = !policy.name;
+  const blank = !name && allows.length === 0 && denies.length === 0;
+  const applyTemplate = (t: PolicyTemplate) => {
+    setName(t.id);
+    setAllows(toRows({ name: t.id, ...t.policy }));
+    setDenies(t.policy.deny_upstreams || []);
+    setEgress(t.policy.egress || "redact");
+    setErr("");
+  };
 
   // Assemble the (unsaved) policy from the builder rows — shared by save + dry-run.
   const draft = (): Policy => {
@@ -79,6 +97,20 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
   return (
     <div class="editor">
+      {isNew && blank && templates && templates.length > 0 && (
+        <div class="templates">
+          <div class="templates__label">Start from a template</div>
+          <div class="templates__grid">
+            {templates.map((t) => (
+              <button type="button" key={t.id} class="tmpl" onClick={() => applyTemplate(t)}>
+                <span class="tmpl__name">{t.label}</span>
+                <span class="tmpl__hint">{t.hint}</span>
+              </button>
+            ))}
+          </div>
+          <div class="templates__or">or build one from scratch below</div>
+        </div>
+      )}
       <div class="row">
         <div>
           <label for="pol-name">Name</label>
@@ -167,6 +199,15 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
       <div class="actions">
         <button class="btn btn--primary" onClick={save}>Save</button>
         {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
+        {policy.name && onSetDefault && (
+          <button type="button" class={"btn btn--ghost btn--default" + (isDefault ? " is-default" : "")}
+            title={isDefault
+              ? "This policy is applied to pods started with no --policy. Click to clear."
+              : "Apply this policy to any pod started with no --policy."}
+            onClick={() => onSetDefault(isDefault ? "" : policy.name)}>
+            {isDefault ? "★ Default" : "Set as default"}
+          </button>
+        )}
       </div>
       {hint
         ? hint(name)
