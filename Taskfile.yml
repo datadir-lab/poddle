@@ -179,6 +179,8 @@ tasks:
     desc: Build the Preact dashboard SPA into the embedded bundle (src/cli/dashboard/dist, committed)
     dir: src/web/dashboard
     cmds:
+      - npm --prefix ../ui ci
+      - npm --prefix ../ui run build:views
       - npm ci
       - npm run build
 
