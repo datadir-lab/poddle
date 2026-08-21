@@ -1424,4 +1424,404 @@ function ee({ dests: e, loading: t, onSelect: n }) {
 	});
 }
 //#endregion
-export { Z as AttentionPanel, q as AuditLogTable, b as DECISIONS, M as DecisionBadge, ee as DestinationsTable, I as EgressChart, U as Fact, R as FleetLoad, a as HTTP_METHODS, O as ICONS, k as Icon, N as IntegrityBadge, P as IntegrityPanel, H as LiveDot, z as MixBar, X as OverviewCards, Y as PodDetailPanel, J as PodFleetTable, F as PoddleMark, $ as PolicyList, L as PostureBar, s as RANGE_MS, Q as RedactionsTable, j as SegmentedControl, B as SkelCards, V as SkelTable, D as Sparkline, A as StatCard, o as TIME_RANGES, w as bucketEvents, g as cap1, u as decide, x as decisionCounts, S as destinations, G as downloadCsv, d as dryRun, h as group, _ as humanKind, c as matchHost, l as methodsFor, v as relTime, C as rowKey, p as secretsFrom, m as summarise, y as threshTone, W as toCsv, f as toRows };
+//#region views/PolicyEditor.tsx
+var te = [
+	{
+		value: "redact",
+		label: "Redact",
+		tone: "redact"
+	},
+	{
+		value: "block",
+		label: "Block",
+		tone: "deny"
+	},
+	{
+		value: "off",
+		label: "Off",
+		tone: "faint"
+	}
+];
+function ne({ policy: e, events: t, scopePods: o, onSave: s, onDelete: c, hint: l }) {
+	let [u, p] = i(e.name), [m, h] = i(() => f(e)), [g, _] = i(e.deny_upstreams || []), [v, y] = i(e.egress || "redact"), [b, x] = i("");
+	n(() => {
+		p(e.name), h(f(e)), _(e.deny_upstreams || []), y(e.egress || "redact"), x("");
+	}, [e]);
+	let S = (e, t) => h((n) => n.map((n, r) => r === e ? {
+		...n,
+		...t
+	} : n)), C = (e, t) => h((n) => n.map((n, r) => r === e ? {
+		...n,
+		methods: n.methods.includes(t) ? n.methods.filter((e) => e !== t) : [...n.methods, t]
+	} : n)), w = () => h((e) => [...e, {
+		host: "",
+		methods: [],
+		open: !1
+	}]), T = (e) => h((t) => t.filter((t, n) => n !== e)), D = (e, t) => _((n) => n.map((n, r) => r === e ? t : n)), O = () => _((e) => [...e, ""]), A = (e) => _((t) => t.filter((t, n) => n !== e)), N = () => {
+		let e = m.map((e) => e.host.trim()).filter(Boolean), t = g.map((e) => e.trim()).filter(Boolean), n = {};
+		for (let e of m) {
+			let t = e.host.trim();
+			t && e.methods.length && (n[t] = e.methods);
+		}
+		return {
+			name: u.trim(),
+			allow_upstreams: e,
+			deny_upstreams: t,
+			methods: n,
+			egress: v
+		};
+	}, P = o.length > 0, F = r(() => P ? t.filter((e) => e.pod && o.includes(e.pod)) : t, [
+		t,
+		o,
+		P
+	]), I = r(() => d(N(), F), [
+		u,
+		m,
+		g,
+		v,
+		F
+	]);
+	return /* @__PURE__ */ E("div", {
+		class: "editor",
+		children: [
+			/* @__PURE__ */ E("div", {
+				class: "row",
+				children: [/* @__PURE__ */ E("div", { children: [/* @__PURE__ */ E("label", {
+					for: "pol-name",
+					children: "Name"
+				}), /* @__PURE__ */ E("input", {
+					id: "pol-name",
+					value: u,
+					onInput: (e) => p(e.target.value)
+				})] }), /* @__PURE__ */ E("div", {
+					class: "narrow",
+					children: [/* @__PURE__ */ E("label", { children: "Egress mode" }), /* @__PURE__ */ E(j, {
+						value: v,
+						options: te,
+						onChange: y,
+						ariaLabel: "egress mode"
+					})]
+				})]
+			}),
+			/* @__PURE__ */ E("label", { children: ["Allowed destinations ", /* @__PURE__ */ E("span", {
+				class: "label-hint",
+				children: "Default-deny once any are set · \".example.com\" matches any subdomain"
+			})] }),
+			/* @__PURE__ */ E("div", {
+				class: "rules",
+				children: [
+					m.length === 0 && /* @__PURE__ */ E("p", {
+						class: "rules__empty",
+						children: "No destinations yet — every host is allowed, subject to the blocked list and egress mode."
+					}),
+					m.map((e, t) => /* @__PURE__ */ E("div", {
+						class: "rule",
+						children: [/* @__PURE__ */ E("div", {
+							class: "rule__row",
+							children: [
+								/* @__PURE__ */ E("input", {
+									class: "rule__host",
+									value: e.host,
+									placeholder: "api.example.com",
+									"aria-label": "Allowed host",
+									onInput: (e) => S(t, { host: e.target.value })
+								}),
+								!e.open && (e.methods.length ? /* @__PURE__ */ E("button", {
+									type: "button",
+									class: "rule__msum",
+									title: "Limited to " + e.methods.join(", ") + " — click to edit",
+									onClick: () => S(t, { open: !0 }),
+									children: e.methods.length > 3 ? e.methods.length + " methods" : e.methods.join(", ")
+								}) : /* @__PURE__ */ E("button", {
+									type: "button",
+									class: "rule__limit",
+									onClick: () => S(t, { open: !0 }),
+									children: "＋ limit methods"
+								})),
+								/* @__PURE__ */ E("button", {
+									type: "button",
+									class: "rule__rm",
+									"aria-label": "Remove destination",
+									onClick: () => T(t),
+									children: "×"
+								})
+							]
+						}), e.open && /* @__PURE__ */ E("div", {
+							class: "rule__methods",
+							children: [
+								/* @__PURE__ */ E("span", {
+									class: "rule__mlabel",
+									children: "Allow only:"
+								}),
+								a.map((n) => /* @__PURE__ */ E("button", {
+									type: "button",
+									class: "mchip" + (e.methods.includes(n) ? " on" : ""),
+									"aria-pressed": e.methods.includes(n),
+									onClick: () => C(t, n),
+									children: n
+								}, n)),
+								/* @__PURE__ */ E("button", {
+									type: "button",
+									class: "rule__mdone",
+									onClick: () => S(t, { open: !1 }),
+									children: "Done"
+								}),
+								e.methods.length > 0 && /* @__PURE__ */ E("button", {
+									type: "button",
+									class: "rule__mclear",
+									onClick: () => S(t, {
+										methods: [],
+										open: !1
+									}),
+									children: "Clear"
+								})
+							]
+						})]
+					}, t)),
+					/* @__PURE__ */ E("button", {
+						type: "button",
+						class: "addrow",
+						onClick: w,
+						children: "＋ Add destination"
+					})
+				]
+			}),
+			/* @__PURE__ */ E("label", { children: ["Always blocked ", /* @__PURE__ */ E("span", {
+				class: "label-hint",
+				children: "Wins over the allow-list"
+			})] }),
+			/* @__PURE__ */ E("div", {
+				class: "rules",
+				children: [g.map((e, t) => /* @__PURE__ */ E("div", {
+					class: "rule",
+					children: /* @__PURE__ */ E("div", {
+						class: "rule__row",
+						children: [/* @__PURE__ */ E("input", {
+							class: "rule__host",
+							value: e,
+							placeholder: "metadata.google.internal",
+							"aria-label": "Blocked host",
+							onInput: (e) => D(t, e.target.value)
+						}), /* @__PURE__ */ E("button", {
+							type: "button",
+							class: "rule__rm",
+							"aria-label": "Remove blocked host",
+							onClick: () => A(t),
+							children: "×"
+						})]
+					})
+				}, t)), /* @__PURE__ */ E("button", {
+					type: "button",
+					class: "addrow",
+					onClick: O,
+					children: "＋ Add blocked host"
+				})]
+			}),
+			/* @__PURE__ */ E("div", {
+				class: "dryrun",
+				children: [
+					/* @__PURE__ */ E("div", {
+						class: "dryrun__head",
+						children: [/* @__PURE__ */ E("span", {
+							class: "dryrun__title",
+							children: ["Dry-run · ", P ? `${o.length} pod${o.length === 1 ? "" : "s"} on this policy` : "all recent egress"]
+						}), /* @__PURE__ */ E("span", {
+							class: "dryrun__stat",
+							children: [
+								I.total,
+								" request",
+								I.total === 1 ? "" : "s",
+								" ·",
+								" ",
+								/* @__PURE__ */ E("span", {
+									class: I.denied ? "dryrun__deny" : "dryrun__ok",
+									children: [I.denied, " would be denied"]
+								})
+							]
+						})]
+					}),
+					I.total === 0 ? /* @__PURE__ */ E("div", {
+						class: "dryrun__empty",
+						children: P ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."
+					}) : I.denied === 0 ? /* @__PURE__ */ E("div", {
+						class: "dryrun__pass",
+						children: [/* @__PURE__ */ E(k, {
+							name: "check",
+							size: 14
+						}), " Every request passes these rules."]
+					}) : /* @__PURE__ */ E("ul", {
+						class: "dryrun__list",
+						children: [I.rows.slice(0, 8).map((e) => /* @__PURE__ */ E("li", { children: [
+							/* @__PURE__ */ E(M, { decision: "deny" }),
+							/* @__PURE__ */ E("span", {
+								class: "c-mono dryrun__dest",
+								children: [e.method ? e.method + " " : "", e.upstream]
+							}),
+							/* @__PURE__ */ E("span", {
+								class: "dryrun__reason",
+								children: e.reason
+							}),
+							/* @__PURE__ */ E("span", {
+								class: "dryrun__n",
+								children: ["×", e.count]
+							})
+						] }, e.method + e.upstream)), I.rows.length > 8 && /* @__PURE__ */ E("li", {
+							class: "dryrun__more",
+							children: [
+								"+",
+								I.rows.length - 8,
+								" more destinations"
+							]
+						})]
+					}),
+					/* @__PURE__ */ E("p", {
+						class: "dryrun__note",
+						children: [
+							P ? "Replays these rules over the recent requests made by the pods that run this policy." : "No pods run this policy yet — previewed against all recent egress.",
+							" ",
+							"Evaluates allow/deny and method rules; secret redaction depends on request contents and is not simulated."
+						]
+					})
+				]
+			}),
+			b && /* @__PURE__ */ E("div", {
+				class: "err",
+				children: b
+			}),
+			/* @__PURE__ */ E("div", {
+				class: "actions",
+				children: [/* @__PURE__ */ E("button", {
+					class: "btn btn--primary",
+					onClick: async () => {
+						if (!u.trim()) {
+							x("Name is required.");
+							return;
+						}
+						let e = await s(N());
+						e.ok || x(e.error || "Save failed");
+					},
+					children: "Save"
+				}), e.name && /* @__PURE__ */ E("button", {
+					class: "btn btn--danger",
+					onClick: async () => {
+						await c();
+					},
+					children: "Delete"
+				})]
+			}),
+			l ? l(u) : /* @__PURE__ */ E("div", {
+				class: "hint",
+				children: [
+					"Reference from a pod: ",
+					/* @__PURE__ */ E("code", { children: ["poddle up --policy ", u || "<name>"] }),
+					", or ",
+					/* @__PURE__ */ E("code", { children: [
+						"policy = \"",
+						u || "<name>",
+						"\""
+					] }),
+					" in a template."
+				]
+			})
+		]
+	});
+}
+//#endregion
+//#region views/PodControls.tsx
+function re({ pod: t, policies: n, onBind: r, onRevoke: a }) {
+	let [o, s] = i(null), [c, l] = i(!1), [u, d] = i(null), f = async (e) => {
+		l(!0);
+		let t = await r(e);
+		l(!1), s(null), d(t);
+	}, p = async () => {
+		l(!0);
+		let e = await a();
+		l(!1), s(null), d(e);
+	};
+	return /* @__PURE__ */ E("div", {
+		class: "controls",
+		children: [
+			/* @__PURE__ */ E("div", {
+				class: "controls__row",
+				children: [/* @__PURE__ */ E("div", {
+					class: "controls__label",
+					children: "Governed by"
+				}), /* @__PURE__ */ E("div", {
+					class: "chips",
+					children: n.length === 0 ? /* @__PURE__ */ E("span", {
+						class: "faint",
+						children: "No policies defined yet."
+					}) : n.map((e) => /* @__PURE__ */ E("button", {
+						type: "button",
+						disabled: c || t.policy === e.name,
+						class: "chip" + (t.policy === e.name ? " chip--on" : ""),
+						onClick: () => {
+							d(null), s({
+								type: "bind",
+								name: e.name
+							});
+						},
+						children: [e.name, t.policy === e.name && /* @__PURE__ */ E("span", {
+							class: "chip__now",
+							children: " · current"
+						})]
+					}, e.name))
+				})]
+			}),
+			/* @__PURE__ */ E("div", {
+				class: "controls__row",
+				children: [/* @__PURE__ */ E("div", {
+					class: "controls__label",
+					children: "Credentials"
+				}), /* @__PURE__ */ E("button", {
+					type: "button",
+					class: "btn btn--danger btn--sm",
+					disabled: c,
+					onClick: () => {
+						d(null), s({ type: "revoke" });
+					},
+					children: "Revoke credentials"
+				})]
+			}),
+			o && /* @__PURE__ */ E("div", {
+				class: "controls__confirm",
+				children: [/* @__PURE__ */ E("span", {
+					class: "controls__confirmtext",
+					children: o.type === "bind" ? /* @__PURE__ */ E(e, { children: [
+						"Bind policy ",
+						/* @__PURE__ */ E("strong", { children: o.name }),
+						" to ",
+						/* @__PURE__ */ E("strong", { children: t.name }),
+						"? The gateway enforces it on the pod's next request."
+					] }) : /* @__PURE__ */ E(e, { children: [
+						"Revoke every credential issued to ",
+						/* @__PURE__ */ E("strong", { children: t.name }),
+						"? Its brokered secrets stop working immediately."
+					] })
+				}), /* @__PURE__ */ E("div", {
+					class: "controls__confirmbtns",
+					children: [/* @__PURE__ */ E("button", {
+						type: "button",
+						disabled: c,
+						class: "btn btn--sm " + (o.type === "revoke" ? "btn--danger" : "btn--primary"),
+						onClick: () => o.type === "bind" ? f(o.name) : p(),
+						children: c ? "Working…" : o.type === "bind" ? "Bind" : "Revoke"
+					}), /* @__PURE__ */ E("button", {
+						type: "button",
+						class: "btn btn--ghost btn--sm",
+						disabled: c,
+						onClick: () => s(null),
+						children: "Cancel"
+					})]
+				})]
+			}),
+			u && /* @__PURE__ */ E("div", {
+				class: "controls__status " + (u.ok ? "ok" : "bad"),
+				role: "status",
+				children: u.msg
+			})
+		]
+	});
+}
+//#endregion
+export { Z as AttentionPanel, q as AuditLogTable, b as DECISIONS, M as DecisionBadge, ee as DestinationsTable, I as EgressChart, U as Fact, R as FleetLoad, a as HTTP_METHODS, O as ICONS, k as Icon, N as IntegrityBadge, P as IntegrityPanel, H as LiveDot, z as MixBar, X as OverviewCards, re as PodControls, Y as PodDetailPanel, J as PodFleetTable, F as PoddleMark, ne as PolicyEditor, $ as PolicyList, L as PostureBar, s as RANGE_MS, Q as RedactionsTable, j as SegmentedControl, B as SkelCards, V as SkelTable, D as Sparkline, A as StatCard, o as TIME_RANGES, w as bucketEvents, g as cap1, u as decide, x as decisionCounts, S as destinations, G as downloadCsv, d as dryRun, h as group, _ as humanKind, c as matchHost, l as methodsFor, v as relTime, C as rowKey, p as secretsFrom, m as summarise, y as threshTone, W as toCsv, f as toRows };

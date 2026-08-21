@@ -26,3 +26,5 @@ export * from "./AttentionPanel";
 export * from "./RedactionsTable";
 export * from "./PolicyList";
 export * from "./DestinationsTable";
+export * from "./PolicyEditor";
+export * from "./PodControls";

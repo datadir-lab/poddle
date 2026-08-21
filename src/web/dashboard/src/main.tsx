@@ -12,7 +12,7 @@ import {
   Icon, PoddleMark, EgressChart, PostureBar, FleetLoad,
   SkelCards, SkelTable, LiveDot,
   OverviewCards, AttentionPanel, RedactionsTable, PodFleetTable, PodDetailPanel,
-  AuditLogTable, PolicyList, DestinationsTable,
+  AuditLogTable, PolicyList, DestinationsTable, PolicyEditor, PodControls,
   summarise, group, decisionCounts, destinations,
   TIME_RANGES, RANGE_MS,
 } from "@poddle/ui/views";
@@ -197,16 +197,6 @@ function usePods(): { pods: Pod[]; hist: Hist; loading: boolean } {
 }
 
 // ---- views ----
-// Segment options for the various filter/mode controls in this file (rendered
-// via the imported SegmentedControl). An option's `tone` colors the active
-// segment by its meaning (e.g. block = deny-red); `badge` renders a count.
-type SegOption = { value: string; label: string; tone?: string; badge?: string | number };
-
-const EGRESS_MODES: SegOption[] = [
-  { value: "redact", label: "Redact", tone: "redact" },
-  { value: "block", label: "Block", tone: "deny" },
-  { value: "off", label: "Off", tone: "faint" },
-];
 
 function OverviewView({ events, loading, onPod }: { events: Event[]; loading: boolean; onPod: (pod: string) => void }) {
   const { pods: livePods, loading: podsLoading } = usePods(); // live fleet, not audit history
@@ -316,214 +306,6 @@ function DestinationsView({ events, loading }: { events: Event[]; loading: boole
   );
 }
 
-const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-// A single allow-list row in the visual builder: a host plus an optional set of
-// methods it is restricted to (empty = any method). `open` reveals the method
-// toggles even before any are picked.
-type AllowRow = { host: string; methods: string[]; open: boolean };
-
-// ---- client-side policy evaluation ----
-// A faithful port of policy.Decide (Go): the deny-list wins, then the allow-list
-// (default-deny when non-empty), then per-host method rules; otherwise allow. A
-// ".suffix" pattern matches that domain and any subdomain. Keeping this in lock-
-// step with the daemon is what makes the dry-run trustworthy.
-function matchHost(host: string, patterns: string[]): boolean {
-  for (const p of patterns) {
-    if (p === host) return true;
-    if (p.startsWith(".") && (host.endsWith(p) || host === p.slice(1))) return true;
-  }
-  return false;
-}
-function methodsFor(methods: Record<string, string[]> | undefined, host: string): string[] | null {
-  if (!methods) return null;
-  if (host in methods) return methods[host];
-  for (const k in methods) {
-    if (k.startsWith(".") && (host.endsWith(k) || host === k.slice(1))) return methods[k];
-  }
-  return null;
-}
-function decide(pol: Policy, host: string, method: string): { allow: boolean; reason: string } {
-  if (matchHost(host, pol.deny_upstreams || [])) return { allow: false, reason: "on the deny-list" };
-  if ((pol.allow_upstreams || []).length > 0 && !matchHost(host, pol.allow_upstreams || []))
-    return { allow: false, reason: "not allow-listed" };
-  const allowed = methodsFor(pol.methods, host);
-  if (allowed && method && method !== "CONNECT" && !allowed.some((m) => m.toUpperCase() === method.toUpperCase()))
-    return { allow: false, reason: method + " not allowed here" };
-  return { allow: true, reason: "" };
-}
-
-// dryRun replays a (possibly unsaved) policy over the recent request stream and
-// reports what its allow/deny rules would decide. Secret redaction depends on
-// request payloads, so it is deliberately out of scope — this is access control.
-type DryRow = { upstream: string; method: string; reason: string; count: number };
-function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; rows: DryRow[] } {
-  const reqs = events.filter((e) => e.kind === "request" && e.upstream);
-  const m = new Map<string, DryRow>();
-  let denied = 0;
-  for (const e of reqs) {
-    const d = decide(pol, e.upstream as string, e.method || "");
-    if (d.allow) continue;
-    denied++;
-    const key = `${e.method || ""}|${e.upstream}`;
-    const row = m.get(key) || { upstream: e.upstream as string, method: e.method || "", reason: d.reason, count: 0 };
-    row.count++;
-    m.set(key, row);
-  }
-  return { total: reqs.length, denied, rows: [...m.values()].sort((a, b) => b.count - a.count) };
-}
-
-// toRows expands a stored policy into builder rows (union of the allow-list and
-// any hosts that carry method restrictions, so nothing is lost on a round-trip).
-function toRows(p: Policy): AllowRow[] {
-  const m = p.methods || {};
-  const hosts = [...new Set([...(p.allow_upstreams || []), ...Object.keys(m)])];
-  return hosts.map((h) => ({ host: h, methods: m[h] || [], open: false }));
-}
-
-function PolicyEditor({ policy, events, scopePods, onSaved, onDeleted }: { policy: Policy; events: Event[]; scopePods: string[]; onSaved: (name: string) => void; onDeleted: () => void }) {
-  const [name, setName] = useState(policy.name);
-  const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
-  const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
-  const [egress, setEgress] = useState(policy.egress || "redact");
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    setName(policy.name); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
-    setEgress(policy.egress || "redact"); setErr("");
-  }, [policy]);
-
-  const patchAllow = (i: number, patch: Partial<AllowRow>) => setAllows((a) => a.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const toggleMethod = (i: number, m: string) => setAllows((a) => a.map((r, j) => j === i ? { ...r, methods: r.methods.includes(m) ? r.methods.filter((x) => x !== m) : [...r.methods, m] } : r));
-  const addAllow = () => setAllows((a) => [...a, { host: "", methods: [], open: false }]);
-  const removeAllow = (i: number) => setAllows((a) => a.filter((_, j) => j !== i));
-  const patchDeny = (i: number, v: string) => setDenies((d) => d.map((x, j) => (j === i ? v : x)));
-  const addDeny = () => setDenies((d) => [...d, ""]);
-  const removeDeny = (i: number) => setDenies((d) => d.filter((_, j) => j !== i));
-
-  // Assemble the (unsaved) policy from the builder rows — shared by save + dry-run.
-  const draft = (): Policy => {
-    const allow_upstreams = allows.map((r) => r.host.trim()).filter(Boolean);
-    const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
-    const methods: Record<string, string[]> = {};
-    for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
-    return { name: name.trim(), allow_upstreams, deny_upstreams, methods, egress };
-  };
-
-  // Live dry-run against recent traffic, recomputed as the rules change.
-  // Scope the dry-run to the traffic of the pods that run this policy. With none
-  // (a new or unused policy) there is nothing to scope to, so preview against all
-  // recent egress instead — and say so.
-  const scoped = scopePods.length > 0;
-  const dryEvents = useMemo(
-    () => (scoped ? events.filter((e) => e.pod && scopePods.includes(e.pod)) : events),
-    [events, scopePods, scoped],
-  );
-  const impact = useMemo(() => dryRun(draft(), dryEvents), [name, allows, denies, egress, dryEvents]);
-
-  const save = async () => {
-    if (!name.trim()) { setErr("Name is required."); return; }
-    const res = await api.putPolicy(draft());
-    if (!res.ok) { setErr("Save failed: " + res.status); return; }
-    onSaved(name.trim());
-  };
-  const del = async () => { await api.delPolicy(policy.name); onDeleted(); };
-
-  return (
-    <div class="editor">
-      <div class="row">
-        <div>
-          <label for="pol-name">Name</label>
-          <input id="pol-name" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-        </div>
-        <div class="narrow">
-          <label>Egress mode</label>
-          <SegmentedControl value={egress} options={EGRESS_MODES} onChange={setEgress} ariaLabel="egress mode" />
-        </div>
-      </div>
-
-      <label>Allowed destinations <span class="label-hint">Default-deny once any are set · ".example.com" matches any subdomain</span></label>
-      <div class="rules">
-        {allows.length === 0 && <p class="rules__empty">No destinations yet — every host is allowed, subject to the blocked list and egress mode.</p>}
-        {allows.map((r, i) => (
-          <div class="rule" key={i}>
-            <div class="rule__row">
-              <input class="rule__host" value={r.host} placeholder="api.example.com" aria-label="Allowed host"
-                onInput={(e) => patchAllow(i, { host: (e.target as HTMLInputElement).value })} />
-              {!r.open && (r.methods.length
-                ? <button type="button" class="rule__msum" title={"Limited to " + r.methods.join(", ") + " — click to edit"} onClick={() => patchAllow(i, { open: true })}>{r.methods.length > 3 ? r.methods.length + " methods" : r.methods.join(", ")}</button>
-                : <button type="button" class="rule__limit" onClick={() => patchAllow(i, { open: true })}>＋ limit methods</button>)}
-              <button type="button" class="rule__rm" aria-label="Remove destination" onClick={() => removeAllow(i)}>×</button>
-            </div>
-            {r.open && (
-              <div class="rule__methods">
-                <span class="rule__mlabel">Allow only:</span>
-                {HTTP_METHODS.map((m) => (
-                  <button type="button" key={m} class={"mchip" + (r.methods.includes(m) ? " on" : "")} aria-pressed={r.methods.includes(m)} onClick={() => toggleMethod(i, m)}>{m}</button>
-                ))}
-                <button type="button" class="rule__mdone" onClick={() => patchAllow(i, { open: false })}>Done</button>
-                {r.methods.length > 0 && <button type="button" class="rule__mclear" onClick={() => patchAllow(i, { methods: [], open: false })}>Clear</button>}
-              </div>
-            )}
-          </div>
-        ))}
-        <button type="button" class="addrow" onClick={addAllow}>＋ Add destination</button>
-      </div>
-
-      <label>Always blocked <span class="label-hint">Wins over the allow-list</span></label>
-      <div class="rules">
-        {denies.map((h, i) => (
-          <div class="rule" key={i}>
-            <div class="rule__row">
-              <input class="rule__host" value={h} placeholder="metadata.google.internal" aria-label="Blocked host"
-                onInput={(e) => patchDeny(i, (e.target as HTMLInputElement).value)} />
-              <button type="button" class="rule__rm" aria-label="Remove blocked host" onClick={() => removeDeny(i)}>×</button>
-            </div>
-          </div>
-        ))}
-        <button type="button" class="addrow" onClick={addDeny}>＋ Add blocked host</button>
-      </div>
-
-      <div class="dryrun">
-        <div class="dryrun__head">
-          <span class="dryrun__title">Dry-run · {scoped ? `${scopePods.length} pod${scopePods.length === 1 ? "" : "s"} on this policy` : "all recent egress"}</span>
-          <span class="dryrun__stat">
-            {impact.total} request{impact.total === 1 ? "" : "s"} ·{" "}
-            <span class={impact.denied ? "dryrun__deny" : "dryrun__ok"}>{impact.denied} would be denied</span>
-          </span>
-        </div>
-        {impact.total === 0
-          ? <div class="dryrun__empty">{scoped ? "The pods on this policy have no recent egress to evaluate." : "No recent egress to evaluate yet."}</div>
-          : impact.denied === 0
-            ? <div class="dryrun__pass"><Icon name="check" size={14} /> Every request passes these rules.</div>
-            : <ul class="dryrun__list">
-                {impact.rows.slice(0, 8).map((r) => (
-                  <li key={r.method + r.upstream}>
-                    <DecisionBadge decision="deny" />
-                    <span class="c-mono dryrun__dest">{r.method ? r.method + " " : ""}{r.upstream}</span>
-                    <span class="dryrun__reason">{r.reason}</span>
-                    <span class="dryrun__n">×{r.count}</span>
-                  </li>
-                ))}
-                {impact.rows.length > 8 && <li class="dryrun__more">+{impact.rows.length - 8} more destinations</li>}
-              </ul>}
-        <p class="dryrun__note">
-          {scoped
-            ? "Replays these rules over the recent requests made by the pods that run this policy."
-            : "No pods run this policy yet — previewed against all recent egress."}{" "}
-          Evaluates allow/deny and method rules; secret redaction depends on request contents and is not simulated.
-        </p>
-      </div>
-
-      {err && <div class="err">{err}</div>}
-      <div class="actions">
-        <button class="btn btn--primary" onClick={save}>Save</button>
-        {policy.name && <button class="btn btn--danger" onClick={del}>Delete</button>}
-      </div>
-      <div class="hint">Reference from a pod: <code>poddle up --policy {name || "<name>"}</code>, or <code>policy = "{name || "<name>"}"</code> in a template.</div>
-    </div>
-  );
-}
-
 function PolicyView({ selected, events }: { selected?: string; events: Event[] }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -574,8 +356,11 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
           hrefFor={hrefFor} newHref="/policies/new" linkTo={linkTo} />
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
-              onSaved={(name) => { load(); navigate(`/policies/${encodeURIComponent(name)}`); }}
-              onDeleted={() => { load(); navigate("/policies"); }} />
+              onSave={(p) => api.putPolicy(p).then((r) => {
+                if (r.ok) { load(); navigate(`/policies/${encodeURIComponent(p.name)}`); }
+                return { ok: r.ok, error: r.ok ? undefined : "Save failed: " + r.status };
+              })}
+              onDelete={() => api.delPolicy(sel.name).then(() => { load(); navigate("/policies"); })} />
           : <div class="editor empty">Select a policy, or create one.</div>}
       </div>
     </div>
@@ -627,81 +412,25 @@ function Sidebar({ active, v, collapsed }: { active: string; v: Verify; collapse
 // goPod routes to a pod's drill-down page.
 const goPod = (pod: string) => navigate("/pods/" + encodeURIComponent(pod));
 
-// PodControls are the mutating actions on a live pod, both confirmed inline:
-// rebind its governing policy (POST …/policy) and revoke its credentials
-// (DELETE …). The pod poll (3s) reflects the new binding on its own.
-type Pending = { type: "bind"; name: string } | { type: "revoke" } | null;
-function PodControls({ pod, policies }: { pod: Pod; policies: Policy[] }) {
-  const [pending, setPending] = useState<Pending>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const bind = async (name: string) => {
-    const p = policies.find((x) => x.name === name);
-    if (!p) return;
-    setBusy(true);
-    const res = await api.bindPodPolicy(pod.name, p).catch(() => null);
-    setBusy(false); setPending(null);
-    setStatus(res && res.ok ? { ok: true, msg: `Now governed by ${name}.` } : { ok: false, msg: `Could not bind ${name}.` });
-  };
-  const revoke = async () => {
-    setBusy(true);
-    const res = await api.revokePod(pod.name).catch(() => null);
-    setBusy(false); setPending(null);
-    setStatus(res && res.ok ? { ok: true, msg: "Credentials revoked." } : { ok: false, msg: "Could not revoke credentials." });
-  };
-
-  return (
-    <div class="controls">
-      <div class="controls__row">
-        <div class="controls__label">Governed by</div>
-        <div class="chips">
-          {policies.length === 0
-            ? <span class="faint">No policies defined yet.</span>
-            : policies.map((p) => (
-                <button key={p.name} type="button" disabled={busy || pod.policy === p.name}
-                  class={"chip" + (pod.policy === p.name ? " chip--on" : "")}
-                  onClick={() => { setStatus(null); setPending({ type: "bind", name: p.name }); }}>
-                  {p.name}{pod.policy === p.name && <span class="chip__now"> · current</span>}
-                </button>
-              ))}
-        </div>
-      </div>
-      <div class="controls__row">
-        <div class="controls__label">Credentials</div>
-        <button type="button" class="btn btn--danger btn--sm" disabled={busy}
-          onClick={() => { setStatus(null); setPending({ type: "revoke" }); }}>Revoke credentials</button>
-      </div>
-
-      {pending && (
-        <div class="controls__confirm">
-          <span class="controls__confirmtext">
-            {pending.type === "bind"
-              ? <>Bind policy <strong>{pending.name}</strong> to <strong>{pod.name}</strong>? The gateway enforces it on the pod's next request.</>
-              : <>Revoke every credential issued to <strong>{pod.name}</strong>? Its brokered secrets stop working immediately.</>}
-          </span>
-          <div class="controls__confirmbtns">
-            <button type="button" disabled={busy}
-              class={"btn btn--sm " + (pending.type === "revoke" ? "btn--danger" : "btn--primary")}
-              onClick={() => (pending.type === "bind" ? bind(pending.name) : revoke())}>
-              {busy ? "Working…" : pending.type === "bind" ? "Bind" : "Revoke"}
-            </button>
-            <button type="button" class="btn btn--ghost btn--sm" disabled={busy} onClick={() => setPending(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-      {status && <div class={"controls__status " + (status.ok ? "ok" : "bad")} role="status">{status.msg}</div>}
-    </div>
-  );
-}
-
 function PodDetailView({ name, events, loading }: { name: string; events: Event[]; loading: boolean }) {
   const { pods, hist } = usePods();
   const [policies, setPolicies] = useState<Policy[]>([]);
   useEffect(() => { api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => {}); }, []);
   const pod = pods.find((p) => p.name === name);
   const h = hist[name] || { cpu: [], mem: [] };
-  const controls = pod && pod.state === "running" ? <PodControls pod={pod} policies={policies} /> : undefined;
+  const controls = pod && pod.state === "running"
+    ? <PodControls pod={pod} policies={policies}
+        onBind={(name) => {
+          const p = policies.find((x) => x.name === name);
+          if (!p) return Promise.resolve({ ok: false, msg: "Unknown policy." });
+          return api.bindPodPolicy(pod.name, p)
+            .then((r) => ({ ok: !!r && r.ok, msg: r && r.ok ? `Now governed by ${name}.` : `Could not bind ${name}.` }))
+            .catch(() => ({ ok: false, msg: `Could not bind ${name}.` }));
+        }}
+        onRevoke={() => api.revokePod(pod.name)
+          .then((r) => ({ ok: !!r && r.ok, msg: r && r.ok ? "Credentials revoked." : "Could not revoke credentials." }))
+          .catch(() => ({ ok: false, msg: "Could not revoke credentials." }))} />
+    : undefined;
   const policyHref = pod?.policy ? `/policies/${encodeURIComponent(pod.policy)}` : undefined;
   return (
     <PodDetailPanel name={name} pod={pod} hist={h} events={events} loading={loading}
