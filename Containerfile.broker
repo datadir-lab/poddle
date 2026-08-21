@@ -7,6 +7,12 @@ ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOTOOLCHAIN=local \
     go build -trimpath -o /out/poddle ./src/cli
 
-FROM gcr.io/distroless/static-debian12:nonroot
+# Root (uid 0), NOT :nonroot. Under rootless podman the container's uid 0 maps to
+# the host rootless owner, who owns the bind-mounted /run/poddle (control socket)
+# and /state (audit db) dirs — so the daemon can create them. uid 65532 (:nonroot)
+# maps to a subuid that cannot write those host-owned bind mounts. The feasibility
+# probe (spike-broker-container.yml) validated this root base; the e2e (Task 7)
+# builds this file and proves the socket comes up.
+FROM gcr.io/distroless/static-debian12
 COPY --from=build /out/poddle /usr/local/bin/poddle
 ENTRYPOINT ["/usr/local/bin/poddle", "daemon", "--socket", "/run/poddle/poddled.sock"]
