@@ -73,6 +73,16 @@ func Handler(sock string, policies policy.Store, pods PodsSource) http.Handler {
 			if list == nil {
 				list = []sandbox.PodView{}
 			}
+			// A pod's poddle.policy label is fixed at creation, so a rebind can't
+			// change it. Overlay the daemon's live binding so the dashboard shows
+			// the policy actually in force, not the one the pod started with.
+			if eff := daemonPodPolicies(sock); len(eff) > 0 {
+				for i := range list {
+					if name, ok := eff[list[i].Name]; ok {
+						list[i].Policy = name
+					}
+				}
+			}
 			writeJSON(w, list)
 		})
 	}
@@ -157,11 +167,68 @@ func registerPolicyAPI(mux *http.ServeMux, policies policy.Store) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	// The default policy — applied to a pod started with no --policy. A distinct
+	// path (not /v1/policies/default) so it never collides with a policy named
+	// "default".
+	mux.HandleFunc("GET /v1/default-policy", func(w http.ResponseWriter, r *http.Request) {
+		name := ""
+		if ds, ok := policies.(policy.DefaultStore); ok {
+			name, _ = ds.Default()
+		}
+		writeJSON(w, map[string]string{"name": name})
+	})
+	mux.HandleFunc("PUT /v1/default-policy", func(w http.ResponseWriter, r *http.Request) {
+		ds, ok := policies.(policy.DefaultStore)
+		if !ok {
+			http.Error(w, "default policy not supported by this store", http.StatusNotImplemented)
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := ds.SetDefault(req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// daemonPodPolicies fetches the daemon's effective pod->policy-name map over the
+// Unix socket. Best-effort: a missing or unreachable daemon yields nil, and the
+// pods list falls back to the immutable container labels.
+func daemonPodPolicies(sock string) map[string]string {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+			},
+		},
+	}
+	resp, err := client.Get("http://unix/pods/policies")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var m map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // NewCmd builds `poddle dashboard`.

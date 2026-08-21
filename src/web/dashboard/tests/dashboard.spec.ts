@@ -187,6 +187,69 @@ test("creates, lists, and deletes a policy through the editor (real /v1/policies
   await expect(page.locator(".list")).not.toContainText("e2e-pol");
 });
 
+test("policies: a template saved through the editor persists and round-trips (real /v1/policies)", async ({ page }) => {
+  await page.goto("/policies/new");
+  // Pick the AI-provider template, then give it a test-scoped name so it does not
+  // collide with the shared file-backed store.
+  await page.getByRole("button", { name: /AI provider only/ }).click();
+  await page.locator("#pol-name").fill("e2e-tmpl-provider");
+  await page.getByRole("button", { name: "Save" }).click();
+
+  // It persisted through the file store and the save deep-linked to it.
+  await expect(page).toHaveURL(/\/policies\/e2e-tmpl-provider$/);
+  await expect(page.locator(".list")).toContainText("e2e-tmpl-provider");
+
+  // Reload to re-read from disk: the template's allow-list and metadata deny-list
+  // survived the round-trip through the TOML store, not just in-memory state.
+  await page.reload();
+  await expect(page).toHaveURL(/\/policies\/e2e-tmpl-provider$/);
+  await expect(page.locator("input[aria-label='Allowed host']").first()).toHaveValue("api.anthropic.com");
+  const denyVals = await page.locator("input[aria-label='Blocked host']").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(denyVals).toContain("169.254.169.254");
+  expect(denyVals).toContain("metadata.google.internal");
+
+  // Clean up so the shared store does not leak into other tests.
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator(".list")).not.toContainText("e2e-tmpl-provider");
+});
+
+test("policies: designate a default policy and see it marked, then clear it", async ({ page }) => {
+  const POLS = [
+    { name: "prod", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} },
+    { name: "locked", egress: "block", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} },
+  ];
+  let current = ""; // the server-side default, toggled by PUT
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await page.route("**/v1/default-policy", async (r) => {
+    if (r.request().method() === "PUT") { current = JSON.parse(r.request().postData() || "{}").name || ""; return r.fulfill({ status: 204, body: "" }); }
+    return r.fulfill({ json: { name: current } });
+  });
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies");
+
+  // No default yet: the caption explains unpoliced pods run ungoverned.
+  await expect(page.locator(".list-note")).toContainText("ungoverned");
+
+  // Open "prod" and set it as the default.
+  await page.locator(".list a", { hasText: "prod" }).first().click();
+  await page.getByRole("button", { name: "Set as default", exact: true }).click();
+
+  // The button flips to the active state; the list stars prod and the caption names it.
+  await expect(page.getByRole("button", { name: /★ Default/ })).toBeVisible();
+  await expect(page.locator(".list__row", { hasText: "prod" }).locator(".list__default")).toBeVisible();
+  await expect(page.locator(".list-note")).toContainText("prod");
+
+  // The choice really reached the server (PUT body), not just local state.
+  expect(current).toBe("prod");
+
+  // Clicking again clears it.
+  await page.getByRole("button", { name: /★ Default/ }).click();
+  await expect(page.getByRole("button", { name: "Set as default", exact: true })).toBeVisible();
+  await expect(page.locator(".list-note")).toContainText("ungoverned");
+  expect(current).toBe("");
+});
+
 test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
   await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await mockAudit(page);
@@ -281,6 +344,60 @@ test("policies: the new-policy form is not wiped by background polls", async ({ 
   await expect(page.locator(".rule__host").first()).toHaveValue("api.example.com");
 });
 
+test("policies: a starter template pre-fills the visual builder and dry-runs against recent egress", async ({ page }) => {
+  // The coding-agent template deny-lists the cloud metadata endpoints; the audit
+  // tail below hits both, so applying it must surface those denials in the dry-run.
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 3, time: t, pod: "a", kind: "request", upstream: "api.anthropic.com", method: "POST" },       // allowed
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "metadata.google.internal", method: "GET" }, // deny-listed by the template
+    { seq: 1, time: t, pod: "a", kind: "request", upstream: "169.254.169.254", method: "GET" },          // deny-listed by the template
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // A blank new policy offers the full ordered set of starter templates.
+  await expect(page.locator(".tmpl")).toHaveCount(8);
+  await page.getByRole("button", { name: /Coding agent/ }).click();
+
+  // Name, allow-list, and the metadata deny-list all populate from the template.
+  await expect(page.locator("#pol-name")).toHaveValue("coding-agent");
+  const allowed = page.locator("input[aria-label='Allowed host']");
+  await expect(allowed).toHaveCount(7);
+  await expect(allowed.first()).toHaveValue("api.anthropic.com");
+  // The GitHub LFS/raw apex is allow-listed alongside .github.com (clones with LFS work).
+  const allowValues = await allowed.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(allowValues).toContain(".github.com");
+  expect(allowValues).toContain(".githubusercontent.com");
+  await expect(page.locator("input[aria-label='Blocked host']")).toHaveCount(2);
+
+  // The picker collapses once the builder is no longer blank.
+  await expect(page.locator(".tmpl")).toHaveCount(0);
+
+  // The live dry-run replays the template over recent egress: both metadata hits are denied.
+  await expect(page.locator(".dryrun")).toContainText("2 would be denied");
+  await expect(page.locator(".dryrun__list")).toContainText("metadata.google.internal");
+  await expect(page.locator(".dryrun__list")).toContainText("169.254.169.254");
+  await expect(page.locator(".dryrun__list")).not.toContainText("api.anthropic.com"); // allowed
+});
+
+test("policies: the fail-closed template sets egress to block (not just redact)", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  // High-assurance is the fail-closed sibling of Coding agent: same reach, egress "block".
+  await page.getByRole("button", { name: /High-assurance/ }).click();
+  await expect(page.locator("#pol-name")).toHaveValue("high-assurance");
+  await expect(page.getByRole("radio", { name: "Block", exact: true })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Redact", exact: true })).not.toBeChecked();
+});
+
 test("policies: flags ungoverned pods and dry-runs the rules against recent traffic", async ({ page }) => {
   // A running pod with no policy (ungoverned) + one governed by "prod".
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
@@ -329,7 +446,10 @@ const TWO_POLICIES = [
   { name: "staging", egress: "block", allow_upstreams: ["api.internal"], deny_upstreams: [], methods: {} },
 ];
 
-test("pod controls: rebinds a policy to a running pod (confirmed, real body POSTed)", async ({ page }) => {
+test("pod controls: rebinding a policy applies in the UI at once and survives the stale poll", async ({ page }) => {
+  // The pods poll keeps returning the pod's original (immutable) label "prod" —
+  // reproducing the daemon overlay being absent — so this proves the client
+  // reflects the rebind on its own and does not revert when the poll lands.
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: RUNNING_POD }));
   await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: TWO_POLICIES }));
   let bound: { name?: string } | null = null;
@@ -343,6 +463,16 @@ test("pod controls: rebinds a policy to a running pod (confirmed, real body POST
   await page.getByRole("button", { name: "Bind", exact: true }).click();
   await expect(page.locator(".controls__status.ok")).toContainText("Now governed by staging");
   expect(bound?.name).toBe("staging"); // the full policy definition was posted
+
+  // The binding reflects immediately: the "current" marker moves to staging and
+  // the policy fact updates, even though /v1/pods still reports the "prod" label.
+  await expect(page.locator(".chip--on")).toContainText("staging");
+  await expect(page.locator(".chip--on")).not.toContainText("prod");
+  await expect(page.locator(".facts")).toContainText("staging");
+
+  // Cross the 3s pods poll: the stale "prod" label must NOT revert the UI.
+  await page.waitForTimeout(3500);
+  await expect(page.locator(".chip--on")).toContainText("staging");
 });
 
 test("toasts: a live deny streams in as an alert linking to the audit", async ({ page }) => {

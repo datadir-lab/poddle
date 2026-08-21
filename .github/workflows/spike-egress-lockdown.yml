@@ -1,0 +1,86 @@
+name: Spike - egress lockdown feasibility
+
+# Feasibility probe for the non-bypassable egress lockdown (Task 1 of
+# docs/design/egress-lockdown-and-broker-placement.md). `--internal` alone was
+# proven insufficient (it isolates the pod from the broker too). This tests the
+# peer-container mechanism: a dual-homed broker container on the pod's internal
+# network AND a normal network — peers on an internal net can talk while the
+# world stays blocked, and the broker relays egress. Manual; fails if it doesn't hold.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Route docker.io through the ECR mirror (dodge Hub rate limit)
+        run: |
+          sudo mkdir -p /etc/containers/registries.conf.d
+          printf '%s\n' '[[registry]]' 'location = "docker.io"' '[[registry.mirror]]' 'location = "public.ecr.aws/docker"' | sudo tee /etc/containers/registries.conf.d/aws-mirror.conf > /dev/null
+      - name: Engine version
+        run: podman version
+
+      - name: Networks — internal (pod side) + a normal net (broker egress)
+        run: |
+          podman network create --internal poddle-lock-test
+          podman network create poddle-egress-test
+
+      - name: Broker container — dual-homed (internet PRIMARY, internal second)
+        run: |
+          # Primary network = internet-capable, so the broker's DEFAULT route
+          # reaches upstreams; the internal net is added second for pod reach.
+          podman run -d --name spike-broker --network poddle-egress-test \
+            docker.io/library/python:3-alpine \
+            python3 -m http.server 18080 --bind 0.0.0.0
+          podman network connect poddle-lock-test spike-broker
+          sleep 3
+          podman ps
+          BIP=$(podman inspect spike-broker -f '{{ (index .NetworkSettings.Networks "poddle-lock-test").IPAddress }}')
+          echo "broker internal IP: $BIP"
+          echo "BIP=$BIP" >> "$GITHUB_ENV"
+
+      - name: CHECK A — pod reaches the broker PEER on the internal net (want PASS)
+        run: |
+          set +e
+          OUT=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
+            sh -c "wget -T 5 -qO- http://$BIP:18080/ >/dev/null 2>&1; echo rc=\$?")
+          echo "$OUT"
+          if echo "$OUT" | grep -q "rc=0"; then echo "PASS — pod reached the broker peer"; echo "PEER=yes" >> "$GITHUB_ENV"
+          else echo "::error::pod could NOT reach the broker peer at $BIP"; echo "PEER=no" >> "$GITHUB_ENV"; fi
+
+      - name: CHECK B — pod CANNOT reach the internet (want PASS)
+        run: |
+          set +e
+          OUT=$(podman run --rm --network poddle-lock-test docker.io/library/alpine:latest \
+            sh -c 'wget -T 5 -qO- http://1.1.1.1/ >/dev/null 2>&1; echo rc=$?')
+          echo "$OUT"
+          if echo "$OUT" | grep -q "rc=0"; then echo "::error::pod reached the internet"; echo "ISO=no" >> "$GITHUB_ENV"
+          else echo "PASS — pod isolated from the internet"; echo "ISO=yes" >> "$GITHUB_ENV"; fi
+
+      - name: CHECK C — the broker CAN reach the internet (relay works, want PASS)
+        run: |
+          set +e
+          OUT=$(podman exec spike-broker python3 -c 'import socket;socket.create_connection(("1.1.1.1",443),timeout=5);print("rc=0")' 2>/dev/null || echo "rc=1")
+          echo "$OUT"
+          if echo "$OUT" | grep -q "rc=0"; then echo "PASS — broker relays to upstreams"; echo "RELAY=yes" >> "$GITHUB_ENV"
+          else echo "::error::broker cannot reach the internet"; echo "RELAY=no" >> "$GITHUB_ENV"; fi
+
+      - name: Verdict
+        run: |
+          echo "peer=$PEER  isolated=$ISO  relay=$RELAY"
+          if [ "$PEER" = yes ] && [ "$ISO" = yes ] && [ "$RELAY" = yes ]; then
+            echo "FEASIBLE — peer-container: pod reaches the broker, is cut off from the internet, and the broker relays out."
+          else
+            echo "::error::peer-container mechanism failed (peer=$PEER iso=$ISO relay=$RELAY)"; exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          podman rm -f spike-broker || true
+          podman network rm poddle-lock-test poddle-egress-test || true
