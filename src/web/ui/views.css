@@ -257,6 +257,11 @@ td.perf { text-align: right; white-space: nowrap; }
 .insight__text { line-height: 1.5; }
 .insight__pod { color: var(--accent); text-decoration: none; font-family: var(--mono); font-size: 0.85rem; }
 .insight__pod:hover { text-decoration: underline; }
+/* one-click "govern all ungoverned pods with the default" action */
+.insight__action { font: 600 0.82rem/1 var(--font-sans); color: var(--accent); background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 999px; padding: 0.28rem 0.7rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.insight__action:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: var(--accent); }
+.insight__action:disabled { opacity: 0.6; cursor: default; }
+.insight__done { display: block; margin-top: 0.5rem; font-size: 0.82rem; color: var(--accent); }
 
 /* policy dry-run: live impact of the (unsaved) rules on recent traffic */
 .dryrun { margin-top: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bone); padding: 0.9rem 1rem; }

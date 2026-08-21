@@ -378,6 +378,8 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const load = () => api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => setPolicies([])).finally(() => setLoading(false));
   const loadDefault = () => api.defaultPolicy().then((d) => setDef((d && d.name) || "")).catch(() => {});
   const setDefault = async (name: string) => { setDef(name); await api.setDefaultPolicy(name).catch(() => {}); loadDefault(); };
+  const [governing, setGoverning] = useState(false);
+  const [governMsg, setGovernMsg] = useState("");
   useEffect(() => { load(); loadDefault(); }, []);
   useEffect(() => { if (selected !== "new") setSeed(null); }, [selected]); // a duplicate seed only lives on the new-policy view
   const duplicate = (p: Policy) => { setSeed({ ...p, name: p.name + "-copy" }); navigate("/policies/new"); };
@@ -387,6 +389,21 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const running = pods.filter((p) => p.state === "running");
   const usage = (name: string) => running.filter((p) => p.policy === name).length;
   const ungoverned = running.filter((p) => !p.policy);
+  // Bulk-govern: bind the default policy to every unpoliced running pod in one
+  // click (the poll then reflects the new binding via the daemon overlay). Only
+  // offered when a default exists and we hold its rules to POST.
+  const defaultPolicy = policies.find((p) => p.name === def);
+  const governAll = async () => {
+    if (!defaultPolicy || ungoverned.length === 0) return;
+    setGoverning(true); setGovernMsg("");
+    const targets = ungoverned;
+    const results = await Promise.all(targets.map((p) => api.bindPodPolicy(p.name, defaultPolicy).then((r) => r.ok).catch(() => false)));
+    const ok = results.filter(Boolean).length;
+    setGoverning(false);
+    setGovernMsg(ok === targets.length
+      ? `Bound ${def} to ${ok} pod${ok === 1 ? "" : "s"} — the fleet updates shortly.`
+      : `Bound ${def} to ${ok} of ${targets.length} pods; retry the rest.`);
+  };
   // Which pods run the selected policy — the dry-run scopes to their traffic so
   // it answers "what would this do to the pods it governs", not the whole fleet.
   const usingPods = useMemo(
@@ -417,6 +434,12 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
             {ungoverned.map((p, i) => (
               <span key={p.name}>{i > 0 ? ", " : ""}<a class="insight__pod" href={`/pods/${encodeURIComponent(p.name)}`} onClick={linkTo(`/pods/${encodeURIComponent(p.name)}`)}>{p.name}</a></span>
             ))}
+            {defaultPolicy && (
+              <> · <button type="button" class="insight__action" disabled={governing} onClick={governAll}>
+                {governing ? "Binding…" : `Govern ${ungoverned.length === 1 ? "it" : "all"} with ${def}`}
+              </button></>
+            )}
+            {governMsg && <span class="insight__done" role="status">{governMsg}</span>}
           </span>
         </div>
       )}
