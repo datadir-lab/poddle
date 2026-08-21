@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -127,6 +128,60 @@ func TestHandler_PolicyCRUD(t *testing.T) {
 	dr.Body.Close()
 	if names, _ := store.List(); len(names) != 0 {
 		t.Errorf("DELETE should remove the policy; store still has %v", names)
+	}
+}
+
+func TestHandler_DefaultPolicy(t *testing.T) {
+	store := policy.NewFileStore(filepath.Join(t.TempDir(), "policies"))
+	_ = store.Put(&policy.Policy{Name: "prod"})
+	srv := httptest.NewServer(Handler(filepath.Join(t.TempDir(), "absent.sock"), store, nil))
+	t.Cleanup(srv.Close)
+
+	// Unset initially.
+	if got := getDefault(t, srv.URL); got != "" {
+		t.Errorf("default (unset) = %q, want empty", got)
+	}
+	// PUT sets it; GET reflects it and the store persists it.
+	putDefault(t, srv.URL, "prod")
+	if got := getDefault(t, srv.URL); got != "prod" {
+		t.Errorf("default after set = %q, want prod", got)
+	}
+	if d, _ := store.Default(); d != "prod" {
+		t.Errorf("PUT should persist to the store; store default = %q", d)
+	}
+	// Empty name clears it.
+	putDefault(t, srv.URL, "")
+	if got := getDefault(t, srv.URL); got != "" {
+		t.Errorf("default after clear = %q, want empty", got)
+	}
+}
+
+func getDefault(t *testing.T, base string) string {
+	t.Helper()
+	resp, err := http.Get(base + "/v1/default-policy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v.Name
+}
+
+func putDefault(t *testing.T, base, name string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPut, base+"/v1/default-policy", strings.NewReader(`{"name":"`+name+`"}`))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("PUT default = %d, want 204", resp.StatusCode)
 	}
 }
 

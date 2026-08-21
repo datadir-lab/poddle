@@ -455,6 +455,10 @@ td.perf { text-align: right; white-space: nowrap; }
 .list .new { color: var(--faint); font-family: var(--font-sans); font-weight: 500; }
 .list__meta { flex: none; font: 500 0.68rem/1 var(--font-sans); color: var(--faint); background: var(--surface); border-radius: 999px; padding: 0.2rem 0.5rem; }
 .list a.on .list__meta { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.list__default { margin-left: 0.35rem; color: var(--accent); font-size: 0.8rem; }
+.list__foot { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); font-size: 0.76rem; line-height: 1.5; color: var(--faint); }
+.list__foot code { font-family: var(--mono); font-size: 0.72rem; }
+.list__foot a { color: var(--accent); }
 
 /* governance insight banner (e.g. running pods with no policy) */
 .insight {
@@ -630,6 +634,9 @@ td.perf { text-align: right; white-space: nowrap; }
 /* small ghost button (audit CSV export) */
 .btn--ghost { background: var(--card); color: var(--ink); border-color: var(--border); }
 .btn--ghost:hover { border-color: var(--faint); }
+/* "Set as default" toggle: quiet until it is the active default, then accented. */
+.btn--default { margin-left: auto; }
+.btn--default.is-default { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .btn--sm { padding: 0.42rem 0.7rem; font-size: 0.8rem; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 

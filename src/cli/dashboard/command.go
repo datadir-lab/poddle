@@ -167,6 +167,36 @@ func registerPolicyAPI(mux *http.ServeMux, policies policy.Store) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	// The default policy — applied to a pod started with no --policy. A distinct
+	// path (not /v1/policies/default) so it never collides with a policy named
+	// "default".
+	mux.HandleFunc("GET /v1/default-policy", func(w http.ResponseWriter, r *http.Request) {
+		name := ""
+		if ds, ok := policies.(policy.DefaultStore); ok {
+			name, _ = ds.Default()
+		}
+		writeJSON(w, map[string]string{"name": name})
+	})
+	mux.HandleFunc("PUT /v1/default-policy", func(w http.ResponseWriter, r *http.Request) {
+		ds, ok := policies.(policy.DefaultStore)
+		if !ok {
+			http.Error(w, "default policy not supported by this store", http.StatusNotImplemented)
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := ds.SetDefault(req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
