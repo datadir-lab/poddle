@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -48,20 +49,35 @@ func TestE2E_Secure_EgressRedactsSecret(t *testing.T) {
 
 	var mu sync.Mutex
 	var bodies []string
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// The broker is a container, so the mock binds 0.0.0.0 and is dialed by the
+	// broker at host.containers.internal, not 127.0.0.1.
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	mock := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
 		bodies = append(bodies, string(b))
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
+	_ = mock.Listener.Close()
+	mock.Listener = ln
+	mock.Start()
 	t.Cleanup(mock.Close)
+
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockAddr := "http://host.containers.internal:" + mockPort
 
 	// A bearer connector pointing at the mock gives the pod a broker'd endpoint.
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
-		"connector = \"woodpecker\"\nbase_url = \""+mock.URL+"\"\nowner = \"local\"\n")
+		"connector = \"woodpecker\"\nbase_url = \""+mockAddr+"\"\nowner = \"local\"\n")
 	writeFile(t, filepath.Join(connDir, "woodpecker-token"), "SENTINEL")
 
 	proj := t.TempDir()
