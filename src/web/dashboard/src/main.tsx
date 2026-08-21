@@ -963,30 +963,56 @@ function dryRun(pol: Policy, events: Event[]): { total: number; denied: number; 
   return { total: reqs.length, denied, rows: [...m.values()].sort((a, b) => b.count - a.count) };
 }
 
-// Starter templates for the most common agent-sandbox postures. Every one
-// deny-lists the cloud metadata endpoints (a top credential-theft target) and
-// defaults to redact (strip secrets the agent tries to send). The operator picks
-// one, then tweaks and saves.
+// Starter templates for the most common agent-sandbox postures, ordered loosest
+// to strictest. Every one deny-lists the cloud metadata endpoints (a top
+// credential-theft target); most default to redact (strip secrets from the wire),
+// while the fail-closed pair hard-block a request that trips a secret instead. The
+// operator picks one, then tweaks and saves.
 const META_DENY = ["169.254.169.254", "metadata.google.internal"];
+// GitHub serves the API + git over `.github.com`, but LFS objects, release assets,
+// and raw files come from `.githubusercontent.com` — allow both or clones with LFS
+// silently break.
+const GITHUB = [".github.com", ".githubusercontent.com"];
+const CODING_ALLOW = ["api.anthropic.com", ...GITHUB, "registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "proxy.golang.org"];
 const POLICY_TEMPLATES: { id: string; label: string; hint: string; policy: Omit<Policy, "name"> }[] = [
+  {
+    id: "observe", label: "Observe (log & redact)",
+    hint: "Allow everything but strip secrets and block metadata. Watch Destinations, then tighten into an allow-list.",
+    policy: { allow_upstreams: [], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "container-ci", label: "Container / CI builds",
+    hint: "Pull images and OS packages to build and run Dockerfiles, plus the model.",
+    policy: { allow_upstreams: ["api.anthropic.com", ".docker.io", ".docker.com", "ghcr.io", ".githubusercontent.com", ".quay.io", ".pkg.dev", "deb.debian.org", ".ubuntu.com", ".alpinelinux.org"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "coding-agent", label: "Coding agent",
+    hint: "Model + GitHub + npm/PyPI/Go. The common CI or task sandbox.",
+    policy: { allow_upstreams: CODING_ALLOW, deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "github-rw", label: "GitHub read-write",
+    hint: "Clone, pull, and push to GitHub (incl. LFS) plus the model.",
+    policy: { allow_upstreams: ["api.anthropic.com", ...GITHUB], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
+  },
+  {
+    id: "read-only", label: "Read-only GitHub",
+    hint: "Clone and read from GitHub (GET only) plus the model. No pushes.",
+    policy: { allow_upstreams: ["api.anthropic.com", ...GITHUB], deny_upstreams: META_DENY, methods: { ".github.com": ["GET"], ".githubusercontent.com": ["GET"] }, egress: "redact" },
+  },
   {
     id: "provider-only", label: "AI provider only",
     hint: "Reach the model and nothing else. The tightest useful posture.",
     policy: { allow_upstreams: ["api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
   },
   {
-    id: "coding-agent", label: "Coding agent",
-    hint: "Model + GitHub + npm/PyPI/Go. The common CI or task sandbox.",
-    policy: { allow_upstreams: ["api.anthropic.com", ".github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "proxy.golang.org"], deny_upstreams: META_DENY, methods: {}, egress: "redact" },
-  },
-  {
-    id: "read-only", label: "Read-only GitHub",
-    hint: "Clone and read from GitHub (GET only) plus the model. No pushes.",
-    policy: { allow_upstreams: [".github.com", "api.anthropic.com"], deny_upstreams: META_DENY, methods: { ".github.com": ["GET"] }, egress: "redact" },
+    id: "high-assurance", label: "High-assurance (fail-closed)",
+    hint: "Full coding reach, but any request carrying a secret is refused — fail-closed, not redacted.",
+    policy: { allow_upstreams: CODING_ALLOW, deny_upstreams: META_DENY, methods: {}, egress: "block" },
   },
   {
     id: "locked-down", label: "Locked down",
-    hint: "Model only, and block all other egress outright — not just redact.",
+    hint: "Model only, and hard-fail any request that trips a secret — not just redact.",
     policy: { allow_upstreams: ["api.anthropic.com"], deny_upstreams: META_DENY, methods: {}, egress: "block" },
   },
 ];
