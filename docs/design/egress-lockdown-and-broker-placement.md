@@ -165,13 +165,30 @@ are host-bind-mounted, so the audit timeline persists across broker restarts.
 `poddle-lock-<pod>` IP. `brokerendpoint` becomes a **peer resolver**: `Addr(ch)`
 returns `<broker-internal-ip>:<port>` and `AllowList()` pins to exactly those.
 
-**Packaging.** poddle is a single Go binary. Recommended MVP: build it **static**
-(`CGO_ENABLED=0`) and **mount the host binary** read-only into a minimal stock
-image, running `poddle daemon --socket /run/poddle/poddled.sock`. No
-image-publish pipeline needed. *Feasibility sub-check (blocking, cheap):* confirm
-the static poddle binary runs `daemon` inside a stock container on the CI runner
-before building Task 4 on it. A dedicated published `poddle-broker` image is later
-hardening.
+**Packaging — published multi-arch image (cross-OS).** poddle is a single static
+Go binary (`CGO_ENABLED=0`). The broker runs as **`poddle-broker`**, a minimal
+image (distroless static base — bundles CA certs for the gateway's outbound TLS)
+containing that binary, running `poddle daemon --socket /run/poddle/poddled.sock`.
+
+*Why not mount the host binary:* on macOS/Windows hosts poddle drives a
+**Linux-VM** podman; the host `poddle` binary is darwin/windows and cannot run in
+a Linux broker container. A **published multi-arch (linux/amd64+arm64) image**,
+pulled by the VM, is therefore required for cross-OS — not a later nicety. The
+image tag tracks the CLI version, so a client always launches a matching broker.
+`EnsureRunning` runs `ghcr.io/datadir-lab/poddle-broker:<version>`, overridable
+via **`PODDLE_BROKER_IMAGE`** so e2e/CI point at a **locally built** image
+(`podman build`) with no registry dependency.
+
+*Feasibility sub-check (blocking, cheap):* confirm the static binary runs
+`daemon` in a distroless container, its control socket is reachable over a host
+bind mount, and the container dual-homes — before building Task 4 on it.
+
+**Autoscaler needs podman.** poddled's opt-in autoscaler shells to `podman`
+(`podman.New(exec.OS{},"")`). A containerized broker has no podman, so the host
+podman socket is **bind-mounted** into the broker container (e.g.
+`$XDG_RUNTIME_DIR/podman/podman.sock`) and poddled points at it. This is a host
+*file* mount, never network-reachable by pods, so the control-plane property
+holds; and the broker already holds every secret, so it adds no blast radius.
 
 **Lifecycle / fail-closed.**
 
