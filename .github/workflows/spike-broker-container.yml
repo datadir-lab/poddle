@@ -1,0 +1,113 @@
+name: Spike - containerized broker feasibility
+
+# Feasibility sub-check for the containerized shared broker (see
+# docs/design/egress-lockdown-and-broker-placement.md, "Realization"). The spike
+# proved a dual-homed broker PEER works; this proves the peer can be poddled
+# itself, packaged as a static binary in a stock image:
+#   1. poddle builds static (CGO_ENABLED=0) so it runs in a minimal image.
+#   2. `poddle daemon` comes up in a distroless container and its control Unix
+#      socket is reachable from the HOST over a bind mount (the owner path).
+#   3. that container can be dual-homed (internet-primary + an --internal net).
+# Manual only. Fails the job if any leg doesn't hold, so the answer is clear.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build poddle static (CGO_ENABLED=0)
+        run: |
+          set +e
+          CGO_ENABLED=0 go build -trimpath -o poddle ./src/cli
+          rc=$?
+          if [ $rc -ne 0 ]; then echo "::error::static build failed"; echo "STATIC=no" >> "$GITHUB_ENV"; exit 0; fi
+          file poddle
+          if file poddle | grep -q "statically linked"; then
+            echo "STATIC=yes" >> "$GITHUB_ENV"; echo "PASS — static binary"
+          else
+            echo "::error::poddle is not statically linked; it won't run in a distroless/scratch image"
+            echo "STATIC=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create the egress (internet) and internal (locked) networks
+        run: |
+          podman network create poddle-egress
+          podman network create --internal poddle-lock-test
+
+      - name: Run poddled in a distroless container, dual-homed
+        run: |
+          mkdir -p "$PWD/run" "$PWD/state"
+          # internet-capable net PRIMARY (default route reaches upstreams for the
+          # gateway's relay leg); control socket + audit db on host bind mounts.
+          podman run -d --name poddle-broker \
+            --network poddle-egress \
+            -e XDG_STATE_HOME=/state \
+            -v "$PWD/run:/run/poddle" \
+            -v "$PWD/state:/state" \
+            -v "$PWD/poddle:/usr/local/bin/poddle:ro" \
+            gcr.io/distroless/static-debian12 \
+            /usr/local/bin/poddle daemon --socket /run/poddle/poddled.sock
+          podman network connect poddle-lock-test poddle-broker
+          sleep 3
+          echo "--- container state ---"
+          podman ps -a --filter name=poddle-broker --format '{{.Names}} {{.Status}}'
+          echo "--- daemon logs ---"
+          podman logs poddle-broker 2>&1 | head -20 || true
+
+      - name: CHECK A — control socket reachable from the HOST over the bind mount
+        run: |
+          set +e
+          echo "--- host view of the mounted run dir ---"
+          ls -la "$PWD/run/"
+          OUT=$(curl -s --max-time 5 --unix-socket "$PWD/run/poddled.sock" http://localhost/health)
+          echo "health: $OUT"
+          if echo "$OUT" | grep -q '"ok":true'; then
+            echo "CTRL=yes" >> "$GITHUB_ENV"; echo "PASS — control socket works over the host bind mount"
+          else
+            echo "::error::control socket not reachable from the host over the bind mount"
+            echo "CTRL=no" >> "$GITHUB_ENV"
+            podman logs poddle-broker 2>&1 | tail -30 || true
+          fi
+
+      - name: CHECK B — the broker container is dual-homed
+        run: |
+          set +e
+          NETS=$(podman inspect poddle-broker -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+          echo "networks: $NETS"
+          if echo "$NETS" | grep -q poddle-egress && echo "$NETS" | grep -q poddle-lock-test; then
+            echo "DUAL=yes" >> "$GITHUB_ENV"; echo "PASS — dual-homed (egress + internal)"
+          else
+            echo "::error::broker container is not dual-homed"
+            echo "DUAL=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verdict
+        run: |
+          echo "static=$STATIC  control_socket=$CTRL  dual_homed=$DUAL"
+          if [ "$STATIC" = yes ] && [ "$CTRL" = yes ] && [ "$DUAL" = yes ]; then
+            echo "FEASIBLE — static poddle runs 'daemon' in a distroless container, its control socket is reachable over a host bind mount, and the container is dual-homed."
+          else
+            echo "::error::containerized-broker packaging NOT feasible as specced (static=$STATIC control=$CTRL dual=$DUAL)"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          podman rm -f poddle-broker || true
+          podman network rm poddle-lock-test || true
+          podman network rm poddle-egress || true
