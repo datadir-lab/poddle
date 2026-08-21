@@ -22,30 +22,46 @@ func TestE2E_Poddled_DetachRunDown(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
 
+	// The mock is bound 0.0.0.0 and reached at host.containers.internal: `run`
+	// curls $WOODPECKER_SERVER (the broker) FROM INSIDE the pod, and the broker
+	// container itself dials this mock to relay the request.
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0:0: %v", err)
+	}
 	var mu sync.Mutex
 	var auths []string
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mock := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		auths = append(auths, r.Header.Get("Authorization"))
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
+	_ = mock.Listener.Close()
+	mock.Listener = ln
+	mock.Start()
 	t.Cleanup(mock.Close)
+	_, mockPort, err := net.SplitHostPort(mock.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	mockURL := "http://host.containers.internal:" + mockPort
 
 	xdg := t.TempDir()
 	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
-		"connector = \"woodpecker\"\nbase_url = \""+mock.URL+"\"\nowner = \"local\"\n")
+		"connector = \"woodpecker\"\nbase_url = \""+mockURL+"\"\nowner = \"local\"\n")
 	writeFile(t, filepath.Join(connDir, "woodpecker-token"), "SENTINEL")
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
 		"image = \"docker.io/library/node:22\"\nconnectors = [\"svc\"]\n")
 
-	// Isolate this test's daemon socket under a throwaway XDG_RUNTIME_DIR.
+	// Isolate only the CLI config; DO NOT repoint XDG_RUNTIME_DIR — rootless
+	// podman needs the real one (its own socket + the broker container's pasta
+	// networking), and the shared broker container is the intended model.
 	env := append(os.Environ(),
-		"XDG_CONFIG_HOME="+xdg,
-		"XDG_RUNTIME_DIR="+filepath.Join(xdg, "run"))
+		"XDG_CONFIG_HOME="+xdg)
 
 	pod := "poddle-poddled-loop"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
