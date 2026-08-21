@@ -9,20 +9,32 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/exec"
+	"github.com/datadir-lab/poddle/src/internal/podman"
 	"github.com/datadir-lab/poddle/src/internal/policy"
 )
 
+// brokerLauncher is the podman surface EnsureRunning needs to bring up the
+// broker container (satisfied by *podman.Provider).
+type brokerLauncher interface {
+	EnsureEgressNetwork(name string) error
+	EnsureBroker(cfg podman.BrokerConfig) error
+}
+
 // Client talks to a running poddled over its Unix control socket, and can
-// auto-start the daemon if it isn't up.
+// auto-start the daemon (as a container) if it isn't up.
 type Client struct {
 	socket string
 	http   *http.Client
+	// launcher brings up the broker container. Nil means EnsureRunning
+	// constructs the default (podman.New(exec.OS{}, "")); tests inject a fake.
+	launcher brokerLauncher
 }
 
 // NewClient returns a client for the socket at path (SocketPath() if empty).
@@ -55,25 +67,32 @@ func (c *Client) Health() error {
 	return nil
 }
 
-// EnsureRunning starts poddled (this binary's `daemon` subcommand, detached) if
-// it isn't already healthy, then waits for it to come up.
+// EnsureRunning starts poddled — as a dual-homed broker container via podman,
+// egress-lockdown's placement — if it isn't already healthy, then waits for it
+// to come up. Fail-closed: if the network or broker can't be brought up, the
+// error is returned and there is no fallback to spawning a host process.
 func (c *Client) EnsureRunning() error {
 	if c.Health() == nil {
 		return nil
 	}
-	self, err := os.Executable()
-	if err != nil {
+	l := c.launcher
+	if l == nil {
+		l = podman.New(exec.OS{}, "")
+	}
+	if err := l.EnsureEgressNetwork("poddle-egress"); err != nil {
 		return err
 	}
-	cmd := exec.Command(self, "daemon", "--socket", c.socket)
-	cmd.SysProcAttr = detachAttrs()
-	if devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0); err == nil {
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, devnull
+	cfg := podman.BrokerConfig{
+		Name:       "poddle-broker",
+		Image:      resolveBrokerImage(),
+		EgressNet:  "poddle-egress",
+		RunDir:     filepath.Dir(c.socket),
+		StateDir:   filepath.Dir(AuditDBPath()),
+		PodmanSock: hostPodmanSock(),
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("spawn poddled: %w", err)
+	if err := l.EnsureBroker(cfg); err != nil {
+		return err
 	}
-	_ = cmd.Process.Release() // it outlives this process
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -83,6 +102,31 @@ func (c *Client) EnsureRunning() error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("poddled did not become healthy on %s", c.socket)
+}
+
+// resolveBrokerImage resolves the broker container image ref: PODDLE_BROKER_IMAGE
+// if set, else the ghcr default at :latest.
+func resolveBrokerImage() string {
+	if img := os.Getenv("PODDLE_BROKER_IMAGE"); img != "" {
+		return img
+	}
+	return "ghcr.io/datadir-lab/poddle-broker:latest"
+}
+
+// hostPodmanSock returns the host's rootless podman control socket path if it
+// exists, so EnsureBroker can bind-mount it in for the in-container
+// autoscaler; "" if not found (EnsureBroker then omits the mount and the
+// autoscaler no-ops).
+func hostPodmanSock() string {
+	dir := os.Getenv("XDG_RUNTIME_DIR")
+	if dir == "" {
+		return ""
+	}
+	sock := filepath.Join(dir, "podman", "podman.sock")
+	if _, err := os.Stat(sock); err != nil {
+		return ""
+	}
+	return sock
 }
 
 // gatewayInfo fetches the daemon's pod-facing addresses.

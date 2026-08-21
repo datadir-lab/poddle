@@ -75,7 +75,7 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 	as := &Autoscaler{
 		Interval: autoscaleInterval(), Cooldown: 60 * time.Second,
 		HighWater: 85, Sustain: 3,
-		Stats: productionStats(podman.New(exec.OS{}, "")),
+		Stats: productionStats(podman.New(exec.OS{}, os.Getenv("PODDLE_PODMAN_URL"))),
 		Move:  selfMover(),
 		Log:   func(format string, args ...any) { d.recordEvent(fmt.Sprintf(format, args...)) },
 	}
