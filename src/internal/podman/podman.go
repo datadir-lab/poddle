@@ -151,15 +151,27 @@ func (p *Provider) EnsureEgressNetwork(name string) error {
 // host podman socket) bind-mounted in. Idempotent: a no-op if the broker is
 // already running.
 func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
-	ps, err := p.Runner.Run("podman", p.podman("ps",
+	// One query distinguishes running / stopped / absent, so a crashed or
+	// stopped broker is restarted rather than wedging every future `up` on a
+	// name conflict. Singleton by name (this is also what guarantees the audit
+	// log's single writer).
+	ps, err := p.Runner.Run("podman", p.podman("ps", "-a",
 		"--filter", "name="+cfg.Name,
-		"--filter", "status=running",
-		"-q")...)
+		"--format", "{{.Names}} {{.State}}")...)
 	if err != nil {
 		return fmt.Errorf("podman ps: %w: %s", err, ps.Stderr)
 	}
-	if strings.TrimSpace(ps.Stdout) != "" {
+	switch state := strings.TrimSpace(ps.Stdout); {
+	case state == "":
+		// absent -> create it below
+	case strings.Contains(state, "running") || strings.Contains(state, "Up"):
 		return nil // already running
+	default:
+		// present but stopped/exited/created -> restart it, don't recreate
+		if r, err := p.Runner.Run("podman", p.podman("start", cfg.Name)...); err != nil {
+			return fmt.Errorf("podman start %s: %w: %s", cfg.Name, err, r.Stderr)
+		}
+		return nil
 	}
 
 	args := p.podman("run", "-d",
@@ -179,6 +191,9 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 
 	res, err := p.Runner.Run("podman", args...)
 	if err != nil {
+		if strings.Contains(res.Stderr, "already in use") {
+			return nil // a concurrent first-`up` won the create race; fine
+		}
 		return fmt.Errorf("podman run: %w: %s", err, res.Stderr)
 	}
 	return nil
@@ -204,6 +219,12 @@ func (p *Provider) EnsurePodLockNetwork(pod string) (string, error) {
 func (p *Provider) ConnectBrokerToPod(brokerName, pod string) error {
 	res, err := p.Runner.Run("podman", p.podman("network", "connect", "poddle-lock-"+pod, brokerName)...)
 	if err != nil {
+		// Idempotent: the shared broker stays attached across a pod's lifetime,
+		// so `move`/autoscale-grow (which re-run buildSpec without a `down`)
+		// re-connect an already-connected broker. That is success, not failure.
+		if strings.Contains(res.Stderr, "already connected") {
+			return nil
+		}
 		return fmt.Errorf("podman network connect: %w: %s", err, res.Stderr)
 	}
 	return nil

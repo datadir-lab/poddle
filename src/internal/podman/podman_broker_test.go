@@ -60,7 +60,7 @@ func TestEnsureBroker_RunsDetachedDualHomeMounts(t *testing.T) {
 }
 
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
-	f := &exec.Fake{Outputs: map[string]string{"podman": "abc123\n"}} // ps -q returns a running id
+	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
 	p := New(f, "")
 	err := p.EnsureBroker(BrokerConfig{
 		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
@@ -68,8 +68,26 @@ func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureBroker: %v", err)
 	}
-	if got := joinCalls(f); strings.Contains(got, "run -d") {
-		t.Errorf("must not launch a second broker when one is already running:\n%s", got)
+	if got := joinCalls(f); strings.Contains(got, "run -d") || strings.Contains(got, "start") {
+		t.Errorf("must not launch or start a second broker when one is already running:\n%s", got)
+	}
+}
+
+func TestEnsureBroker_StartsStoppedBroker(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker exited\n"}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	got := joinCalls(f)
+	if !strings.Contains(got, "start poddle-broker") {
+		t.Errorf("a stopped broker must be restarted, not left wedged:\n%s", got)
+	}
+	if strings.Contains(got, "run -d") {
+		t.Errorf("a stopped broker must be started, not recreated (name conflict):\n%s", got)
 	}
 }
 
@@ -132,6 +150,19 @@ func TestConnectBrokerToPod_FailClosed(t *testing.T) {
 	p := New(f, "")
 	if err := p.ConnectBrokerToPod("poddle-broker", "box"); err == nil {
 		t.Fatal("ConnectBrokerToPod must fail closed when the runner errors")
+	}
+}
+
+func TestConnectBrokerToPod_ToleratesAlreadyConnected(t *testing.T) {
+	// move/autoscale-grow re-run buildSpec without a `down`, so the broker is
+	// still attached — podman errors "already connected", which is success.
+	f := &exec.Fake{
+		Err:    errors.New("exit status 125"),
+		Stderr: "Error: container poddle-broker is already connected to network poddle-lock-box",
+	}
+	p := New(f, "")
+	if err := p.ConnectBrokerToPod("poddle-broker", "box"); err != nil {
+		t.Fatalf("ConnectBrokerToPod must tolerate an already-connected broker: %v", err)
 	}
 }
 
