@@ -20,9 +20,13 @@ export type Hist = Record<string, { cpu: number[]; mem: number[] }>;
 
 export type Verify = { ok: boolean; brokenAt: number } | null;
 
+// The audit stream's live connection status (initial connect, streaming, or
+// reconnecting after a drop).
+export type Conn = "connecting" | "live" | "down";
+
 export type Grouped = { pod: string; decision: string; upstream: string; count: number; secrets: number };
 
-export type SegOption = { value: string; label: string; tone?: string };
+export type SegOption = { value: string; label: string; tone?: string; badge?: string | number };
 
 export type Stats = {
   pods: number;

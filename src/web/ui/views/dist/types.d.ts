@@ -37,6 +37,7 @@ export type Verify = {
     ok: boolean;
     brokenAt: number;
 } | null;
+export type Conn = "connecting" | "live" | "down";
 export type Grouped = {
     pod: string;
     decision: string;
@@ -48,6 +49,7 @@ export type SegOption = {
     value: string;
     label: string;
     tone?: string;
+    badge?: string | number;
 };
 export type Stats = {
     pods: number;
