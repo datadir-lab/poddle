@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/audit"
@@ -117,13 +118,23 @@ func (c *Client) EnsureRunning() error {
 }
 
 // resolveBrokerImage resolves the broker container image ref: PODDLE_BROKER_IMAGE
-// if set, else the ghcr default at :latest.
+// if set, else the ghcr image at this CLI's own version so a released poddle
+// launches its matching broker (an unstamped "dev" build falls back to :latest).
 func resolveBrokerImage() string {
 	if img := os.Getenv("PODDLE_BROKER_IMAGE"); img != "" {
 		return img
 	}
-	return "ghcr.io/datadir-lab/poddle-broker:latest"
+	tag := "latest"
+	if Version != "" && Version != "dev" {
+		tag = strings.TrimPrefix(Version, "v") // matches publish-broker.yml (v0.1.3 -> 0.1.3)
+	}
+	return "ghcr.io/datadir-lab/poddle-broker:" + tag
 }
+
+// Version is the CLI's build version, stamped from main at startup so
+// resolveBrokerImage can pin the broker image to the running CLI's version.
+// "dev" (the default, unstamped) resolves to the :latest tag.
+var Version = "dev"
 
 // gatewayInfo fetches the daemon's pod-facing addresses.
 func (c *Client) gatewayInfo() (addr, redis, postgres string, err error) {
