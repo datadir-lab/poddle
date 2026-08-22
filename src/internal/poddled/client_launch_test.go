@@ -160,6 +160,15 @@ func TestResolveBrokerImage(t *testing.T) {
 		t.Errorf("resolveBrokerImage() = %q, want the ghcr default", got)
 	}
 
+	// A stamped CLI version pins the broker image to that version (v-prefix
+	// stripped), matching what publish-broker.yml pushes.
+	Version = "v0.1.3"
+	t.Cleanup(func() { Version = "dev" })
+	if got := resolveBrokerImage(); got != "ghcr.io/datadir-lab/poddle-broker:0.1.3" {
+		t.Errorf("resolveBrokerImage() with a stamped version = %q, want :0.1.3", got)
+	}
+	Version = "dev"
+
 	t.Setenv("PODDLE_BROKER_IMAGE", "example.com/custom-broker:v1")
 	if got := resolveBrokerImage(); got != "example.com/custom-broker:v1" {
 		t.Errorf("resolveBrokerImage() = %q, want the env override", got)

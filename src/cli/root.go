@@ -42,6 +42,7 @@ import (
 var version = "dev"
 
 func NewRootCmd() *cobra.Command {
+	poddled.Version = version // pin the broker image to this CLI's version
 	root := &cobra.Command{
 		Use:          "poddle",
 		Short:        "poddle - secret-safe dev sandboxes for coding agents",

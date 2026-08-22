@@ -20,8 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to publish (e.g. v0.1.1)'
-        required: true
+        description: 'Existing release tag to publish (e.g. v0.1.1). Empty = build from the current branch and push :edge + :latest.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -58,19 +59,24 @@ jobs:
       - name: Build the multi-arch manifest
         run: |
           set -eu
-          VERSION="${TAG#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # A tag (release or dispatched) publishes :<version> + :latest; no tag
+          # (a plain dispatch off the branch) publishes an :edge + :latest image.
+          if [ -n "$TAG" ]; then
+            PRIMARY="${TAG#v}"
+          else
+            PRIMARY="edge"
+          fi
+          echo "PRIMARY=$PRIMARY" >> "$GITHUB_ENV"
           podman build \
             --platform linux/amd64,linux/arm64 \
-            --manifest "ghcr.io/datadir-lab/poddle-broker:${VERSION}" \
+            --manifest "ghcr.io/datadir-lab/poddle-broker:${PRIMARY}" \
             -f Containerfile.broker .
 
-      - name: Push the manifest (version + latest)
+      - name: Push the manifest (primary + latest)
         run: |
           set -eu
-          podman manifest push --all \
-            "ghcr.io/datadir-lab/poddle-broker:${VERSION}" \
-            "docker://ghcr.io/datadir-lab/poddle-broker:${VERSION}"
-          podman manifest push --all \
-            "ghcr.io/datadir-lab/poddle-broker:${VERSION}" \
-            "docker://ghcr.io/datadir-lab/poddle-broker:latest"
+          for t in "${PRIMARY}" latest; do
+            podman manifest push --all \
+              "ghcr.io/datadir-lab/poddle-broker:${PRIMARY}" \
+              "docker://ghcr.io/datadir-lab/poddle-broker:${t}"
+          done
