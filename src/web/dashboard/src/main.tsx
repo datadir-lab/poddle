@@ -32,7 +32,7 @@ type Event = {
 };
 type Policy = {
   name: string; description?: string; allow_upstreams?: string[]; deny_upstreams?: string[];
-  methods?: Record<string, string[]>; egress?: string;
+  methods?: Record<string, string[]>; egress?: string; monitor?: boolean;
 };
 type Pod = {
   name: string; state: string; size: string; mode: string; policy: string;

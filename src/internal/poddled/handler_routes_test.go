@@ -195,6 +195,24 @@ func TestDaemon_Check(t *testing.T) {
 	}
 }
 
+func TestDaemon_Monitored(t *testing.T) {
+	d := New(&fakeBroker{}, nil)
+	// An unknown handle (no policy) is not monitored.
+	if d.Monitored("nope") {
+		t.Error("an unknown handle must not be monitored")
+	}
+	d.handlePod["h1"] = "box"
+	// A monitor-mode policy reports monitored; an enforce-mode one does not.
+	d.podPolicy["box"] = &policy.Policy{Name: "watch", Monitor: true}
+	if !d.Monitored("h1") {
+		t.Error("a monitor-mode policy should report monitored")
+	}
+	d.podPolicy["box"] = &policy.Policy{Name: "strict"}
+	if d.Monitored("h1") {
+		t.Error("an enforce-mode policy must not report monitored")
+	}
+}
+
 func TestDaemon_Resolve(t *testing.T) {
 	d := New(&fakeBroker{}, nil)
 	target, err := d.Resolve("some-handle")

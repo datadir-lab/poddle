@@ -335,6 +335,43 @@ test("policies: bulk-govern binds the default to every ungoverned pod", async ({
   expect(bound.sort()).toEqual(["loose1", "loose2"]);
 });
 
+test("policies: the enforcement toggle saves monitor mode", async ({ page }) => {
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [] }));
+  let saved: { monitor?: boolean } | null = null;
+  await page.route("**/v1/policies/watch", (r) => {
+    if (r.request().method() === "PUT") saved = JSON.parse(r.request().postData() || "{}");
+    return r.fulfill({ status: 204, body: "" });
+  });
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  await page.locator("#pol-name").fill("watch");
+  await page.getByRole("radio", { name: "Monitor", exact: true }).click(); // enforcement: monitor
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect.poll(() => saved?.monitor).toBe(true);
+});
+
+test("audit: a monitor decision renders as its own badge and is filterable", async ({ page }) => {
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "blocked.example", method: "GET", decision: "monitor", detail: "would deny: not allow-listed" },
+    { seq: 1, time: t, pod: "a", kind: "request", upstream: "api.anthropic.com", method: "POST", decision: "allow" },
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await mockPods(page);
+  await page.goto("/audit");
+
+  // The monitor decision renders with its own badge (a distinct colour class).
+  await expect(page.locator(".d-monitor")).toContainText("monitor");
+  // The decision filter offers Monitor and narrows the table to it.
+  await page.getByRole("radio", { name: /Monitor/ }).click();
+  await expect(page.locator("table")).toContainText("blocked.example");
+  await expect(page.locator("table")).not.toContainText("api.anthropic.com");
+});
+
 test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
   await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await mockAudit(page);

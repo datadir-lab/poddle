@@ -37,6 +37,14 @@ type PolicyChecker interface {
 	Check(handle, host, method string) (allow bool, reason string)
 }
 
+// MonitorChecker is an optional companion to PolicyChecker: when the pod's
+// policy is in monitor mode, a would-be denial is forwarded (not blocked) and
+// recorded as "monitor" so operators can roll a policy out safely before
+// enforcing it. A checker that does not implement it always enforces.
+type MonitorChecker interface {
+	Monitored(handle string) bool
+}
+
 // Gateway is the secretless egress proxy. A pod's harness points at it
 // (BASE_URL) and presents a handle (in Authorization); the gateway resolves the
 // handle to a Credential, injects the REAL secret per the credential's mode, and
@@ -97,12 +105,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	method, path := r.Method, r.URL.Path
 
 	// Policy: the pod's governance policy may forbid this destination/method.
-	// Match on the hostname (port-agnostic).
+	// Match on the hostname (port-agnostic). In monitor mode a would-be denial is
+	// let through and recorded (below) instead of blocked.
+	var monitored string
 	if g.policy != nil {
 		if allow, reason := g.policy.Check(handle, up.Hostname(), method); !allow {
-			http.Error(w, "poddle: blocked by policy: "+reason, http.StatusForbidden)
-			g.audit(handle, up.Host, method, path, "deny", reason, http.StatusForbidden)
-			return
+			if mc, ok := g.policy.(MonitorChecker); ok && mc.Monitored(handle) {
+				monitored = reason
+			} else {
+				http.Error(w, "poddle: blocked by policy: "+reason, http.StatusForbidden)
+				g.audit(handle, up.Host, method, path, "deny", reason, http.StatusForbidden)
+				return
+			}
 		}
 	}
 
@@ -127,6 +141,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	decision, detail := "allow", ""
 	if hits > 0 {
 		decision, detail = "redact", fmt.Sprintf("redacted %d secret(s)", hits)
+	}
+	if monitored != "" { // monitor mode: this would have been denied under enforcement
+		decision, detail = "monitor", "would deny: "+monitored
 	}
 	g.audit(handle, up.Host, method, path, decision, detail, sc.code)
 }

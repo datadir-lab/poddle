@@ -95,6 +95,15 @@ func (d *Daemon) Check(handle, host, method string) (bool, string) {
 	return pol.Decide(host, method)
 }
 
+// Monitored implements broker.MonitorChecker: the pod's policy is in monitor
+// mode, so a would-be denial should be logged (not blocked).
+func (d *Daemon) Monitored(handle string) bool {
+	d.mu.Lock()
+	pol := d.podPolicy[d.handlePod[handle]]
+	d.mu.Unlock()
+	return pol != nil && pol.Monitor
+}
+
 // rec appends a sanitised audit event if auditing is on.
 func (d *Daemon) rec(e audit.Event) {
 	if d.audit != nil {

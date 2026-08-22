@@ -22,6 +22,7 @@ type Policy struct {
 	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`               // always denied (wins over allow)
 	Methods        map[string][]string `toml:"methods" json:"methods"`                             // per-host allowed HTTP methods
 	Egress         string              `toml:"egress" json:"egress"`                               // redact (default) | block | off
+	Monitor        bool                `toml:"monitor,omitempty" json:"monitor,omitempty"`         // evaluate but don't block: log would-be denials (safe rollout)
 }
 
 // Decide evaluates one request against the policy. Order: the deny-list wins,

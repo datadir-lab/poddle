@@ -29,24 +29,40 @@ func (f *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := proxyAuthToken(r.Header.Get("Proxy-Authorization"))
 	host := destinationHost(r)
 
+	// In monitor mode a would-be denial is forwarded (not blocked) and recorded as
+	// "monitor" instead of "deny", so a policy can be rolled out before enforcing.
+	var monitored string
 	if f.policy != nil {
 		if allow, reason := f.policy.Check(token, host, r.Method); !allow {
-			http.Error(w, "poddle: egress blocked by policy: "+reason, http.StatusForbidden)
-			f.emit(token, host, r.Method, "deny", reason, http.StatusForbidden)
-			return
+			if mc, ok := f.policy.(MonitorChecker); ok && mc.Monitored(token) {
+				monitored = reason
+			} else {
+				http.Error(w, "poddle: egress blocked by policy: "+reason, http.StatusForbidden)
+				f.emit(token, host, r.Method, "deny", reason, http.StatusForbidden)
+				return
+			}
 		}
 	}
 
 	if r.Method == http.MethodConnect {
-		f.tunnel(w, r, token, host)
+		f.tunnel(w, r, token, host, monitored)
 		return
 	}
-	f.forward(w, r, token, host)
+	f.forward(w, r, token, host, monitored)
+}
+
+// decOrMonitor overrides an allow decision with "monitor" when the request would
+// have been denied under enforcement (monitor mode).
+func decOrMonitor(monitored, decision, detail string) (string, string) {
+	if monitored != "" {
+		return "monitor", "would deny: " + monitored
+	}
+	return decision, detail
 }
 
 // tunnel handles CONNECT: dial the target and splice the two connections, so TLS
 // stays end-to-end (the proxy never sees the plaintext).
-func (f *ForwardProxy) tunnel(w http.ResponseWriter, r *http.Request, token, host string) {
+func (f *ForwardProxy) tunnel(w http.ResponseWriter, r *http.Request, token, host, monitored string) {
 	dst, err := net.Dial("tcp", r.Host)
 	if err != nil {
 		http.Error(w, "bad gateway", http.StatusBadGateway)
@@ -65,13 +81,14 @@ func (f *ForwardProxy) tunnel(w http.ResponseWriter, r *http.Request, token, hos
 		return
 	}
 	_, _ = src.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
-	f.emit(token, host, r.Method, "allow", "tunnel", http.StatusOK)
+	dec, det := decOrMonitor(monitored, "allow", "tunnel")
+	f.emit(token, host, r.Method, dec, det, http.StatusOK)
 	go func() { _, _ = io.Copy(dst, src); _ = dst.Close() }()
 	go func() { _, _ = io.Copy(src, dst); _ = src.Close() }()
 }
 
 // forward proxies a plain-HTTP request to its destination.
-func (f *ForwardProxy) forward(w http.ResponseWriter, r *http.Request, token, host string) {
+func (f *ForwardProxy) forward(w http.ResponseWriter, r *http.Request, token, host, monitored string) {
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, r.URL.String(), r.Body)
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -99,7 +116,8 @@ func (f *ForwardProxy) forward(w http.ResponseWriter, r *http.Request, token, ho
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
-	f.emit(token, host, r.Method, "allow", "", resp.StatusCode)
+	dec, det := decOrMonitor(monitored, "allow", "")
+	f.emit(token, host, r.Method, dec, det, resp.StatusCode)
 }
 
 func (f *ForwardProxy) emit(token, host, method, decision, detail string, status int) {
