@@ -90,8 +90,17 @@ func New(b brokerAPI, aud *audit.Store) *Daemon {
 // evaluate its policy for (host, method). No policy = allow.
 func (d *Daemon) Check(handle, host, method string) (bool, string) {
 	d.mu.Lock()
-	pol := d.podPolicy[d.handlePod[handle]]
+	pod, known := d.handlePod[handle]
+	pol := d.podPolicy[pod]
 	d.mu.Unlock()
+	// An empty or unrecognized egress token maps to no pod, hence no governing
+	// policy — deny rather than fall through to podPolicy[""] == nil == allow.
+	// Every brokered pod is handed its own egress token, so a legitimate request
+	// always carries one; a policy pod that strips it must not thereby escape its
+	// own allow-list. (nil pol below = a known pod with no policy = default-allow.)
+	if !known {
+		return false, "unrecognized egress token"
+	}
 	return pol.Decide(host, method)
 }
 

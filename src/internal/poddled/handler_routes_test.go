@@ -216,9 +216,12 @@ func TestDaemon_AuditQueryFilters(t *testing.T) {
 
 func TestDaemon_Check(t *testing.T) {
 	d := New(&fakeBroker{}, nil)
-	// No policy bound for the handle's pod -> allow (a nil policy allows all).
-	if allow, _ := d.Check("unknown-handle", "example.com", "GET"); !allow {
-		t.Error("Check with no bound policy should allow")
+	// An unrecognized handle maps to no pod (hence no governing policy) and must
+	// be DENIED — allowing it was a policy bypass (a pod could strip its egress
+	// token to escape its own allow-list). A known pod with no policy still
+	// default-allows; that path is covered in check_test.go.
+	if allow, _ := d.Check("unknown-handle", "example.com", "GET"); allow {
+		t.Error("Check with an unrecognized handle must deny, not allow")
 	}
 }
 
