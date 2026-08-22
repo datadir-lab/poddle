@@ -6,6 +6,7 @@
   --allow: var(--accent);
   --redact: #8a5a00;
   --deny: #a02929;
+  --monitor: #2f6690;    /* would-be-denied, observed not blocked (monitor mode) */
   --maxw-app: 1240px;
   --card: #fff;          /* raised surface: cards, panels, tables, inputs */
   color-scheme: light;
@@ -27,6 +28,7 @@
   --ink-strong: #ffffff;
   --redact: #d7a34a;      /* brighter amber for dark */
   --deny: #e0736b;        /* brighter red for dark */
+  --monitor: #6fa8d6;     /* brighter blue for dark */
   color-scheme: dark;
 }
 

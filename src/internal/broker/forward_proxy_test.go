@@ -125,6 +125,49 @@ func TestForwardProxy_BlocksDeniedConnect(t *testing.T) {
 	}
 }
 
+// TestForwardProxy_MonitorMode_TunnelsWouldDeny: under monitor mode a would-be
+// denied CONNECT is tunnelled (not refused) and audited as "monitor".
+func TestForwardProxy_MonitorMode_TunnelsWouldDeny(t *testing.T) {
+	target, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = target.Close() })
+	go func() {
+		c, err := target.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		_, _ = io.Copy(c, c)
+	}()
+
+	aud := &recAuditor{}
+	fp := httptest.NewServer(NewForwardProxy(monitorChecker{}, aud)) // denies via Check, but Monitored
+	t.Cleanup(fp.Close)
+
+	status, br, conn := connect(t, fp.Listener.Addr().String(), target.Addr().String(), "poddle_egr_m")
+	defer conn.Close()
+	if !strings.Contains(status, "200") {
+		t.Fatalf("monitor mode should establish the tunnel; status = %q", status)
+	}
+	if _, err := br.ReadString('\n'); err != nil { // consume the blank line
+		t.Fatal(err)
+	}
+	// Round-trip through the tunnel: the copy goroutines (and thus the emit that
+	// precedes them) have run by the time the echo returns.
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(br, buf); err != nil {
+		t.Fatalf("reading tunnelled echo: %v", err)
+	}
+	if recs := aud.all(); len(recs) == 0 || recs[0].Decision != "monitor" {
+		t.Errorf("expected a monitor audit record, got %+v", recs)
+	}
+}
+
 // TestForwardProxy_ConnectUpstreamUnreachable: an allowed CONNECT to an
 // unreachable target returns 502 rather than hanging.
 func TestForwardProxy_ConnectUpstreamUnreachable(t *testing.T) {

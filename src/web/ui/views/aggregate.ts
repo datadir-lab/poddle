@@ -77,10 +77,11 @@ export const DECISIONS = [
   { key: "redact", label: "Redact", icon: "eyeoff" },
   { key: "deny", label: "Deny", icon: "ban" },
   { key: "block", label: "Block", icon: "octagon" },
+  { key: "monitor", label: "Monitor", icon: "info" },
 ] as const;
 
 export function decisionCounts(events: Event[]): Record<string, number> {
-  const c: Record<string, number> = { allow: 0, redact: 0, deny: 0, block: 0 };
+  const c: Record<string, number> = { allow: 0, redact: 0, deny: 0, block: 0, monitor: 0 };
   for (const e of events) if (e.decision && e.decision in c) c[e.decision]++;
   return c;
 }

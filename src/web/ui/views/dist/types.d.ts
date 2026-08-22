@@ -18,6 +18,7 @@ export type Policy = {
     deny_upstreams?: string[];
     methods?: Record<string, string[]>;
     egress?: string;
+    monitor?: boolean;
 };
 export type Pod = {
     name: string;

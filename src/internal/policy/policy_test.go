@@ -88,12 +88,12 @@ func TestStore_LoadsPolicy(t *testing.T) {
 
 func TestFileStore_PutListDelete(t *testing.T) {
 	s := NewFileStore(filepath.Join(t.TempDir(), "policies"))
-	if err := s.Put(&Policy{Name: "ro", Description: "read-only egress", AllowUpstreams: []string{"api.x"}, Egress: "block"}); err != nil {
+	if err := s.Put(&Policy{Name: "ro", Description: "read-only egress", AllowUpstreams: []string{"api.x"}, Egress: "block", Monitor: true}); err != nil {
 		t.Fatal(err)
 	}
-	// Round-trips (including the free-text description).
+	// Round-trips (including the free-text description and the monitor flag).
 	got, err := s.Get("ro")
-	if err != nil || got.Egress != "block" || len(got.AllowUpstreams) != 1 || got.Description != "read-only egress" {
+	if err != nil || got.Egress != "block" || len(got.AllowUpstreams) != 1 || got.Description != "read-only egress" || !got.Monitor {
 		t.Fatalf("round-trip = %+v, err=%v", got, err)
 	}
 	if names, _ := s.List(); len(names) != 1 || names[0] != "ro" {

@@ -21,6 +21,7 @@
 .seg__opt.on[data-tone="allow"] { color: var(--allow); background: color-mix(in srgb, var(--allow) 12%, transparent); }
 .seg__opt.on[data-tone="redact"] { color: var(--redact); background: color-mix(in srgb, var(--redact) 12%, transparent); }
 .seg__opt.on[data-tone="deny"] { color: var(--deny); background: color-mix(in srgb, var(--deny) 12%, transparent); }
+.seg__opt.on[data-tone="monitor"] { color: var(--monitor); background: color-mix(in srgb, var(--monitor) 14%, transparent); }
 .seg__opt.on[data-tone="faint"] { color: var(--muted); background: var(--surface); }
 
 /* ---- overview ---- */
@@ -83,6 +84,7 @@
 .legend__mk.d-allow { color: var(--allow); }
 .legend__mk.d-redact { color: var(--redact); }
 .legend__mk.d-deny, .legend__mk.d-block { color: var(--deny); }
+.legend__mk.d-monitor { color: var(--monitor); }
 .legend__lb { color: var(--muted); }
 .legend__v { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
 .legend__pc { font-family: var(--mono); font-size: 0.76rem; color: var(--faint); }
@@ -94,6 +96,7 @@
 .posture__seg.d-allow { background: var(--allow); }
 .posture__seg.d-redact { background: var(--redact); }
 .posture__seg.d-deny, .posture__seg.d-block { background: var(--deny); }
+.posture__seg.d-monitor { background: var(--monitor); }
 .posture .legend { gap: 0.5rem 1.15rem; }
 
 /* fleet load bars */
@@ -136,6 +139,7 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .mix__seg.d-allow { background: var(--allow); }
 .mix__seg.d-redact { background: var(--redact); }
 .mix__seg.d-deny, .mix__seg.d-block { background: var(--deny); }
+.mix__seg.d-monitor { background: var(--monitor); }
 
 /* ---- audit table ---- */
 .table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--card); }
@@ -158,6 +162,7 @@ tbody tr:hover { background: var(--surface); }
 .d-allow { color: var(--allow); }
 .d-redact { color: var(--redact); }
 .d-block, .d-deny { color: var(--deny); }
+.d-monitor { color: var(--monitor); }
 
 /* ---- audit integrity (hash-chain provenance) ---- */
 .integrity {

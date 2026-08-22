@@ -45,10 +45,11 @@ const (
 type Decision string
 
 const (
-	DecisionAllow  Decision = "allow"
-	DecisionRedact Decision = "redact"
-	DecisionBlock  Decision = "block"
-	DecisionDeny   Decision = "deny"
+	DecisionAllow   Decision = "allow"
+	DecisionRedact  Decision = "redact"
+	DecisionBlock   Decision = "block"
+	DecisionDeny    Decision = "deny"
+	DecisionMonitor Decision = "monitor" // would have been denied, but the policy is in monitor mode — allowed and logged
 )
 
 // Event is one audit record. Seq/Time/PrevHash/Hash are assigned by Append; the

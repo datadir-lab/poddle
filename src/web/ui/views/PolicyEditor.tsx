@@ -15,6 +15,14 @@ const EGRESS_MODES: SegOption[] = [
   { value: "off", label: "Off", tone: "faint" },
 ];
 
+// Enforcement is a separate axis from egress (which governs secrets): "monitor"
+// evaluates the access rules but forwards would-be denials, logging them, for a
+// safe rollout before switching to "enforce".
+const ENFORCEMENT_MODES: SegOption[] = [
+  { value: "enforce", label: "Enforce" },
+  { value: "monitor", label: "Monitor", tone: "monitor" },
+];
+
 // The cloud metadata endpoints — a top credential-theft target; the "Block them"
 // advisory fix adds these to the deny-list.
 const METADATA_HOSTS = ["169.254.169.254", "metadata.google.internal"];
@@ -82,13 +90,14 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const [allows, setAllows] = useState<AllowRow[]>(() => toRows(policy));
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
   const [egress, setEgress] = useState(policy.egress || "redact");
+  const [monitor, setMonitor] = useState(!!policy.monitor);
   const [err, setErr] = useState("");
   const [probeHost, setProbeHost] = useState("");
   const [probeMethod, setProbeMethod] = useState("GET");
 
   useEffect(() => {
     setName(policy.name); setDesc(policy.description || ""); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
-    setEgress(policy.egress || "redact"); setErr("");
+    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor); setErr("");
   }, [policy]);
 
   const patchAllow = (i: number, patch: Partial<AllowRow>) => setAllows((a) => a.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -121,7 +130,7 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
     const methods: Record<string, string[]> = {};
     for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
-    return { name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress };
+    return { name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress, monitor: monitor || undefined };
   };
 
   // Governance advisories on the live draft, and a single-request probe that runs
@@ -177,6 +186,9 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
       <label for="pol-desc">Description <span class="label-hint">Optional — what this policy is for</span></label>
       <input id="pol-desc" value={desc} placeholder="e.g. CI agents: model + package registries" onInput={(e) => setDesc((e.target as HTMLInputElement).value)} />
+
+      <label>Enforcement <span class="label-hint">Monitor logs would-be denials without blocking — roll out safely, then Enforce</span></label>
+      <SegmentedControl value={monitor ? "monitor" : "enforce"} options={ENFORCEMENT_MODES} onChange={(v) => setMonitor(v === "monitor")} ariaLabel="enforcement mode" />
 
       {!blank && advisories.length > 0 && (
         <div class="advisories">
@@ -237,7 +249,7 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
           <span class="dryrun__title">Dry-run · {scoped ? `${scopePods.length} pod${scopePods.length === 1 ? "" : "s"} on this policy` : "all recent egress"}</span>
           <span class="dryrun__stat">
             {impact.total} request{impact.total === 1 ? "" : "s"} ·{" "}
-            <span class={impact.denied ? "dryrun__deny" : "dryrun__ok"}>{impact.denied} would be denied</span>
+            <span class={impact.denied ? "dryrun__deny" : "dryrun__ok"}>{impact.denied} would be {monitor ? "logged" : "denied"}</span>
           </span>
         </div>
         {impact.total === 0

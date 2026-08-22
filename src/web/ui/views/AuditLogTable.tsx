@@ -13,6 +13,7 @@ const DECISION_FILTER: SegOption[] = [
   { value: "redact", label: "Redact", tone: "redact" },
   { value: "block", label: "Block", tone: "deny" },
   { value: "deny", label: "Deny", tone: "deny" },
+  { value: "monitor", label: "Monitor", tone: "monitor" },
 ];
 
 // AuditLogTable is fully props-driven (events, initialPod/initialQ) — no

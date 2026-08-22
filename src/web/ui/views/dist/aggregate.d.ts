@@ -23,6 +23,10 @@ export declare const DECISIONS: readonly [{
     readonly key: "block";
     readonly label: "Block";
     readonly icon: "octagon";
+}, {
+    readonly key: "monitor";
+    readonly label: "Monitor";
+    readonly icon: "info";
 }];
 export declare function decisionCounts(events: Event[]): Record<string, number>;
 export declare function destinations(events: Event[]): Dest[];

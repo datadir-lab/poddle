@@ -179,6 +179,21 @@ describe("PolicyEditor", () => {
     expect((onDuplicate.mock.calls[0][0] as Policy).allow_upstreams).toEqual(["api.example.com"]);
   });
 
+  it("the enforcement toggle writes the monitor flag", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={onSave} onDelete={noopDelete} />);
+    mounted.push(el);
+
+    // Default is Enforce -> no monitor flag on the built policy.
+    await act(async () => { findButton(el, "Save").click(); });
+    expect((onSave.mock.calls[0][0] as Policy).monitor).toBeFalsy();
+
+    // Flip to Monitor -> the built policy carries monitor: true.
+    act(() => { findButton(el, "Monitor").click(); });
+    await act(async () => { findButton(el, "Save").click(); });
+    expect((onSave.mock.calls[1][0] as Policy).monitor).toBe(true);
+  });
+
   it("treats a named policy as unsaved when isSaved is false (a duplicate seed)", () => {
     const el = mount(<PolicyEditor policy={{ ...POLICY, name: "prod-copy" }} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} isSaved={false} onDuplicate={vi.fn()} onSetDefault={vi.fn()} />);
     mounted.push(el);
