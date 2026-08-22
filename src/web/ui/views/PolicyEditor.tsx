@@ -317,7 +317,7 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
       {err && <div class="err">{err}</div>}
       <div class="actions">
-        <button class="btn btn--primary" onClick={save}>Save</button>
+        <button class="btn btn--primary" onClick={save}>{saved && name.trim() && name.trim() !== policy.name ? "Rename & save" : "Save"}</button>
         {saved && <button class="btn btn--danger" onClick={del}>Delete</button>}
         {saved && onDuplicate && <button type="button" class="btn btn--ghost" onClick={() => onDuplicate(draft())}>Duplicate</button>}
         {saved && onSetDefault && (
