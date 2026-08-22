@@ -383,6 +383,23 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   useEffect(() => { load(); loadDefault(); }, []);
   useEffect(() => { if (selected !== "new") setSeed(null); }, [selected]); // a duplicate seed only lives on the new-policy view
   const duplicate = (p: Policy) => { setSeed({ ...p, name: p.name + "-copy" }); navigate("/policies/new"); };
+  // Save, with rename semantics: editing a saved policy's name renames it in place
+  // (write the new name, delete the old, repoint the default) rather than orphaning
+  // the original under the old name.
+  const savePolicy = async (p: Policy): Promise<{ ok: boolean; error?: string }> => {
+    const renaming = !!selected && selected !== "new" && p.name !== selected;
+    if (renaming && policies.some((x) => x.name === p.name)) {
+      return { ok: false, error: `A policy named "${p.name}" already exists.` };
+    }
+    const r = await api.putPolicy(p);
+    if (!r.ok) return { ok: false, error: "Save failed: " + r.status };
+    if (renaming) {
+      await api.delPolicy(selected).catch(() => {});
+      if (def === selected) await api.setDefaultPolicy(p.name).catch(() => {});
+    }
+    load(); loadDefault(); navigate(`/policies/${encodeURIComponent(p.name)}`);
+    return { ok: true };
+  };
 
   // Fleet governance: how many running pods each policy governs, and which run
   // with none (a real risk — an unpoliced pod's egress is unrestricted).
@@ -456,10 +473,7 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
         {sel
           ? <PolicyEditor policy={sel} events={events} scopePods={usingPods}
               templates={POLICY_TEMPLATES} isSaved={selected !== "new"} isDefault={selected !== "new" && def === sel.name} onSetDefault={setDefault} onDuplicate={duplicate}
-              onSave={(p) => api.putPolicy(p).then((r) => {
-                if (r.ok) { load(); navigate(`/policies/${encodeURIComponent(p.name)}`); }
-                return { ok: r.ok, error: r.ok ? undefined : "Save failed: " + r.status };
-              })}
+              onSave={savePolicy}
               onDelete={() => api.delPolicy(sel.name).then(() => { load(); loadDefault(); navigate("/policies"); })} />
           : <div class="editor empty">Select a policy, or create one.</div>}
       </div>

@@ -67,7 +67,8 @@ describe("PolicyEditor", () => {
     mounted.push(el);
 
     setValue(el.querySelector("#pol-name") as HTMLInputElement, "renamed");
-    await act(async () => { findButton(el, "Save").click(); });
+    // Editing a saved policy's name turns Save into a rename (label reflects it).
+    await act(async () => { findButton(el, "Rename & save").click(); });
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const built = onSave.mock.calls[0][0] as Policy;
@@ -224,5 +225,14 @@ describe("PolicyEditor", () => {
     expect(findButton(el, "Delete")).toBeFalsy();
     expect(findButton(el, "Duplicate")).toBeFalsy();
     expect((el.querySelector("#pol-name") as HTMLInputElement).value).toBe("prod-copy");
+  });
+
+  it("the Save button reads 'Rename & save' once a saved policy's name is edited", () => {
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} isSaved onSave={noopSave} onDelete={noopDelete} />);
+    mounted.push(el);
+    expect(findButton(el, "Save")).toBeTruthy();
+    setValue(el.querySelector("#pol-name") as HTMLInputElement, "prod-2");
+    expect(findButton(el, "Rename & save")).toBeTruthy();
+    expect(findButton(el, "Save")).toBeFalsy();
   });
 });

@@ -1949,7 +1949,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 							let e = await c(q());
 							e.ok || I(e.error || "Save failed");
 						},
-						children: "Save"
+						children: W && y.trim() && y.trim() !== t.name ? "Rename & save" : "Save"
 					}),
 					W && /* @__PURE__ */ O("button", {
 						class: "btn btn--danger",

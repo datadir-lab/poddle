@@ -215,6 +215,36 @@ test("policies: a template saved through the editor persists and round-trips (re
   await expect(page.locator(".list")).not.toContainText("e2e-tmpl-provider");
 });
 
+test("policies: renaming writes the new name, deletes the old, and repoints the default", async ({ page }) => {
+  // Deterministic (mocked) — the shared file store makes real round-trips flaky.
+  let POLS: Array<{ name: string }> = [{ name: "prod", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} } as any];
+  const puts: string[] = []; const dels: string[] = []; let defaultSet: string | null = null;
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await page.route(/\/v1\/policies\/[^/?]+$/, (r) => {
+    const name = decodeURIComponent(r.request().url().match(/\/policies\/([^/?]+)$/)![1]);
+    if (r.request().method() === "PUT") { puts.push(name); POLS = [...POLS.filter((p) => p.name !== name), JSON.parse(r.request().postData() || "{}")]; return r.fulfill({ status: 204, body: "" }); }
+    if (r.request().method() === "DELETE") { dels.push(name); POLS = POLS.filter((p) => p.name !== name); return r.fulfill({ status: 204, body: "" }); }
+    return r.fulfill({ json: POLS.find((p) => p.name === name) || {} });
+  });
+  await page.route("**/v1/default-policy", (r) => {
+    if (r.request().method() === "PUT") { defaultSet = JSON.parse(r.request().postData() || "{}").name; return r.fulfill({ status: 204, body: "" }); }
+    return r.fulfill({ json: { name: "prod" } }); // prod starts as the default
+  });
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/prod");
+
+  // Editing a saved policy's name turns Save into a rename.
+  await page.locator("#pol-name").fill("prod-renamed");
+  await page.getByRole("button", { name: "Rename & save" }).click();
+  await expect(page).toHaveURL(/\/policies\/prod-renamed$/);
+
+  // The new name was written, the old deleted, and the default followed the rename.
+  expect(puts).toContain("prod-renamed");
+  expect(dels).toContain("prod");
+  await expect.poll(() => defaultSet).toBe("prod-renamed");
+});
+
 test("policies: designate a default policy and see it marked, then clear it", async ({ page }) => {
   const POLS = [
     { name: "prod", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {} },
