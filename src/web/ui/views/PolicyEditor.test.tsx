@@ -159,6 +159,29 @@ describe("PolicyEditor", () => {
     expect(blocked).toContain("metadata.google.internal");
   });
 
+  it("a monitored policy with no would-be denials nudges to enforce, and Enforce now saves monitor off", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    const events = [{ seq: 1, time: new Date().toISOString(), pod: "a", kind: "request", upstream: "api.example.com", decision: "allow" }];
+    const el = mount(<PolicyEditor policy={{ ...POLICY, monitor: true }} events={events as any} scopePods={["a"]} isSaved onSave={onSave} onDelete={noopDelete} />);
+    mounted.push(el);
+
+    // Traffic, zero monitor hits -> the safe-to-enforce state.
+    expect(el.querySelector(".rollout--clear")).toBeTruthy();
+    await act(async () => { findButton(el, "Enforce now").click(); });
+    expect((onSave.mock.calls[0][0] as Policy).monitor).toBeFalsy();
+  });
+
+  it("a monitored policy with logged would-be denials warns and offers no enforce button", () => {
+    const events = [
+      { seq: 2, time: new Date().toISOString(), pod: "a", kind: "request", upstream: "x.example", decision: "monitor" },
+      { seq: 1, time: new Date().toISOString(), pod: "a", kind: "request", upstream: "api.example.com", decision: "allow" },
+    ];
+    const el = mount(<PolicyEditor policy={{ ...POLICY, monitor: true }} events={events as any} scopePods={["a"]} isSaved onSave={noopSave} onDelete={noopDelete} />);
+    mounted.push(el);
+    expect(el.querySelector(".rollout--warn")).toBeTruthy();
+    expect(findButton(el, "Enforce now")).toBeFalsy();
+  });
+
   it("the request probe evaluates against the current draft", () => {
     const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} />);
     mounted.push(el);

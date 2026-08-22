@@ -372,7 +372,32 @@ test("audit: a monitor decision renders as its own badge and is filterable", asy
   await expect(page.locator("table")).not.toContainText("api.anthropic.com");
 });
 
+test("policies: a clean monitored policy nudges to enforce, and Enforce now saves monitor off", async ({ page }) => {
+  const t = new Date().toISOString();
+  const POLS = [{ name: "watch", egress: "redact", allow_upstreams: ["api.anthropic.com"], deny_upstreams: [], methods: {}, monitor: true }];
+  const PODS = [{ name: "w1", state: "running", size: "weak", mode: "headless", policy: "watch", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" }];
+  // w1 (on "watch") has recent traffic but no logged would-be denials -> safe.
+  const evs = [{ seq: 1, time: t, pod: "w1", kind: "request", upstream: "api.anthropic.com", method: "POST", decision: "allow" }];
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: PODS }));
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  let saved: { monitor?: boolean } | null = null;
+  await page.route("**/v1/policies/watch", (r) => {
+    if (r.request().method() === "PUT") saved = JSON.parse(r.request().postData() || "{}");
+    return r.fulfill({ status: 204, body: "" });
+  });
+  await page.goto("/policies/watch");
+
+  // The rollout panel reports it is safe to enforce and offers a one-click promote.
+  await expect(page.locator(".rollout--clear")).toContainText("safe to enforce");
+  await page.getByRole("button", { name: "Enforce now" }).click();
+  await expect.poll(() => saved?.monitor).toBeFalsy();
+});
+
 test("policy builder: a per-destination method restriction collapses to a summary and expands to edit", async ({ page }) => {
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
   await mockAudit(page);
   await mockPods(page);

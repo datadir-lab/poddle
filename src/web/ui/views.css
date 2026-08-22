@@ -397,6 +397,17 @@ td.perf { text-align: right; white-space: nowrap; }
 .probe__result { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.65rem; font-size: 0.82rem; }
 .probe__reason { color: var(--muted); }
 
+/* ---- monitor-mode rollout status (safe-to-enforce) ---- */
+.rollout { display: flex; align-items: center; gap: 0.55rem; margin-top: 1rem; padding: 0.7rem 0.9rem; border-radius: var(--radius-lg); border: 1px solid var(--border); font-size: 0.84rem; line-height: 1.45; }
+.rollout__ic { flex: none; display: inline-flex; }
+.rollout__msg { flex: 1; min-width: 0; }
+.rollout--clear { color: var(--allow); background: color-mix(in srgb, var(--allow) 8%, transparent); border-color: color-mix(in srgb, var(--allow) 30%, var(--border)); }
+.rollout--warn { color: var(--monitor); background: color-mix(in srgb, var(--monitor) 8%, transparent); border-color: color-mix(in srgb, var(--monitor) 30%, var(--border)); }
+.rollout--idle { color: var(--muted); background: var(--surface); }
+.rollout--clear .rollout__msg, .rollout--warn .rollout__msg { color: var(--ink); }
+.rollout__enforce { flex: none; font: 600 0.8rem/1 var(--font-sans); color: var(--allow); background: transparent; border: 1px solid color-mix(in srgb, var(--allow) 45%, var(--border)); border-radius: 999px; padding: 0.35rem 0.75rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.rollout__enforce:hover { background: color-mix(in srgb, var(--allow) 12%, transparent); border-color: var(--allow); }
+
 .actions { display: flex; gap: 0.6rem; margin-top: 1.5rem; }
 .btn--primary { background: var(--ink); color: var(--bone); }
 .btn--primary:hover { background: var(--ink-strong); }

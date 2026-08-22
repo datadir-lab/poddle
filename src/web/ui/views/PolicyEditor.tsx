@@ -149,6 +149,10 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     [events, scopePods, scoped],
   );
   const impact = useMemo(() => dryRun(draft(), dryEvents), [name, allows, denies, egress, dryEvents]);
+  // Real "monitor" decisions logged for this policy's pods while it runs in
+  // monitor mode — the safe-rollout signal (0 over a window with traffic = ready
+  // to enforce).
+  const monitorHits = useMemo(() => dryEvents.filter((e) => e.decision === "monitor").length, [dryEvents]);
 
   const save = async () => {
     if (!name.trim()) { setErr("Name is required."); return; }
@@ -156,6 +160,11 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     if (!res.ok) { setErr(res.error || "Save failed"); }
   };
   const del = async () => { await onDelete(); };
+  // Promote a monitored policy to enforcement in one click (save with monitor off).
+  const enforceNow = async () => {
+    const res = await onSave({ ...draft(), monitor: undefined });
+    if (res.ok) setMonitor(false); else setErr(res.error || "Save failed");
+  };
 
   return (
     <div class="editor">
@@ -274,6 +283,22 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
           Evaluates allow/deny and method rules; secret redaction depends on request contents and is not simulated.
         </p>
       </div>
+
+      {isSaved && policy.monitor && (
+        <div class={"rollout " + (impact.total === 0 ? "rollout--idle" : monitorHits > 0 ? "rollout--warn" : "rollout--clear")}>
+          <span class="rollout__ic" aria-hidden="true"><Icon name={impact.total === 0 ? "info" : monitorHits > 0 ? "ban" : "check"} size={15} /></span>
+          <span class="rollout__msg">
+            {impact.total === 0
+              ? <>Monitoring — no recent traffic from this policy's pods to evaluate yet.</>
+              : monitorHits > 0
+                ? <><strong>{monitorHits}</strong> request{monitorHits === 1 ? "" : "s"} would have been denied while monitoring. Review in Audit (filter Monitor) before enforcing.</>
+                : <>No would-be denials logged for this policy's pods recently — safe to enforce.</>}
+          </span>
+          {impact.total > 0 && monitorHits === 0 && (
+            <button type="button" class="rollout__enforce" onClick={enforceNow}>Enforce now</button>
+          )}
+        </div>
+      )}
 
       <div class="probe">
         <div class="probe__label">Test a request</div>
