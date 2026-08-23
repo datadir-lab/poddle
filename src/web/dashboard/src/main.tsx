@@ -7,7 +7,7 @@ import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "./style.css";
 import "@poddle/ui/views.css";
-import type { Stats, Cmd, Toast, PolicyTemplate } from "@poddle/ui/views";
+import type { Stats, Cmd, Toast, PolicyTemplate, Event, Policy, Pod } from "@poddle/ui/views";
 import {
   SegmentedControl, IntegrityBadge, IntegrityPanel,
   Icon, PoddleMark, EgressChart, PostureBar, FleetLoad,
@@ -24,20 +24,6 @@ import {
 type Cfg = { apiBase: string; auth: string | null; multiHost?: boolean };
 const CFG: Cfg = { apiBase: "/v1", auth: null, ...(window as any).__PODDLE__ };
 const H: Record<string, string> = CFG.auth ? { Authorization: "Bearer " + CFG.auth } : {};
-
-type Event = {
-  seq: number; time: string; source?: string; pod?: string;
-  kind: string; upstream?: string; method?: string; path?: string;
-  status?: number; decision?: string; detail?: string;
-};
-type Policy = {
-  name: string; description?: string; allow_upstreams?: string[]; deny_upstreams?: string[];
-  methods?: Record<string, string[]>; egress?: string; monitor?: boolean; intercept?: boolean;
-};
-type Pod = {
-  name: string; state: string; size: string; mode: string; policy: string;
-  autoscale: boolean; cpu: string; memPerc: string; mem: string;
-};
 
 // Platform-aware modifier hint: ⌘ on macOS, Ctrl elsewhere (the handler accepts
 // either meta or ctrl regardless, so this only affects the displayed shortcut).
