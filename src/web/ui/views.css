@@ -526,3 +526,16 @@ tr.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -
 .toast__close { flex: none; background: transparent; border: 0; color: var(--faint); font-size: 1.15rem; line-height: 1; cursor: pointer; padding: 0 0.15rem; }
 .toast__close:hover { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* ---- pod activity profile ---- */
+.activity { margin-top: 1.5rem; }
+.activity__head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.6rem; }
+.activity__cats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.activity__cat { display: grid; grid-template-columns: 10rem 1fr auto auto 2.5rem; gap: 0.75rem; align-items: center; padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.activity__label { font-weight: 600; }
+.activity__hosts { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.85rem; }
+.activity__methods { color: var(--faint); font-size: 0.8rem; white-space: nowrap; }
+.activity__chips { display: inline-flex; gap: 0.25rem; }
+.activity__n { text-align: right; color: var(--faint); font-size: 0.85rem; }
+.activity__note { color: var(--faint); font-size: 0.82rem; margin-top: 0.5rem; }
+@media (max-width: 720px) { .activity__cat { grid-template-columns: 1fr auto; } .activity__hosts, .activity__methods { display: none; } }
