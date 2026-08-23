@@ -211,3 +211,26 @@ func TestLayered_ProjectShadowsGlobal(t *testing.T) {
 		t.Errorf("Put should write through to the global (writer) store: %v", err)
 	}
 }
+
+func TestPolicy_InterceptsHost(t *testing.T) {
+	cases := []struct {
+		name string
+		pol  *Policy
+		host string
+		want bool
+	}{
+		{"nil never intercepts", nil, "api.x.com", false},
+		{"exact match", &Policy{InterceptHosts: []string{"api.x.com"}}, "api.x.com", true},
+		{"suffix match", &Policy{InterceptHosts: []string{".x.com"}}, "a.x.com", true},
+		{"suffix matches apex", &Policy{InterceptHosts: []string{".x.com"}}, "x.com", true},
+		{"non-match tunnels", &Policy{InterceptHosts: []string{"api.x.com"}}, "other.com", false},
+		{"empty list + bool true = all", &Policy{Intercept: true}, "anything.com", true},
+		{"empty list + bool false = none", &Policy{Intercept: false}, "anything.com", false},
+		{"list wins over bool", &Policy{Intercept: true, InterceptHosts: []string{"api.x.com"}}, "other.com", false},
+	}
+	for _, c := range cases {
+		if got := c.pol.InterceptsHost(c.host); got != c.want {
+			t.Errorf("%s: InterceptsHost(%q) = %v, want %v", c.name, c.host, got, c.want)
+		}
+	}
+}
