@@ -683,6 +683,33 @@ func TestUp_Policy_ExplicitEmptyOptsOutOfDefault(t *testing.T) {
 	}
 }
 
+func TestInjectEgressCA(t *testing.T) {
+	spec := &sandbox.Spec{}
+	if err := injectEgressCA(spec, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	// The CA is mounted read-only at the expected in-pod path.
+	mounted := false
+	for _, m := range spec.Mounts {
+		if m.Container == egressCAPath && m.ReadOnly {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Errorf("egress CA not mounted read-only; mounts = %+v", spec.Mounts)
+	}
+	// The common toolchains are pointed at it.
+	for _, k := range []string{"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSL_CAINFO"} {
+		if spec.Env[k] != egressCAPath {
+			t.Errorf("env %s = %q, want %q", k, spec.Env[k], egressCAPath)
+		}
+	}
+	// A Setup step adds it to the OS trust bundle.
+	if len(spec.Setup) == 0 || !strings.Contains(spec.Setup[len(spec.Setup)-1], "update-ca-certificates") {
+		t.Errorf("expected an OS-trust Setup step; got %v", spec.Setup)
+	}
+}
+
 func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {

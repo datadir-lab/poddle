@@ -22,7 +22,34 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/policy"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 	"github.com/datadir-lab/poddle/src/internal/secure"
+	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
+
+// egressCAPath is where an intercepted pod finds the poddle egress CA.
+const egressCAPath = "/etc/poddle/egress-ca.crt"
+
+// injectEgressCA gives an intercepted pod the egress CA in its trust store, so
+// the broker can terminate TLS on its HTTPS egress. It mounts the CA cert
+// read-only and points the common toolchains (node, python, curl, git) at it via
+// env; a Setup step also adds it to the OS trust for anything using the system
+// bundle. The daemon generated the CA at start (EnsureRunning precedes this).
+func injectEgressCA(spec *sandbox.Spec, caDir string) error {
+	if _, err := tlsca.Load(caDir); err != nil { // ensure the CA is on disk
+		return fmt.Errorf("load egress CA: %w", err)
+	}
+	spec.Mounts = append(spec.Mounts, sandbox.Mount{
+		Host: tlsca.CertPath(caDir), Container: egressCAPath, ReadOnly: true,
+	})
+	if spec.Env == nil {
+		spec.Env = map[string]string{}
+	}
+	for _, k := range []string{"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSL_CAINFO"} {
+		spec.Env[k] = egressCAPath
+	}
+	spec.Setup = append(spec.Setup,
+		"cp "+egressCAPath+" /usr/local/share/ca-certificates/poddle-egress.crt 2>/dev/null && update-ca-certificates 2>/dev/null || true")
+	return nil
+}
 
 // ensureHostAutoscaler starts the host-side reactive autoscaler for the daemon
 // when a pod opts in (`up --autoscale`). A package var so tests can stub the
@@ -351,6 +378,13 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 			spec.PolicyName = policyName // labelled so the dashboard's pod view shows it
 			if err := b.SetPolicy(o.name, pol); err != nil {
 				return fail(err)
+			}
+			// An intercepting policy needs the pod to trust the egress CA so the
+			// broker can terminate TLS on its HTTPS egress (opt-in MITM).
+			if pol.Intercept {
+				if err := injectEgressCA(&spec, tlsca.DefaultDir()); err != nil {
+					return fail(fmt.Errorf("intercept: %w", err))
+				}
 			}
 		}
 		// Route ALL of the pod's arbitrary (non-brokered) egress through the
