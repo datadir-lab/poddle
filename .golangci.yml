@@ -26,6 +26,11 @@ linters:
         - G703 # path traversal via taint - same as G304 (reads files by path)
         - G704 # SSRF via taint - the broker is a forward proxy by design
   exclusions:
+    # Never lint gitignored parallel worktrees (.claude/worktrees/*): they hold
+    # other in-progress branches, so their lint state would otherwise block an
+    # unrelated push from the main checkout.
+    paths:
+      - '(^|/)\.claude/'
     rules:
       # Unchecked errors in tests are usually intentional.
       - path: '_test\.go'

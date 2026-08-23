@@ -878,8 +878,19 @@ function H({ label: e, children: t }) {
 }
 //#endregion
 //#region views/csv.ts
-function U(e) {
-	let t = [
+function U(e, t) {
+	let n = t?.multiHost ? [
+		"seq",
+		"time",
+		"source",
+		"pod",
+		"kind",
+		"decision",
+		"upstream",
+		"method",
+		"status",
+		"detail"
+	] : [
 		"seq",
 		"time",
 		"pod",
@@ -889,15 +900,15 @@ function U(e) {
 		"method",
 		"status",
 		"detail"
-	], n = (e) => {
+	], r = (e) => {
 		let t = String(e ?? "");
 		return /[",\n]/.test(t) ? "\"" + t.replace(/"/g, "\"\"") + "\"" : t;
-	}, r = e.map((e) => t.map((t) => n(e[t])).join(","));
-	return [t.join(","), ...r].join("\n");
+	}, i = e.map((e) => n.map((t) => r(e[t])).join(","));
+	return [n.join(","), ...i].join("\n");
 }
-function W(e, t) {
-	let n = new Blob([U(t)], { type: "text/csv;charset=utf-8" }), r = URL.createObjectURL(n), i = document.createElement("a");
-	i.href = r, i.download = e, document.body.appendChild(i), i.click(), i.remove(), setTimeout(() => URL.revokeObjectURL(r), 0);
+function W(e, t, n) {
+	let r = new Blob([U(t, n)], { type: "text/csv;charset=utf-8" }), i = URL.createObjectURL(r), a = document.createElement("a");
+	a.href = i, a.download = e, document.body.appendChild(a), a.click(), a.remove(), setTimeout(() => URL.revokeObjectURL(i), 0);
 }
 //#endregion
 //#region views/AuditLogTable.tsx
@@ -957,7 +968,7 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = re.map((e) => ({
 		...e,
 		badge: y[e.value] ?? 0
-	})), C = /* @__PURE__ */ O("div", {
+	})), C = e.some((e) => e.source), w = /* @__PURE__ */ O("div", {
 		class: "toolbar",
 		children: [
 			/* @__PURE__ */ O("input", {
@@ -984,7 +995,7 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 				class: "btn btn--ghost btn--sm",
 				disabled: !x.length,
 				onClick: () => {
-					W("poddle-audit.csv", x), l?.(x);
+					W("poddle-audit.csv", x, { multiHost: C }), l?.(x);
 				},
 				children: "Export CSV"
 			}),
@@ -994,11 +1005,15 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 			})
 		]
 	});
-	return o ? /* @__PURE__ */ O("div", { children: [C, /* @__PURE__ */ O(V, { rows: 8 })] }) : /* @__PURE__ */ O("div", { children: [C, /* @__PURE__ */ O("div", {
+	return o ? /* @__PURE__ */ O("div", { children: [w, /* @__PURE__ */ O(V, { rows: 8 })] }) : /* @__PURE__ */ O("div", { children: [w, /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", {
 			class: "dense",
 			children: [/* @__PURE__ */ O("thead", { children: /* @__PURE__ */ O("tr", { children: [
+				C && /* @__PURE__ */ O("th", {
+					scope: "col",
+					children: "host"
+				}),
 				/* @__PURE__ */ O("th", {
 					scope: "col",
 					children: "time"
@@ -1024,12 +1039,19 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 					children: "detail"
 				})
 			] }) }), /* @__PURE__ */ O("tbody", { children: [x.length === 0 && /* @__PURE__ */ O("tr", { children: /* @__PURE__ */ O("td", {
-				colSpan: 6,
+				colSpan: C ? 7 : 6,
 				class: "empty",
 				children: u || f || m ? "No events match your filter." : "Monitoring active — no events recorded yet."
 			}) }), x.slice(0, 800).map((e) => /* @__PURE__ */ O("tr", {
 				class: "auditrow",
 				children: [
+					C && /* @__PURE__ */ O("td", {
+						class: "c-host",
+						children: e.source || /* @__PURE__ */ O("span", {
+							class: "faint",
+							children: "—"
+						})
+					}),
 					/* @__PURE__ */ O("td", {
 						class: "c-time",
 						title: new Date(e.time).toLocaleString(),
