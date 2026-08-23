@@ -57,8 +57,14 @@ export function AuditLogTable({ events, initialPod, initialQ, loading, onExport 
   const shown = useMemo(() => (decision ? matched.filter((e) => e.decision === decision) : matched), [matched, decision]);
   const decisionOpts = DECISION_FILTER.map((o) => ({ ...o, badge: counts[o.value] ?? 0 }));
 
+  // `source` is empty for every event in the single-instance OSS dashboard and
+  // populated by the poddle-cloud collector for multi-host fleets — only show
+  // (and export) a host column when at least one row actually carries one, so
+  // the single-host table/CSV stay byte-identical to today.
+  const multiHost = events.some((e) => e.source);
+
   const exportCsv = () => {
-    downloadCsv("poddle-audit.csv", shown);
+    downloadCsv("poddle-audit.csv", shown, { multiHost });
     onExport?.(shown);
   };
 
@@ -81,16 +87,20 @@ export function AuditLogTable({ events, initialPod, initialQ, loading, onExport 
       <div class="table-wrap">
         <table class="dense">
           <thead>
-            <tr><th scope="col">time</th><th scope="col">pod</th><th scope="col">kind</th><th scope="col">decision</th><th scope="col">upstream</th><th scope="col">detail</th></tr>
+            <tr>
+              {multiHost && <th scope="col">host</th>}
+              <th scope="col">time</th><th scope="col">pod</th><th scope="col">kind</th><th scope="col">decision</th><th scope="col">upstream</th><th scope="col">detail</th>
+            </tr>
           </thead>
           <tbody>
             {shown.length === 0 && (
-              <tr><td colSpan={6} class="empty">
+              <tr><td colSpan={multiHost ? 7 : 6} class="empty">
                 {q || decision || range ? "No events match your filter." : "Monitoring active — no events recorded yet."}
               </td></tr>
             )}
             {shown.slice(0, 800).map((e) => (
               <tr key={e.seq} class="auditrow">
+                {multiHost && <td class="c-host">{e.source || <span class="faint">—</span>}</td>}
                 <td class="c-time" title={new Date(e.time).toLocaleString()}>{absTime(e.time)}</td>
                 <td class="c-pod">{e.pod || <span class="faint">—</span>}</td>
                 <td>{humanKind(e.kind)}</td>

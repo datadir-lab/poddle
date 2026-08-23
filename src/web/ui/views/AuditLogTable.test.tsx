@@ -83,4 +83,26 @@ describe("AuditLogTable", () => {
     expect(onExport.mock.calls[0][0]).toHaveLength(1);
     expect(onExport.mock.calls[0][0][0].upstream).toBe("api.github.com");
   });
+
+  it("events without a source render no host column (single-host, unchanged headers)", () => {
+    const el = mount(<AuditLogTable events={EVENTS} loading={false} />);
+    mounted.push(el);
+    const headers = [...el.querySelectorAll("thead th")].map((th) => th.textContent);
+    expect(headers).toEqual(["time", "pod", "kind", "decision", "upstream", "detail"]);
+    expect(el.querySelectorAll("td.c-host").length).toBe(0);
+  });
+
+  it("events with a source render a host column with the source values", () => {
+    const multiHostEvents: Event[] = [
+      { ...EVENTS[0], source: "host-a" },
+      { ...EVENTS[1], source: "host-b" },
+      EVENTS[2], // no source on this one — should render the faint placeholder
+    ];
+    const el = mount(<AuditLogTable events={multiHostEvents} loading={false} />);
+    mounted.push(el);
+    const headers = [...el.querySelectorAll("thead th")].map((th) => th.textContent);
+    expect(headers).toEqual(["host", "time", "pod", "kind", "decision", "upstream", "detail"]);
+    const hostCells = [...el.querySelectorAll("td.c-host")];
+    expect(hostCells.map((td) => td.textContent)).toEqual(["host-a", "host-b", "—"]);
+  });
 });
