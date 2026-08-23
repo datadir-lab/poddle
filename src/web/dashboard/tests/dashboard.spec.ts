@@ -914,6 +914,29 @@ test("policies: the dry-run honours a '.suffix' subdomain allow rule", async ({ 
   await expect(page.locator(".dryrun__list")).not.toContainText("api.github.com"); // allowed via subdomain
 });
 
+test("policies: a '*' catch-all method rule denies non-GET across all hosts in the dry-run", async ({ page }) => {
+  const t = new Date().toISOString();
+  // Read-only-web shape: allow all hosts, but "*" restricts methods to GET/HEAD.
+  const POLS = [{ name: "ro-web", egress: "redact", allow_upstreams: [], deny_upstreams: [], methods: { "*": ["GET", "HEAD"] } }];
+  const evs = [
+    { seq: 3, time: t, pod: "a", kind: "request", upstream: "docs.example", method: "GET" },  // allowed
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "api.example", method: "POST" },   // denied by the catch-all
+    { seq: 1, time: t, pod: "a", kind: "request", upstream: "other.example", method: "PUT" },  // denied by the catch-all
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: POLS }));
+  await mockPods(page); // no pod runs ro-web -> previews against all recent egress
+  await page.goto("/policies/ro-web");
+
+  // The catch-all denies POST/PUT everywhere; GET passes on any host.
+  await expect(page.locator(".dryrun")).toContainText("2 would be denied");
+  await expect(page.locator(".dryrun__list")).toContainText("api.example");
+  await expect(page.locator(".dryrun__list")).toContainText("other.example");
+  await expect(page.locator(".dryrun__list")).not.toContainText("docs.example");
+});
+
 test("pod controls: Cancel dismisses a confirm without mutating", async ({ page }) => {
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
     { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },

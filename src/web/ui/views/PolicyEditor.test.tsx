@@ -227,6 +227,17 @@ describe("PolicyEditor", () => {
     expect((el.querySelector("#pol-name") as HTMLInputElement).value).toBe("prod-copy");
   });
 
+  it("a '*' catch-all methods rule stays in methods, never becomes an allowed host", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    const p: Policy = { name: "ro-web", allow_upstreams: [], deny_upstreams: [], methods: { "*": ["GET", "HEAD"] }, egress: "redact" };
+    const el = mount(<PolicyEditor policy={p} events={[]} scopePods={[]} isSaved onSave={onSave} onDelete={noopDelete} />);
+    mounted.push(el);
+    await act(async () => { findButton(el, "Save").click(); });
+    const built = onSave.mock.calls[0][0] as Policy;
+    expect(built.methods).toEqual({ "*": ["GET", "HEAD"] });
+    expect(built.allow_upstreams).not.toContain("*"); // not a bogus allowed host
+  });
+
   it("the Save button reads 'Rename & save' once a saved policy's name is edited", () => {
     const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} isSaved onSave={noopSave} onDelete={noopDelete} />);
     mounted.push(el);

@@ -31,6 +31,29 @@ func TestPolicy_Decide(t *testing.T) {
 	}
 }
 
+func TestPolicy_GlobalMethodRule(t *testing.T) {
+	// A "*" catch-all restricts methods on every host; a specific host rule wins.
+	p := &Policy{
+		AllowUpstreams: []string{".example.com", "api.github.com"},
+		Methods:        map[string][]string{"*": {"GET", "HEAD"}, "api.github.com": {"GET", "POST"}},
+	}
+	cases := []struct {
+		host, method string
+		allow        bool
+	}{
+		{"read.example.com", "GET", true},     // catch-all allows GET
+		{"read.example.com", "HEAD", true},    // catch-all allows HEAD
+		{"read.example.com", "POST", false},   // catch-all denies POST
+		{"api.github.com", "POST", true},      // specific rule overrides the catch-all
+		{"read.example.com", "CONNECT", true}, // CONNECT bypasses method rules (encrypted)
+	}
+	for _, c := range cases {
+		if got, reason := p.Decide(c.host, c.method); got != c.allow {
+			t.Errorf("Decide(%q,%q) = %v (%q), want %v", c.host, c.method, got, reason, c.allow)
+		}
+	}
+}
+
 func TestPolicy_EmptyAndNilAllowAll(t *testing.T) {
 	var nilP *Policy
 	if allow, _ := nilP.Decide("anything.com", "DELETE"); !allow {

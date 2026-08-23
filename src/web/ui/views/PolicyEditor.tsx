@@ -126,7 +126,9 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
   // Assemble the (unsaved) policy from the builder rows — shared by save + dry-run.
   const draft = (): Policy => {
-    const allow_upstreams = allows.map((r) => r.host.trim()).filter(Boolean);
+    // "*" is a methods-only catch-all (all hosts), never an allowed host — keeping
+    // it out of allow_upstreams avoids a bogus default-deny-everything.
+    const allow_upstreams = allows.map((r) => r.host.trim()).filter((h) => h && h !== "*");
     const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
     const methods: Record<string, string[]> = {};
     for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
