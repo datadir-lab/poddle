@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
@@ -94,14 +95,22 @@ func TestForwardProxy_InterceptEnforcesMethodOnHTTPS(t *testing.T) {
 	io.Copy(io.Discard, rg.Body)
 	rg.Body.Close()
 
-	// The audit shows a method-denied POST and a permitted GET.
+	// The audit shows a method-denied POST and a permitted GET. The proxy emits
+	// each record on its own goroutine after writing the response, so wait for
+	// both decisions to land rather than racing the emit (which -race exposes).
 	var sawDeny, sawAllow bool
-	for _, rec := range aud.all() {
-		switch {
-		case rec.Method == http.MethodPost && rec.Decision == "deny":
-			sawDeny = true
-		case rec.Method == http.MethodGet && rec.Decision == "allow":
-			sawAllow = true
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		sawDeny, sawAllow = false, false
+		for _, rec := range aud.all() {
+			switch {
+			case rec.Method == http.MethodPost && rec.Decision == "deny":
+				sawDeny = true
+			case rec.Method == http.MethodGet && rec.Decision == "allow":
+				sawAllow = true
+			}
+		}
+		if sawDeny && sawAllow {
+			break
 		}
 	}
 	if !sawDeny {
