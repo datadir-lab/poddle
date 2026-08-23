@@ -100,7 +100,7 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
   const [egress, setEgress] = useState(policy.egress || "redact");
   const [monitor, setMonitor] = useState(!!policy.monitor);
-  const [intercept, setIntercept] = useState(!!policy.intercept);
+  const [intercept, setIntercept] = useState(!!policy.intercept || (policy.intercept_hosts?.length ?? 0) > 0);
   const [interceptHosts, setInterceptHosts] = useState<string[]>(policy.intercept_hosts || []);
   const [err, setErr] = useState("");
   const [probeHost, setProbeHost] = useState("");
@@ -108,7 +108,8 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
   useEffect(() => {
     setName(policy.name); setDesc(policy.description || ""); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
-    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor); setIntercept(!!policy.intercept);
+    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor);
+    setIntercept(!!policy.intercept || (policy.intercept_hosts?.length ?? 0) > 0);
     setInterceptHosts(policy.intercept_hosts || []); setErr("");
   }, [policy]);
 
@@ -137,7 +138,7 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     setDenies(t.policy.deny_upstreams || []);
     setEgress(t.policy.egress || "redact");
     setMonitor(!!t.policy.monitor);
-    setIntercept(!!t.policy.intercept);
+    setIntercept(!!t.policy.intercept || (t.policy.intercept_hosts?.length ?? 0) > 0);
     setInterceptHosts(t.policy.intercept_hosts || []);
     setErr("");
   };

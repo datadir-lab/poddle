@@ -1553,9 +1553,9 @@ function he(e) {
 	}), t;
 }
 function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
-	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept), [L, R] = a(t.intercept_hosts || []), [z, B] = a(""), [V, ee] = a(""), [H, te] = a("GET");
+	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), [L, R] = a(t.intercept_hosts || []), [z, B] = a(""), [V, ee] = a(""), [H, te] = a("GET");
 	n(() => {
-		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept), R(t.intercept_hosts || []), B("");
+		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), R(t.intercept_hosts || []), B("");
 	}, [t]);
 	let U = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
@@ -1571,7 +1571,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 		b(e.id), w(p({
 			name: e.id,
 			...e.policy
-		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept), R(e.policy.intercept_hosts || []), B("");
+		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept || (e.policy.intercept_hosts?.length ?? 0) > 0), R(e.policy.intercept_hosts || []), B("");
 	}, q = () => {
 		let e = C.map((e) => e.host.trim()).filter((e) => e && e !== "*"), t = T.map((e) => e.trim()).filter(Boolean), n = {};
 		for (let e of C) {
