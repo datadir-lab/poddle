@@ -124,6 +124,19 @@ func (d *Daemon) Intercepts(handle string) bool {
 	return pol != nil && pol.Intercept
 }
 
+// EgressMode implements broker.EgressModer: the pod policy's egress redaction
+// mode ("redact" | "block" | "off"), empty when the pod names no policy — so an
+// intercepting pod's HTTPS request bodies are scrubbed per its policy.
+func (d *Daemon) EgressMode(handle string) string {
+	d.mu.Lock()
+	pol := d.podPolicy[d.handlePod[handle]]
+	d.mu.Unlock()
+	if pol == nil {
+		return ""
+	}
+	return pol.Egress
+}
+
 // rec appends a sanitised audit event if auditing is on.
 func (d *Daemon) rec(e audit.Event) {
 	if d.audit != nil {

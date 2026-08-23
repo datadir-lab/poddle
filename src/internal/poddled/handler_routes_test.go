@@ -259,6 +259,18 @@ func TestDaemon_Intercepts(t *testing.T) {
 	}
 }
 
+func TestDaemon_EgressMode(t *testing.T) {
+	d := New(&fakeBroker{}, nil)
+	if got := d.EgressMode("nope"); got != "" {
+		t.Errorf("unknown handle egress mode = %q, want empty", got)
+	}
+	d.handlePod["h1"] = "box"
+	d.podPolicy["box"] = &policy.Policy{Name: "ro", Egress: "block"}
+	if got := d.EgressMode("h1"); got != "block" {
+		t.Errorf("egress mode = %q, want block", got)
+	}
+}
+
 func TestDaemon_Resolve(t *testing.T) {
 	d := New(&fakeBroker{}, nil)
 	target, err := d.Resolve("some-handle")
