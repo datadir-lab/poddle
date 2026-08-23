@@ -978,6 +978,18 @@ test("policies: per-host interception saves intercept_hosts", async ({ page }) =
   await expect.poll(() => saved?.intercept_hosts).toContain("api.internal.com");
 });
 
+test("pod activity: create policy from this pod seeds the editor", async ({ page }) => {
+  await mockPods(page);
+  await mockAudit(page); // agent1 reached api.anthropic.com with decisions allow + redact
+  await page.goto("/pods/agent1");
+
+  await page.getByRole("button", { name: /Create policy from this pod/i }).click();
+
+  // The suggestion hands off to the new-policy editor, seeded with the reached host.
+  await expect(page).toHaveURL(/\/policies\/new$/);
+  await expect(page.locator("input[aria-label='Allowed host']").first()).toHaveValue("api.anthropic.com");
+});
+
 test("pod controls: Cancel dismisses a confirm without mutating", async ({ page }) => {
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
     { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
