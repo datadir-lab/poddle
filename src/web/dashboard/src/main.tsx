@@ -106,6 +106,11 @@ function navigate(to: string) {
   dispatchEvent(new PopStateEvent("popstate")); // notify useRoute subscribers
 }
 
+// A pod's "create policy from this pod" hands a suggested policy across the
+// navigation to the (freshly mounted) policy view via this one-shot stash.
+let pendingSeed: Policy | null = null;
+const takeSeed = (): Policy | null => { const s = pendingSeed; pendingSeed = null; return s; };
+
 // linkTo intercepts a plain-left-click on an <a> for SPA nav while keeping the
 // href real (so middle-click / ⌘-click open a new tab, and the status bar shows
 // the target).
@@ -364,7 +369,7 @@ function PolicyView({ selected, events }: { selected?: string; events: Event[] }
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
   const [def, setDef] = useState<string>(""); // the default policy name ("" = none)
-  const [seed, setSeed] = useState<Policy | null>(null); // a Duplicate pre-fills the blank editor
+  const [seed, setSeed] = useState<Policy | null>(takeSeed); // Duplicate or a pod suggestion pre-fills the blank editor
   const { pods } = usePods();
   const load = () => api.policies().then((ps) => setPolicies(asArray<Policy>(ps))).catch(() => setPolicies([])).finally(() => setLoading(false));
   const loadDefault = () => api.defaultPolicy().then((d) => setDef((d && d.name) || "")).catch(() => {});
@@ -546,7 +551,8 @@ function PodDetailView({ name, events, loading }: { name: string; events: Event[
     <PodDetailPanel name={name} pod={pod} hist={h} events={events} loading={loading}
       backHref="/pods" onBack={linkTo("/pods")}
       policyHref={policyHref} onPolicyClick={policyHref ? linkTo(policyHref) : undefined}
-      controls={controls} />
+      controls={controls}
+      onSuggestPolicy={(p) => { pendingSeed = p; navigate("/policies/new"); }} />
   );
 }
 

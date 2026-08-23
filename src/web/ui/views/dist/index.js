@@ -721,7 +721,7 @@ function R({ events: e }) {
 }
 //#endregion
 //#region views/PostureBar.tsx
-function z({ counts: e }) {
+function ee({ counts: e }) {
 	let t = S.reduce((t, n) => t + (e[n.key] || 0), 0);
 	if (t === 0) return /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -770,7 +770,7 @@ function z({ counts: e }) {
 }
 //#endregion
 //#region views/FleetLoad.tsx
-function B({ pods: e }) {
+function z({ pods: e }) {
 	let t = e.filter((e) => e.state === "running");
 	return t.length === 0 ? /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -811,7 +811,7 @@ function B({ pods: e }) {
 }
 //#endregion
 //#region views/MixBar.tsx
-function V({ d: e }) {
+function B({ d: e }) {
 	let t = [
 		["allow", e.allow],
 		["redact", e.redact],
@@ -831,7 +831,7 @@ function V({ d: e }) {
 }
 //#endregion
 //#region views/Skeletons.tsx
-function ee() {
+function te() {
 	return /* @__PURE__ */ O("div", {
 		class: "cards",
 		"aria-hidden": "true",
@@ -846,7 +846,7 @@ function ee() {
 		}, e))
 	});
 }
-function H({ rows: e = 6 }) {
+function V({ rows: e = 6 }) {
 	return /* @__PURE__ */ O("div", {
 		class: "table-wrap skel-table",
 		"aria-hidden": "true",
@@ -859,7 +859,7 @@ function H({ rows: e = 6 }) {
 }
 //#endregion
 //#region views/LiveDot.tsx
-function te({ status: e }) {
+function ne({ status: e }) {
 	let t = e === "live" ? "Live" : e === "down" ? "Reconnecting" : "Connecting";
 	return /* @__PURE__ */ O("span", {
 		class: "live live--" + e,
@@ -873,12 +873,12 @@ function te({ status: e }) {
 }
 //#endregion
 //#region views/Fact.tsx
-function U({ label: e, children: t }) {
+function H({ label: e, children: t }) {
 	return /* @__PURE__ */ O("div", { children: [/* @__PURE__ */ O("dt", { children: e }), /* @__PURE__ */ O("dd", { children: t })] });
 }
 //#endregion
 //#region views/csv.ts
-function W(e, t) {
+function re(e, t) {
 	let n = t?.multiHost ? [
 		"seq",
 		"time",
@@ -906,13 +906,13 @@ function W(e, t) {
 	}, i = e.map((e) => n.map((t) => r(e[t])).join(","));
 	return [n.join(","), ...i].join("\n");
 }
-function ne(e, t, n) {
-	let r = new Blob([W(t, n)], { type: "text/csv;charset=utf-8" }), i = URL.createObjectURL(r), a = document.createElement("a");
+function ie(e, t, n) {
+	let r = new Blob([re(t, n)], { type: "text/csv;charset=utf-8" }), i = URL.createObjectURL(r), a = document.createElement("a");
 	a.href = i, a.download = e, document.body.appendChild(a), a.click(), a.remove(), setTimeout(() => URL.revokeObjectURL(i), 0);
 }
 //#endregion
 //#region views/AuditLogTable.tsx
-var re = [
+var ae = [
 	{
 		value: "",
 		label: "All"
@@ -943,7 +943,7 @@ var re = [
 		tone: "monitor"
 	}
 ];
-function ie({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
+function oe({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 	let [u, d] = a(t || i || ""), [f, p] = a(""), [m, h] = a("");
 	n(() => {
 		t ? d(t) : i && d(i);
@@ -965,7 +965,7 @@ function ie({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 		};
 		for (let t of g) t.decision && t.decision in e && e[t.decision]++;
 		return e;
-	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = re.map((e) => ({
+	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = ae.map((e) => ({
 		...e,
 		badge: y[e.value] ?? 0
 	})), C = e.some((e) => e.source), w = /* @__PURE__ */ O("div", {
@@ -995,7 +995,7 @@ function ie({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 				class: "btn btn--ghost btn--sm",
 				disabled: !x.length,
 				onClick: () => {
-					ne("poddle-audit.csv", x, { multiHost: C }), l?.(x);
+					ie("poddle-audit.csv", x, { multiHost: C }), l?.(x);
 				},
 				children: "Export CSV"
 			}),
@@ -1005,7 +1005,7 @@ function ie({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 			})
 		]
 	});
-	return o ? /* @__PURE__ */ O("div", { children: [w, /* @__PURE__ */ O(H, { rows: 8 })] }) : /* @__PURE__ */ O("div", { children: [w, /* @__PURE__ */ O("div", {
+	return o ? /* @__PURE__ */ O("div", { children: [w, /* @__PURE__ */ O(V, { rows: 8 })] }) : /* @__PURE__ */ O("div", { children: [w, /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", {
 			class: "dense",
@@ -1084,7 +1084,7 @@ function ie({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 }
 //#endregion
 //#region views/PodFleetTable.tsx
-function ae({ pods: e, hist: t, onPod: n, emptyState: r }) {
+function se({ pods: e, hist: t, onPod: n, emptyState: r }) {
 	return /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", { children: [/* @__PURE__ */ O("thead", { children: /* @__PURE__ */ O("tr", { children: [
@@ -1182,8 +1182,183 @@ function ae({ pods: e, hist: t, onPod: n, emptyState: r }) {
 	});
 }
 //#endregion
+//#region views/activity.ts
+var U = [
+	{
+		key: "model",
+		label: "Model API",
+		patterns: [
+			"api.anthropic.com",
+			"api.openai.com",
+			".googleapis.com"
+		]
+	},
+	{
+		key: "registry",
+		label: "Package registry",
+		patterns: [
+			".pypi.org",
+			".pythonhosted.org",
+			".npmjs.org",
+			".crates.io",
+			".rubygems.org"
+		]
+	},
+	{
+		key: "source",
+		label: "Source control",
+		patterns: [
+			".github.com",
+			".gitlab.com",
+			".bitbucket.org"
+		]
+	},
+	{
+		key: "artifact",
+		label: "Artifact/container",
+		patterns: [
+			"ghcr.io",
+			".docker.io",
+			".docker.com"
+		]
+	},
+	{
+		key: "metadata",
+		label: "Cloud metadata",
+		patterns: ["169.254.169.254", "metadata.google.internal"]
+	},
+	{
+		key: "telemetry",
+		label: "Telemetry",
+		patterns: [
+			".segment.io",
+			".sentry.io",
+			".datadoghq.com"
+		]
+	}
+];
+function W(e) {
+	for (let t of U) if (l(e, t.patterns)) return t.key;
+	return "other";
+}
+function G(e) {
+	let t = (e) => e === "other" ? "Other" : U.find((t) => t.key === e)?.label ?? "Other", n = /* @__PURE__ */ new Map();
+	for (let r of e) {
+		if (r.kind !== "request" || !r.upstream) continue;
+		let e = W(r.upstream), i = n.get(e) ?? {
+			key: e,
+			label: t(e),
+			total: 0,
+			hosts: [],
+			methods: [],
+			allow: 0,
+			redact: 0,
+			deny: 0,
+			block: 0,
+			_hosts: /* @__PURE__ */ new Set(),
+			_methods: /* @__PURE__ */ new Set()
+		};
+		i.total++, i._hosts.add(r.upstream), r.method && i._methods.add(r.method.toUpperCase()), r.decision === "allow" ? i.allow++ : r.decision === "redact" ? i.redact++ : r.decision === "deny" ? i.deny++ : r.decision === "block" && i.block++, n.set(e, i);
+	}
+	return [...n.values()].map((e) => ({
+		key: e.key,
+		label: e.label,
+		total: e.total,
+		hosts: [...e._hosts].sort(),
+		methods: [...e._methods].sort(),
+		allow: e.allow,
+		redact: e.redact,
+		deny: e.deny,
+		block: e.block
+	})).sort((e, t) => e.key === "other" ? 1 : t.key === "other" ? -1 : t.total - e.total);
+}
+function K(e, t) {
+	let n = /* @__PURE__ */ new Set(), r = /* @__PURE__ */ new Map();
+	for (let t of e) if (!(t.kind !== "request" || !t.upstream) && (t.decision === "allow" || t.decision === "redact") && (n.add(t.upstream), t.method)) {
+		let e = r.get(t.upstream) ?? /* @__PURE__ */ new Set();
+		e.add(t.method.toUpperCase()), r.set(t.upstream, e);
+	}
+	let i = {};
+	for (let [e, t] of r) t.size && (i[e] = [...t].sort());
+	return {
+		name: t,
+		allow_upstreams: [...n].sort(),
+		deny_upstreams: ["169.254.169.254", "metadata.google.internal"],
+		methods: Object.keys(i).length ? i : void 0,
+		egress: "redact"
+	};
+}
+//#endregion
+//#region views/ActivityProfile.tsx
+function q({ podName: e, events: t, onSuggestPolicy: n }) {
+	let i = r(() => G(t), [t]), a = r(() => i.filter((e) => e.deny + e.block > 0), [i]);
+	return i.length === 0 ? /* @__PURE__ */ O("section", {
+		class: "activity",
+		children: [/* @__PURE__ */ O("h2", {
+			class: "detail-sub",
+			children: "Activity"
+		}), /* @__PURE__ */ O("p", {
+			class: "rules__empty",
+			children: "No egress recorded for this pod yet."
+		})]
+	}) : /* @__PURE__ */ O("section", {
+		class: "activity",
+		children: [
+			/* @__PURE__ */ O("div", {
+				class: "activity__head",
+				children: [/* @__PURE__ */ O("h2", {
+					class: "detail-sub",
+					children: "Activity"
+				}), /* @__PURE__ */ O("button", {
+					type: "button",
+					class: "btn",
+					onClick: () => n(K(t, e + "-policy")),
+					children: "Create policy from this pod"
+				})]
+			}),
+			/* @__PURE__ */ O("ul", {
+				class: "activity__cats",
+				children: i.map((e) => /* @__PURE__ */ O("li", {
+					class: "activity__cat",
+					children: [
+						/* @__PURE__ */ O("span", {
+							class: "activity__label",
+							children: e.label
+						}),
+						/* @__PURE__ */ O("span", {
+							class: "activity__hosts c-mono",
+							children: e.hosts.join(", ")
+						}),
+						/* @__PURE__ */ O("span", {
+							class: "activity__methods c-mono",
+							children: e.methods.length ? e.methods.join(" ") : "— tunnelled"
+						}),
+						/* @__PURE__ */ O("span", {
+							class: "activity__chips",
+							children: [
+								e.allow > 0 && /* @__PURE__ */ O(P, { decision: "allow" }),
+								e.redact > 0 && /* @__PURE__ */ O(P, { decision: "redact" }),
+								e.deny > 0 && /* @__PURE__ */ O(P, { decision: "deny" }),
+								e.block > 0 && /* @__PURE__ */ O(P, { decision: "block" })
+							]
+						}),
+						/* @__PURE__ */ O("span", {
+							class: "activity__n",
+							children: e.total
+						})
+					]
+				}, e.key))
+			}),
+			a.length > 0 && /* @__PURE__ */ O("p", {
+				class: "activity__note",
+				children: "Blocked attempts are shown above but are not added to the suggested policy."
+			})
+		]
+	});
+}
+//#endregion
 //#region views/PodDetailPanel.tsx
-function oe({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBack: s, policyHref: c, onPolicyClick: l, controls: u }) {
+function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBack: s, policyHref: c, onPolicyClick: l, controls: u, onSuggestPolicy: d }) {
 	return /* @__PURE__ */ O("div", { children: [
 		/* @__PURE__ */ O("div", {
 			class: "detail-head",
@@ -1214,21 +1389,21 @@ function oe({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 		n && /* @__PURE__ */ O("dl", {
 			class: "facts",
 			children: [
-				/* @__PURE__ */ O(U, {
+				/* @__PURE__ */ O(H, {
 					label: "size",
 					children: /* @__PURE__ */ O("span", {
 						class: "c-mono",
 						children: _(n.size)
 					})
 				}),
-				/* @__PURE__ */ O(U, {
+				/* @__PURE__ */ O(H, {
 					label: "mode",
 					children: /* @__PURE__ */ O("span", {
 						class: "c-mono",
 						children: n.mode ? _(n.mode) : "—"
 					})
 				}),
-				/* @__PURE__ */ O(U, {
+				/* @__PURE__ */ O(H, {
 					label: "policy",
 					children: n.policy ? /* @__PURE__ */ O("a", {
 						class: "fact-link c-mono",
@@ -1240,7 +1415,7 @@ function oe({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 						children: "none"
 					})
 				}),
-				/* @__PURE__ */ O(U, {
+				/* @__PURE__ */ O(H, {
 					label: "cpu",
 					children: /* @__PURE__ */ O("span", {
 						class: "perf-inline",
@@ -1250,7 +1425,7 @@ function oe({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 						})]
 					})
 				}),
-				/* @__PURE__ */ O(U, {
+				/* @__PURE__ */ O(H, {
 					label: "memory",
 					children: /* @__PURE__ */ O("span", {
 						class: "perf-inline",
@@ -1266,11 +1441,16 @@ function oe({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 			class: "section-title",
 			children: "Controls"
 		}), u] }),
+		d && /* @__PURE__ */ O(q, {
+			podName: t,
+			events: i.filter((e) => e.pod === t),
+			onSuggestPolicy: d
+		}),
 		/* @__PURE__ */ O("h2", {
 			class: "section-title",
 			children: "Audit trail"
 		}),
-		/* @__PURE__ */ O(ie, {
+		/* @__PURE__ */ O(oe, {
 			events: i,
 			initialPod: t,
 			loading: a
@@ -1279,7 +1459,7 @@ function oe({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 }
 //#endregion
 //#region views/OverviewCards.tsx
-function se({ stats: e }) {
+function le({ stats: e }) {
 	return /* @__PURE__ */ O("div", {
 		class: "cards",
 		children: [
@@ -1310,7 +1490,7 @@ function se({ stats: e }) {
 }
 //#endregion
 //#region views/AttentionPanel.tsx
-function ce({ attention: t, onPod: n }) {
+function ue({ attention: t, onPod: n }) {
 	return /* @__PURE__ */ O(e, { children: [/* @__PURE__ */ O("h2", {
 		class: "section-title",
 		children: "Attention"
@@ -1345,7 +1525,7 @@ function ce({ attention: t, onPod: n }) {
 }
 //#endregion
 //#region views/RedactionsTable.tsx
-function le({ redactions: t, onPod: n }) {
+function J({ redactions: t, onPod: n }) {
 	return /* @__PURE__ */ O(e, { children: [/* @__PURE__ */ O("h2", {
 		class: "section-title",
 		children: "Secrets redacted"
@@ -1387,7 +1567,7 @@ function le({ redactions: t, onPod: n }) {
 }
 //#endregion
 //#region views/PolicyList.tsx
-function G({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
+function de({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
 	return /* @__PURE__ */ O("div", {
 		class: "list",
 		children: [n ? [
@@ -1431,8 +1611,8 @@ function G({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, new
 }
 //#endregion
 //#region views/DestinationsTable.tsx
-function ue({ dests: e, loading: t, onSelect: n }) {
-	return t ? /* @__PURE__ */ O(H, { rows: 6 }) : /* @__PURE__ */ O("div", {
+function Y({ dests: e, loading: t, onSelect: n }) {
+	return t ? /* @__PURE__ */ O(V, { rows: 6 }) : /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", { children: [/* @__PURE__ */ O("thead", { children: /* @__PURE__ */ O("tr", { children: [
 			/* @__PURE__ */ O("th", {
@@ -1480,7 +1660,7 @@ function ue({ dests: e, loading: t, onSelect: n }) {
 					class: "num c-mono",
 					children: e.total
 				}),
-				/* @__PURE__ */ O("td", { children: /* @__PURE__ */ O(V, { d: e }) }),
+				/* @__PURE__ */ O("td", { children: /* @__PURE__ */ O(B, { d: e }) }),
 				/* @__PURE__ */ O("td", {
 					class: "num c-mono",
 					title: [...e.pods].join(", "),
@@ -1499,7 +1679,7 @@ function ue({ dests: e, loading: t, onSelect: n }) {
 }
 //#endregion
 //#region views/PolicyEditor.tsx
-var de = [
+var fe = [
 	{
 		value: "redact",
 		label: "Redact",
@@ -1515,27 +1695,27 @@ var de = [
 		label: "Off",
 		tone: "faint"
 	}
-], fe = [{
+], pe = [{
 	value: "enforce",
 	label: "Enforce"
 }, {
 	value: "monitor",
 	label: "Monitor",
 	tone: "monitor"
-}], pe = [{
+}], me = [{
 	value: "tunnel",
 	label: "Tunnel"
 }, {
 	value: "intercept",
 	label: "Intercept",
 	tone: "monitor"
-}], me = ["169.254.169.254", "metadata.google.internal"];
-function he(e) {
+}], he = ["169.254.169.254", "metadata.google.internal"];
+function ge(e) {
 	let t = [], n = e.allow_upstreams || [], r = e.deny_upstreams || [], i = e.methods || {}, a = n.length === 0;
 	if (a && e.egress !== "block" && t.push({
 		level: "warn",
 		msg: "No allowed destinations, so every host is reachable. Add destinations, or set egress to Block."
-	}), me.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
+	}), he.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
 		level: "warn",
 		msg: "Cloud metadata endpoints are reachable — a common credential-theft target.",
 		fix: "block-metadata"
@@ -1552,27 +1732,27 @@ function he(e) {
 		msg: "Secret scanning is off — outbound secrets are sent as-is, not redacted."
 	}), t;
 }
-function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
-	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), [L, R] = a(t.intercept_hosts || []), [z, B] = a(""), [V, ee] = a(""), [H, te] = a("GET");
+function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
+	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), [L, R] = a(t.intercept_hosts || []), [ee, z] = a(""), [B, te] = a(""), [V, ne] = a("GET");
 	n(() => {
-		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), R(t.intercept_hosts || []), B("");
+		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), R(t.intercept_hosts || []), z("");
 	}, [t]);
-	let U = (e, t) => w((n) => n.map((n, r) => r === e ? {
+	let H = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
 		...t
-	} : n)), W = (e, t) => w((n) => n.map((n, r) => r === e ? {
+	} : n)), re = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
 		methods: n.methods.includes(t) ? n.methods.filter((e) => e !== t) : [...n.methods, t]
-	} : n)), ne = () => w((e) => [...e, {
+	} : n)), ie = () => w((e) => [...e, {
 		host: "",
 		methods: [],
 		open: !1
-	}]), re = (e) => w((t) => t.filter((t, n) => n !== e)), ie = (e, t) => E((n) => n.map((n, r) => r === e ? t : n)), ae = () => E((e) => [...e, ""]), oe = (e) => E((t) => t.filter((t, n) => n !== e)), se = (e, t) => R((n) => n.map((n, r) => r === e ? t : n)), ce = () => R((e) => [...e, ""]), le = (e) => R((t) => t.filter((t, n) => n !== e)), G = h ?? !!t.name, ue = !G, K = !y && C.length === 0 && T.length === 0, ge = (e) => {
+	}]), ae = (e) => w((t) => t.filter((t, n) => n !== e)), oe = (e, t) => E((n) => n.map((n, r) => r === e ? t : n)), se = () => E((e) => [...e, ""]), U = (e) => E((t) => t.filter((t, n) => n !== e)), W = (e, t) => R((n) => n.map((n, r) => r === e ? t : n)), G = () => R((e) => [...e, ""]), K = (e) => R((t) => t.filter((t, n) => n !== e)), q = h ?? !!t.name, ce = !q, le = !y && C.length === 0 && T.length === 0, ue = (e) => {
 		b(e.id), w(p({
 			name: e.id,
 			...e.policy
-		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept || (e.policy.intercept_hosts?.length ?? 0) > 0), R(e.policy.intercept_hosts || []), B("");
-	}, q = () => {
+		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept || (e.policy.intercept_hosts?.length ?? 0) > 0), R(e.policy.intercept_hosts || []), z("");
+	}, J = () => {
 		let e = C.map((e) => e.host.trim()).filter((e) => e && e !== "*"), t = T.map((e) => e.trim()).filter(Boolean), n = {};
 		for (let e of C) {
 			let t = e.host.trim();
@@ -1590,21 +1770,21 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 			intercept: F && r.length === 0 ? !0 : void 0,
 			intercept_hosts: F && r.length ? r : void 0
 		};
-	}, J = r(() => he(q()), [
+	}, de = r(() => ge(J()), [
 		C,
 		T,
 		D
-	]), Y = r(() => V.trim() ? d(q(), V.trim(), H) : null, [
+	]), Y = r(() => B.trim() ? d(J(), B.trim(), V) : null, [
+		B,
 		V,
-		H,
 		C,
 		T,
 		D
-	]), _e = () => E((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...me])]), X = s.length > 0, Z = r(() => X ? i.filter((e) => e.pod && s.includes(e.pod)) : i, [
+	]), _e = () => E((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...he])]), X = s.length > 0, Z = r(() => X ? i.filter((e) => e.pod && s.includes(e.pod)) : i, [
 		i,
 		s,
 		X
-	]), Q = r(() => f(q(), Z), [
+	]), Q = r(() => f(J(), Z), [
 		y,
 		C,
 		T,
@@ -1614,7 +1794,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 	return /* @__PURE__ */ O("div", {
 		class: "editor",
 		children: [
-			ue && K && m && m.length > 0 && /* @__PURE__ */ O("div", {
+			ce && le && m && m.length > 0 && /* @__PURE__ */ O("div", {
 				class: "templates",
 				children: [
 					/* @__PURE__ */ O("div", {
@@ -1626,7 +1806,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						children: m.map((e) => /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "tmpl",
-							onClick: () => ge(e),
+							onClick: () => ue(e),
 							children: [/* @__PURE__ */ O("span", {
 								class: "tmpl__name",
 								children: e.label
@@ -1655,7 +1835,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					class: "narrow",
 					children: [/* @__PURE__ */ O("label", { children: "Egress mode" }), /* @__PURE__ */ O(N, {
 						value: D,
-						options: de,
+						options: fe,
 						onChange: k,
 						ariaLabel: "egress mode"
 					})]
@@ -1680,7 +1860,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 			})] }),
 			/* @__PURE__ */ O(N, {
 				value: A ? "monitor" : "enforce",
-				options: fe,
+				options: pe,
 				onChange: (e) => M(e === "monitor"),
 				ariaLabel: "enforcement mode"
 			}),
@@ -1690,7 +1870,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 			})] }),
 			/* @__PURE__ */ O(N, {
 				value: F ? "intercept" : "tunnel",
-				options: pe,
+				options: me,
 				onChange: (e) => I(e === "intercept"),
 				ariaLabel: "https egress mode"
 			}),
@@ -1711,12 +1891,12 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 								value: e,
 								placeholder: "api.internal.com",
 								"aria-label": "Intercepted host",
-								onInput: (e) => se(t, e.target.value)
+								onInput: (e) => W(t, e.target.value)
 							}), /* @__PURE__ */ O("button", {
 								type: "button",
 								class: "rule__rm",
 								"aria-label": "Remove intercepted host",
-								onClick: () => le(t),
+								onClick: () => K(t),
 								children: "×"
 							})]
 						})
@@ -1724,14 +1904,14 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					/* @__PURE__ */ O("button", {
 						type: "button",
 						class: "addrow",
-						onClick: ce,
+						onClick: G,
 						children: "＋ Add intercepted host"
 					})
 				]
 			}),
-			!K && J.length > 0 && /* @__PURE__ */ O("div", {
+			!le && de.length > 0 && /* @__PURE__ */ O("div", {
 				class: "advisories",
-				children: J.map((e, t) => /* @__PURE__ */ O("div", {
+				children: de.map((e, t) => /* @__PURE__ */ O("div", {
 					class: "advisory advisory--" + e.level,
 					children: [
 						/* @__PURE__ */ O("span", {
@@ -1776,25 +1956,25 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 									value: e.host,
 									placeholder: "api.example.com",
 									"aria-label": "Allowed host",
-									onInput: (e) => U(t, { host: e.target.value })
+									onInput: (e) => H(t, { host: e.target.value })
 								}),
 								!e.open && (e.methods.length ? /* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__msum",
 									title: "Limited to " + e.methods.join(", ") + " — click to edit",
-									onClick: () => U(t, { open: !0 }),
+									onClick: () => H(t, { open: !0 }),
 									children: e.methods.length > 3 ? e.methods.length + " methods" : e.methods.join(", ")
 								}) : /* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__limit",
-									onClick: () => U(t, { open: !0 }),
+									onClick: () => H(t, { open: !0 }),
 									children: "＋ limit methods"
 								})),
 								/* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__rm",
 									"aria-label": "Remove destination",
-									onClick: () => re(t),
+									onClick: () => ae(t),
 									children: "×"
 								})
 							]
@@ -1809,19 +1989,19 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 									type: "button",
 									class: "mchip" + (e.methods.includes(n) ? " on" : ""),
 									"aria-pressed": e.methods.includes(n),
-									onClick: () => W(t, n),
+									onClick: () => re(t, n),
 									children: n
 								}, n)),
 								/* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__mdone",
-									onClick: () => U(t, { open: !1 }),
+									onClick: () => H(t, { open: !1 }),
 									children: "Done"
 								}),
 								e.methods.length > 0 && /* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__mclear",
-									onClick: () => U(t, {
+									onClick: () => H(t, {
 										methods: [],
 										open: !1
 									}),
@@ -1833,7 +2013,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					/* @__PURE__ */ O("button", {
 						type: "button",
 						class: "addrow",
-						onClick: ne,
+						onClick: ie,
 						children: "＋ Add destination"
 					})
 				]
@@ -1853,19 +2033,19 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 							value: e,
 							placeholder: "metadata.google.internal",
 							"aria-label": "Blocked host",
-							onInput: (e) => ie(t, e.target.value)
+							onInput: (e) => oe(t, e.target.value)
 						}), /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "rule__rm",
 							"aria-label": "Remove blocked host",
-							onClick: () => oe(t),
+							onClick: () => U(t),
 							children: "×"
 						})]
 					})
 				}, t)), /* @__PURE__ */ O("button", {
 					type: "button",
 					class: "addrow",
-					onClick: ae,
+					onClick: se,
 					children: "＋ Add blocked host"
 				})]
 			}),
@@ -1965,10 +2145,10 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						class: "rollout__enforce",
 						onClick: async () => {
 							let e = await c({
-								...q(),
+								...J(),
 								monitor: void 0
 							});
-							e.ok ? M(!1) : B(e.error || "Save failed");
+							e.ok ? M(!1) : z(e.error || "Save failed");
 						},
 						children: "Enforce now"
 					})
@@ -1985,17 +2165,17 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						class: "probe__row",
 						children: [/* @__PURE__ */ O("input", {
 							class: "probe__host",
-							value: V,
+							value: B,
 							placeholder: "host, e.g. api.github.com",
 							"aria-label": "Test request host",
-							onInput: (e) => ee(e.target.value)
+							onInput: (e) => te(e.target.value)
 						}), /* @__PURE__ */ O(N, {
-							value: H,
+							value: V,
 							options: o.map((e) => ({
 								value: e,
 								label: e
 							})),
-							onChange: te,
+							onChange: ne,
 							ariaLabel: "test request method"
 						})]
 					}),
@@ -2009,9 +2189,9 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					})
 				]
 			}),
-			z && /* @__PURE__ */ O("div", {
+			ee && /* @__PURE__ */ O("div", {
 				class: "err",
-				children: z
+				children: ee
 			}),
 			/* @__PURE__ */ O("div", {
 				class: "actions",
@@ -2020,28 +2200,28 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						class: "btn btn--primary",
 						onClick: async () => {
 							if (!y.trim()) {
-								B("Name is required.");
+								z("Name is required.");
 								return;
 							}
-							let e = await c(q());
-							e.ok || B(e.error || "Save failed");
+							let e = await c(J());
+							e.ok || z(e.error || "Save failed");
 						},
-						children: G && y.trim() && y.trim() !== t.name ? "Rename & save" : "Save"
+						children: q && y.trim() && y.trim() !== t.name ? "Rename & save" : "Save"
 					}),
-					G && /* @__PURE__ */ O("button", {
+					q && /* @__PURE__ */ O("button", {
 						class: "btn btn--danger",
 						onClick: async () => {
 							await l();
 						},
 						children: "Delete"
 					}),
-					G && v && /* @__PURE__ */ O("button", {
+					q && v && /* @__PURE__ */ O("button", {
 						type: "button",
 						class: "btn btn--ghost",
-						onClick: () => v(q()),
+						onClick: () => v(J()),
 						children: "Duplicate"
 					}),
-					G && _ && /* @__PURE__ */ O("button", {
+					q && _ && /* @__PURE__ */ O("button", {
 						type: "button",
 						class: "btn btn--ghost btn--default" + (g ? " is-default" : ""),
 						title: g ? "This policy is applied to pods started with no --policy. Click to clear." : "Apply this policy to any pod started with no --policy.",
@@ -2069,7 +2249,7 @@ function K({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 }
 //#endregion
 //#region views/PodControls.tsx
-function ge({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
+function X({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 	let [s, c] = a(null), [l, u] = a(!1), [d, f] = a(null), p = async (e) => {
 		u(!0);
 		let t = await r(e);
@@ -2166,7 +2346,7 @@ function ge({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 }
 //#endregion
 //#region views/CommandPalette.tsx
-function q({ open: e, onClose: t, commands: r }) {
+function Z({ open: e, onClose: t, commands: r }) {
 	let [o, s] = a(""), [c, l] = a(0), u = i(null);
 	n(() => {
 		if (!e) return;
@@ -2245,7 +2425,7 @@ function q({ open: e, onClose: t, commands: r }) {
 }
 //#endregion
 //#region views/ToastHost.tsx
-function J({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
+function Q({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	return e.length === 0 ? null : /* @__PURE__ */ O("div", {
 		class: "toasts",
 		role: "region",
@@ -2296,4 +2476,4 @@ function J({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	});
 }
 //#endregion
-export { ce as AttentionPanel, ie as AuditLogTable, q as CommandPalette, S as DECISIONS, P as DecisionBadge, ue as DestinationsTable, R as EgressChart, U as Fact, B as FleetLoad, o as HTTP_METHODS, A as ICONS, j as Icon, F as IntegrityBadge, I as IntegrityPanel, te as LiveDot, V as MixBar, se as OverviewCards, ge as PodControls, oe as PodDetailPanel, ae as PodFleetTable, L as PoddleMark, K as PolicyEditor, G as PolicyList, z as PostureBar, c as RANGE_MS, le as RedactionsTable, N as SegmentedControl, ee as SkelCards, H as SkelTable, k as Sparkline, M as StatCard, s as TIME_RANGES, J as ToastHost, b as absTime, E as bucketEvents, _ as cap1, d as decide, C as decisionCounts, w as destinations, ne as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, T as rowKey, m as secretsFrom, h as summarise, x as threshTone, W as toCsv, p as toRows };
+export { q as ActivityProfile, ue as AttentionPanel, oe as AuditLogTable, U as CATEGORIES, Z as CommandPalette, S as DECISIONS, P as DecisionBadge, Y as DestinationsTable, R as EgressChart, H as Fact, z as FleetLoad, o as HTTP_METHODS, A as ICONS, j as Icon, F as IntegrityBadge, I as IntegrityPanel, ne as LiveDot, B as MixBar, le as OverviewCards, X as PodControls, ce as PodDetailPanel, se as PodFleetTable, L as PoddleMark, _e as PolicyEditor, de as PolicyList, ee as PostureBar, c as RANGE_MS, J as RedactionsTable, N as SegmentedControl, te as SkelCards, V as SkelTable, k as Sparkline, M as StatCard, s as TIME_RANGES, Q as ToastHost, b as absTime, E as bucketEvents, _ as cap1, G as categorize, W as classify, d as decide, C as decisionCounts, w as destinations, ie as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, T as rowKey, m as secretsFrom, K as suggestPolicy, h as summarise, x as threshTone, re as toCsv, p as toRows };
