@@ -213,6 +213,23 @@ tasks:
       - go run -tags docgen ./src/cli > src/web/site/src/data/cli.json
       - go test ./src/internal/config -run TestDocExampleTemplates
 
+  assets:
+    desc: 'Regenerate the README + site visual assets: the terminal demo SVG and the dashboard screenshot (one source of truth for both)'
+    cmds:
+      # Terminal demo — deterministic, hand-built SVG into the README asset + the site public dir.
+      - node docs/demo/build.mjs
+      # Dashboard audit screenshot — rendered from the REAL dashboard into both locations.
+      - task: _dashboard-shot
+
+  _dashboard-shot:
+    internal: true
+    desc: Screenshot the real dashboard audit view (seeded, frozen clock) into README + site
+    dir: src/web/dashboard
+    cmds:
+      - npm ci
+      - npx playwright install chromium
+      - node tests/screenshot.mjs
+
   integration:
     desc: Integration tests against a real container engine (skips without one)
     cmds:

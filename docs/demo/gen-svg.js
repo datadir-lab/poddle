@@ -13,7 +13,7 @@ const OUT = process.argv[2];
 const AT = process.argv[3] !== undefined ? parseFloat(process.argv[3]) : null;
 
 const FS = 15, LH = 25, CW = 9, PADX = 30, BAR = 50, asc = 12, W = 884, TOP = BAR + 18;
-const H = 560;
+const H = 610;
 const P = {
   ink: '#14130d', fg: '#d3cfc3', bright: '#f4f0e7', dim: '#847f71', faint: '#5f5b50',
   green: '#63c08c', amber: '#e3b371', red: '#e0736b', cyan: '#6cc6d8',
@@ -58,7 +58,7 @@ const s2 = { start: clk };
   const S2 = clk;
   const welH = 10 + 2 * LH + 10;                 // welcome box height
   const boxTop = H - 100, boxH = 46, boxInner = boxTop + 30, statusY = H - 22;
-  const prompt = 'add a test for the crash at https://pastebin.com/raw/x7Q3 and push';
+  const prompt = 'parseConfig panics on a user upload (https://pastebin.com/raw/x7Q3) — add a test + fix';
   const nP = [...prompt].length;
   const tW = S2, tBox = S2 + 0.5, tType = S2 + 1.1, tTypeEnd = tType + nP * 0.038;
   const tSubmit = tTypeEnd + 0.6; let tR = tSubmit + 0.25;
@@ -85,14 +85,16 @@ const s2 = { start: clk };
     null,
     dot('Fetch', '(https://pastebin.com/raw/x7Q3)'),
     [S('  ⎿  ', P.dim), S('⊘ blocked by poddle', P.red), S(' — pastebin.com is not in the pod’s egress policy', P.dim)],
-    [S('⏺ ', P.dot), S('Working from the stack trace instead.', P.fg)],
+    [S('⏺ ', P.dot), S('Reproducing from the panic in the report instead.', P.fg)],
+    dot('Update', '(parse.go)'),
+    res('guard the empty-input case that panicked'),
     dot('Update', '(parse_test.go)'),
-    res('added a case for the empty-input crash'),
+    res('add a regression test for the crash'),
     dot('Bash', '(go test ./...)'),
     res('ok · acme/api · 0.42s', 'ctrl+o to expand'),
     dot('Bash', '(git push)'),
     res('main → main · github.com/acme/api'),
-    [S('⏺ ', P.dot), S('Added a test and pushed — pastebin stayed off-policy.', P.fg)],
+    [S('⏺ ', P.dot), S('Fixed the panic + added a test — pastebin stayed off-policy.', P.fg)],
   ];
   let rr = startRow, ti = 0;
   for (const ln of lines) {
