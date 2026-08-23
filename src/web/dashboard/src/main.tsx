@@ -32,7 +32,7 @@ type Event = {
 };
 type Policy = {
   name: string; description?: string; allow_upstreams?: string[]; deny_upstreams?: string[];
-  methods?: Record<string, string[]>; egress?: string; monitor?: boolean;
+  methods?: Record<string, string[]>; egress?: string; monitor?: boolean; intercept?: boolean;
 };
 type Pod = {
   name: string; state: string; size: string; mode: string; policy: string;
@@ -351,6 +351,11 @@ const POLICY_TEMPLATES: PolicyTemplate[] = [
     id: "read-only", label: "Read-only GitHub",
     hint: "Clone and read from GitHub (GET only) plus the model. No pushes.",
     policy: { allow_upstreams: ["api.anthropic.com", ...GITHUB], deny_upstreams: META_DENY, methods: { ".github.com": ["GET"], ".githubusercontent.com": ["GET"] }, egress: "redact" },
+  },
+  {
+    id: "read-only-web", label: "Read-only web",
+    hint: "Browse the whole web GET-only. Terminates TLS to enforce it on HTTPS — breaks cert-pinned apps.",
+    policy: { allow_upstreams: [], deny_upstreams: META_DENY, methods: { "*": ["GET", "HEAD"] }, egress: "redact", intercept: true },
   },
   {
     id: "provider-only", label: "AI provider only",

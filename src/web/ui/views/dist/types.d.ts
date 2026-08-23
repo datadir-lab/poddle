@@ -19,6 +19,7 @@ export type Policy = {
     methods?: Record<string, string[]>;
     egress?: string;
     monitor?: boolean;
+    intercept?: boolean;
 };
 export type Pod = {
     name: string;
