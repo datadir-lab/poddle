@@ -45,6 +45,8 @@ describe("ActivityProfile", () => {
     mounted.push(el);
 
     expect(el.textContent).toContain("Model API");
+    // the denied host surfaces a blocked-attempts note making clear it is excluded
+    expect(el.textContent).toContain("not added to the suggested policy");
 
     const btn = findButton(el, /create policy/i);
     act(() => { btn.click(); });

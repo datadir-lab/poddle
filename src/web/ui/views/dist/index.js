@@ -1190,7 +1190,8 @@ var U = [
 		patterns: [
 			"api.anthropic.com",
 			"api.openai.com",
-			".googleapis.com"
+			"generativelanguage.googleapis.com",
+			".aiplatform.googleapis.com"
 		]
 	},
 	{

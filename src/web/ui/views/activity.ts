@@ -10,7 +10,7 @@ export type Category = { key: string; label: string; patterns: string[] };
 // Built-in classifier (dashboard glue, like the policy templates). Ordered; the
 // first matching category wins. Unrecognized hosts fall through to "other".
 export const CATEGORIES: Category[] = [
-  { key: "model", label: "Model API", patterns: ["api.anthropic.com", "api.openai.com", ".googleapis.com"] },
+  { key: "model", label: "Model API", patterns: ["api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com", ".aiplatform.googleapis.com"] },
   { key: "registry", label: "Package registry", patterns: [".pypi.org", ".pythonhosted.org", ".npmjs.org", ".crates.io", ".rubygems.org"] },
   { key: "source", label: "Source control", patterns: [".github.com", ".gitlab.com", ".bitbucket.org"] },
   { key: "artifact", label: "Artifact/container", patterns: ["ghcr.io", ".docker.io", ".docker.com"] },
