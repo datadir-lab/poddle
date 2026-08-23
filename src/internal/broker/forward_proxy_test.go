@@ -2,6 +2,8 @@ package broker
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -11,7 +13,104 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
+
+// interceptRO is a read-only-web checker: GET/CONNECT allowed, other methods
+// denied, and the pod opts into interception.
+type interceptRO struct{}
+
+func (interceptRO) Check(handle, host, method string) (bool, string) {
+	if method == http.MethodGet || method == http.MethodConnect {
+		return true, ""
+	}
+	return false, method + " not allowed (read-only)"
+}
+func (interceptRO) Intercepts(string) bool { return true }
+
+// TestForwardProxy_InterceptEnforcesMethodOnHTTPS proves the headline capability:
+// with interception on, the proxy terminates the pod's HTTPS CONNECT, sees the
+// real method, and blocks a POST (that a plain tunnel could never inspect) while
+// letting a GET through.
+func TestForwardProxy_InterceptEnforcesMethodOnHTTPS(t *testing.T) {
+	ca, err := tlsca.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	aud := &recAuditor{}
+	fp := NewForwardProxy(interceptRO{}, aud)
+	fp.SetLeafSource(ca)
+	srv := httptest.NewServer(fp)
+	t.Cleanup(srv.Close)
+
+	// Raw CONNECT to the proxy, then TLS-handshake THROUGH it, trusting the CA
+	// (as an intercepted pod would).
+	raw, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	fmt.Fprintf(raw, "CONNECT read.test:443 HTTP/1.1\r\nHost: read.test:443\r\nProxy-Authorization: %s\r\n\r\n", basicToken("poddle_egr_x"))
+	hb := bufio.NewReader(raw)
+	status, _ := hb.ReadString('\n')
+	if !strings.Contains(status, "200") {
+		t.Fatalf("CONNECT reply = %q, want 200", status)
+	}
+	for { // consume headers to the blank line
+		line, _ := hb.ReadString('\n')
+		if line == "\r\n" || line == "\n" || line == "" {
+			break
+		}
+	}
+
+	pool := x509.NewCertPool()
+	pool.AddCert(ca.Cert())
+	tconn := tls.Client(raw, &tls.Config{RootCAs: pool, ServerName: "read.test"})
+	if err := tconn.Handshake(); err != nil {
+		t.Fatalf("intercepted handshake failed: %v", err)
+	}
+	br := bufio.NewReader(tconn)
+
+	// POST is blocked by the proxy (403) — visible only because TLS was terminated.
+	fmt.Fprintf(tconn, "POST /write HTTP/1.1\r\nHost: read.test\r\nContent-Length: 0\r\n\r\n")
+	rp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read POST response: %v", err)
+	}
+	io.Copy(io.Discard, rp.Body)
+	rp.Body.Close()
+	if rp.StatusCode != http.StatusForbidden {
+		t.Errorf("POST over HTTPS should be blocked (403), got %d", rp.StatusCode)
+	}
+
+	// GET is permitted — forwarded to the (unresolvable) upstream, so it fails at
+	// the network, not the policy: a 502 with an "allow" decision.
+	fmt.Fprintf(tconn, "GET /page HTTP/1.1\r\nHost: read.test\r\n\r\n")
+	rg, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read GET response: %v", err)
+	}
+	io.Copy(io.Discard, rg.Body)
+	rg.Body.Close()
+
+	// The audit shows a method-denied POST and a permitted GET.
+	var sawDeny, sawAllow bool
+	for _, rec := range aud.all() {
+		switch {
+		case rec.Method == http.MethodPost && rec.Decision == "deny":
+			sawDeny = true
+		case rec.Method == http.MethodGet && rec.Decision == "allow":
+			sawAllow = true
+		}
+	}
+	if !sawDeny {
+		t.Errorf("expected a deny for the POST; audit = %+v", aud.all())
+	}
+	if !sawAllow {
+		t.Errorf("expected an allow for the GET; audit = %+v", aud.all())
+	}
+}
 
 // recAuditor records every egress decision the proxy emits. Proxy is called from
 // the proxy's handler goroutine while the test reads the records, so access is

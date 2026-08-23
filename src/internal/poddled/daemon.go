@@ -25,6 +25,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/l4"
 	"github.com/datadir-lab/poddle/src/internal/policy"
+	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
 
 // brokerAPI is the broker capability the daemon wraps; *broker.Broker satisfies it.
@@ -55,6 +56,7 @@ type Daemon struct {
 	l4PostgresAddr string
 	forward        net.Listener // egress forward proxy (arbitrary HTTP(S) egress)
 	forwardAddr    string
+	ca             *tlsca.Authority // egress-interception CA (nil until the forward proxy starts)
 }
 
 // maxEvents bounds the autoscale event ring surfaced in `daemon status`.
@@ -111,6 +113,15 @@ func (d *Daemon) Monitored(handle string) bool {
 	pol := d.podPolicy[d.handlePod[handle]]
 	d.mu.Unlock()
 	return pol != nil && pol.Monitor
+}
+
+// Intercepts implements broker.InterceptChecker: the pod's policy opts into TLS
+// interception, so its HTTPS egress should be terminated (not tunnelled).
+func (d *Daemon) Intercepts(handle string) bool {
+	d.mu.Lock()
+	pol := d.podPolicy[d.handlePod[handle]]
+	d.mu.Unlock()
+	return pol != nil && pol.Intercept
 }
 
 // rec appends a sanitised audit event if auditing is on.
@@ -174,6 +185,12 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		d.forward = ln
 		d.forwardAddr = ln.Addr().String()
 		fp := broker.NewForwardProxy(d, d) // d is PolicyChecker + Auditor
+		// Load the egress-interception CA so opted-in pods' HTTPS can be inspected.
+		// Best-effort: on failure, interception is simply unavailable (opaque tunnel).
+		if ca, err := tlsca.Load(tlsca.DefaultDir()); err == nil {
+			d.ca = ca
+			fp.SetLeafSource(ca)
+		}
 		fsrv := &http.Server{Handler: fp, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = fsrv.Serve(ln) }()
 	}

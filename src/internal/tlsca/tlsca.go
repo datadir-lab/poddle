@@ -44,6 +44,17 @@ type Authority struct {
 	leaves  map[string]*tls.Certificate
 }
 
+// DefaultDir is where poddle persists the egress CA: <UserConfigDir>/poddle/
+// egress-ca (XDG_CONFIG_HOME honored). The daemon and `up` resolve it the same
+// way so both see one CA.
+func DefaultDir() string {
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		cfg = "."
+	}
+	return filepath.Join(cfg, "poddle", "egress-ca")
+}
+
 // Load returns the CA persisted under dir, generating and saving a new one if it
 // is absent. The key is written 0600; dir is created 0700 if needed.
 func Load(dir string) (*Authority, error) {
