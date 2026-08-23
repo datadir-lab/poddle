@@ -20,7 +20,7 @@ type Policy struct {
 	Description    string              `toml:"description,omitempty" json:"description,omitempty"` // free-text note on intent; ignored by Decide
 	AllowUpstreams []string            `toml:"allow_upstreams" json:"allow_upstreams"`             // default-deny when non-empty; ".x" = any subdomain
 	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`               // always denied (wins over allow)
-	Methods        map[string][]string `toml:"methods" json:"methods"`                             // per-host allowed HTTP methods
+	Methods        map[string][]string `toml:"methods" json:"methods"`                             // per-host allowed HTTP methods ("*" key = all hosts)
 	Egress         string              `toml:"egress" json:"egress"`                               // redact (default) | block | off
 	Monitor        bool                `toml:"monitor,omitempty" json:"monitor,omitempty"`         // evaluate but don't block: log would-be denials (safe rollout)
 }
@@ -47,7 +47,7 @@ func (p *Policy) Decide(host, method string) (allow bool, reason string) {
 }
 
 // methodsFor returns the allowed methods for host (exact key, then a ".suffix"
-// key), and whether a rule applies.
+// key, then a "*" catch-all — most specific first), and whether a rule applies.
 func (p *Policy) methodsFor(host string) ([]string, bool) {
 	if m, ok := p.Methods[host]; ok {
 		return m, true
@@ -56,6 +56,9 @@ func (p *Policy) methodsFor(host string) ([]string, bool) {
 		if strings.HasPrefix(k, ".") && (strings.HasSuffix(host, k) || host == k[1:]) {
 			return m, true
 		}
+	}
+	if m, ok := p.Methods["*"]; ok { // catch-all: any host without a more specific rule
+		return m, true
 	}
 	return nil, false
 }

@@ -41,7 +41,7 @@ function u(e, t) {
 	if (!e) return null;
 	if (t in e) return e[t];
 	for (let n in e) if (n.startsWith(".") && (t.endsWith(n) || t === n.slice(1))) return e[n];
-	return null;
+	return "*" in e ? e["*"] : null;
 }
 function d(e, t, n) {
 	if (l(t, e.deny_upstreams || [])) return {
@@ -1544,7 +1544,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 			...e.policy
 		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), I("");
 	}, q = () => {
-		let e = C.map((e) => e.host.trim()).filter(Boolean), t = T.map((e) => e.trim()).filter(Boolean), n = {};
+		let e = C.map((e) => e.host.trim()).filter((e) => e && e !== "*"), t = T.map((e) => e.trim()).filter(Boolean), n = {};
 		for (let e of C) {
 			let t = e.host.trim();
 			t && e.methods.length && (n[t] = e.methods);

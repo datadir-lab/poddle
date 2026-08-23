@@ -23,6 +23,7 @@ export function methodsFor(methods: Record<string, string[]> | undefined, host: 
   for (const k in methods) {
     if (k.startsWith(".") && (host.endsWith(k) || host === k.slice(1))) return methods[k];
   }
+  if ("*" in methods) return methods["*"]; // catch-all: any host without a more specific rule
   return null;
 }
 
