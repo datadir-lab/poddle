@@ -2,8 +2,10 @@ package broker
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -237,6 +239,25 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 			}
 		}
 
+		// Egress redaction on the decrypted request body — the DLP the encrypted
+		// tunnel could never reach. Only textual, in-bounds bodies are scanned; the
+		// mode comes from the pod's policy (default redact).
+		redactHits := 0
+		if mode := f.egressMode(token); mode != "off" && req.Body != nil &&
+			isTextual(req.Header.Get("Content-Type")) && req.ContentLength <= maxScanBytes {
+			raw, _ := io.ReadAll(io.LimitReader(req.Body, maxScanBytes))
+			_ = req.Body.Close()
+			scrubbed, hits, block := NewRedactor(mode).Scan(raw)
+			if block {
+				writeStatus(tconn, req, http.StatusForbidden, "poddle: egress blocked — secret detected")
+				f.emit(token, host, req.Method, "block", "egress blocked — secret detected", http.StatusForbidden)
+				continue
+			}
+			redactHits = hits
+			req.Body = io.NopCloser(bytes.NewReader(scrubbed))
+			req.ContentLength = int64(len(scrubbed))
+		}
+
 		out, err := http.NewRequest(req.Method, "https://"+host+req.URL.RequestURI(), req.Body)
 		if err != nil {
 			drain(req.Body)
@@ -253,6 +274,9 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 			writeStatus(tconn, req, http.StatusBadGateway, "bad gateway")
 			f.emit(token, host, req.Method, decision, "upstream error", http.StatusBadGateway)
 			continue
+		}
+		if redactHits > 0 && decision == "allow" {
+			decision, detail = "redact", fmt.Sprintf("redacted %d secret(s)", redactHits)
 		}
 		status := resp.StatusCode
 		werr := resp.Write(tconn)

@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -306,6 +307,105 @@ func TestForwardProxy_egressMode(t *testing.T) {
 	if got := NewForwardProxy(egressChecker{mode: "block"}, nil).egressMode("t"); got != "block" {
 		t.Errorf("egressMode = %q, want block", got)
 	}
+}
+
+// TestForwardProxy_InterceptRedactsBody proves egress DLP on the decrypted HTTPS
+// request body: per the pod's egress mode, a secret in an intercepted POST is
+// scrubbed before it reaches the upstream (redact), rejected (block), or left as
+// is (off). An echo upstream records exactly what egress received.
+func TestForwardProxy_InterceptRedactsBody(t *testing.T) {
+	const secret = "AKIAIOSFODNN7EXAMPLE" // AWS access-key id shape
+	body := "token=" + secret
+
+	run := func(t *testing.T, mode string) (podCode int, upstreamGot []byte, aud *recAuditor) {
+		ca, err := tlsca.Load(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []byte
+		up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(up.Close)
+
+		aud = &recAuditor{}
+		fp := NewForwardProxy(egressChecker{mode: mode}, aud)
+		fp.SetLeafSource(ca)
+		upAddr := up.Listener.Addr().String()
+		fp.tr = &http.Transport{
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, upAddr)
+			},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}}, //nolint:gosec // test upstream
+		}
+		srv := httptest.NewServer(fp)
+		t.Cleanup(srv.Close)
+
+		tconn := dialIntercepted(t, srv.Listener.Addr().String(), ca, "tok")
+		defer tconn.Close()
+		br := bufio.NewReader(tconn)
+		fmt.Fprintf(tconn, "POST /p HTTP/1.1\r\nHost: read.test\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\n\r\n%s", len(body), body)
+		resp, err := http.ReadResponse(br, nil)
+		if err != nil {
+			t.Fatalf("read response: %v", err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode, got, aud
+	}
+
+	t.Run("redact scrubs before egress", func(t *testing.T) {
+		code, got, aud := run(t, "redact")
+		if code != http.StatusOK {
+			t.Errorf("pod status = %d, want 200", code)
+		}
+		if bytes.Contains(got, []byte(secret)) {
+			t.Errorf("secret leaked to upstream: %q", got)
+		}
+		if !bytes.Contains(got, []byte(RedactPlaceholder)) {
+			t.Errorf("upstream did not receive placeholder: %q", got)
+		}
+		if !auditHas(aud, "POST", "redact") {
+			t.Errorf("no redact audit record: %+v", aud.all())
+		}
+	})
+
+	t.Run("block rejects and sends nothing upstream", func(t *testing.T) {
+		code, got, aud := run(t, "block")
+		if code != http.StatusForbidden {
+			t.Errorf("pod status = %d, want 403", code)
+		}
+		if len(got) != 0 {
+			t.Errorf("upstream received a body despite block: %q", got)
+		}
+		if !auditHas(aud, "POST", "block") {
+			t.Errorf("no block audit record: %+v", aud.all())
+		}
+	})
+
+	t.Run("off forwards the body untouched", func(t *testing.T) {
+		code, got, _ := run(t, "off")
+		if code != http.StatusOK {
+			t.Errorf("pod status = %d, want 200", code)
+		}
+		if !bytes.Contains(got, []byte(secret)) {
+			t.Errorf("off mode altered the body: %q", got)
+		}
+	})
+}
+
+// auditHas reports whether the auditor recorded a request with the given method
+// and decision (waiting briefly, since intercept emits on its own goroutine).
+func auditHas(a *recAuditor, method, decision string) bool {
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		for _, rec := range a.all() {
+			if rec.Method == method && rec.Decision == decision {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func basicToken(token string) string {
