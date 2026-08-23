@@ -1,9 +1,10 @@
 import type { ComponentChildren } from "preact";
-import type { Event, Pod } from "./types";
+import type { Event, Pod, Policy } from "./types";
 import { Sparkline } from "./Sparkline";
 import { AuditLogTable } from "./AuditLogTable";
 import { Fact } from "./Fact";
 import { cap1 } from "./aggregate";
+import { ActivityProfile } from "./ActivityProfile";
 
 // PodDetailPanel is the pure render half of the pod drill-down: the container
 // resolves the pod (usePods() + find(name)) and its rolling cpu/mem history;
@@ -15,7 +16,7 @@ import { cap1 } from "./aggregate";
 // credentials) — still owned by the container (PodControls isn't extracted
 // yet); when present it renders under its own "Controls" heading, exactly
 // where the container-side controls widget currently sits.
-export function PodDetailPanel({ name, pod, hist, events, loading, backHref, onBack, policyHref, onPolicyClick, controls }: {
+export function PodDetailPanel({ name, pod, hist, events, loading, backHref, onBack, policyHref, onPolicyClick, controls, onSuggestPolicy }: {
   name: string;
   pod?: Pod;
   hist: { cpu: number[]; mem: number[] };
@@ -26,6 +27,7 @@ export function PodDetailPanel({ name, pod, hist, events, loading, backHref, onB
   policyHref?: string;
   onPolicyClick?: (e: MouseEvent) => void;
   controls?: ComponentChildren;
+  onSuggestPolicy?: (p: Policy) => void;
 }) {
   return (
     <div>
@@ -57,6 +59,10 @@ export function PodDetailPanel({ name, pod, hist, events, loading, backHref, onB
           <h2 class="section-title">Controls</h2>
           {controls}
         </>
+      )}
+
+      {onSuggestPolicy && (
+        <ActivityProfile podName={name} events={events.filter((e) => e.pod === name)} onSuggestPolicy={onSuggestPolicy} />
       )}
 
       <h2 class="section-title">Audit trail</h2>

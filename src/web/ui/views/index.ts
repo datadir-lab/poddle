@@ -30,3 +30,5 @@ export * from "./PolicyEditor";
 export * from "./PodControls";
 export * from "./CommandPalette";
 export * from "./ToastHost";
+export * from "./activity";
+export * from "./ActivityProfile";

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
-import type { Event, Pod } from "./types";
-export declare function PodDetailPanel({ name, pod, hist, events, loading, backHref, onBack, policyHref, onPolicyClick, controls }: {
+import type { Event, Pod, Policy } from "./types";
+export declare function PodDetailPanel({ name, pod, hist, events, loading, backHref, onBack, policyHref, onPolicyClick, controls, onSuggestPolicy }: {
     name: string;
     pod?: Pod;
     hist: {
@@ -14,4 +14,5 @@ export declare function PodDetailPanel({ name, pod, hist, events, loading, backH
     policyHref?: string;
     onPolicyClick?: (e: MouseEvent) => void;
     controls?: ComponentChildren;
+    onSuggestPolicy?: (p: Policy) => void;
 }): import("preact").JSX.Element;
