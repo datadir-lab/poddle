@@ -10,8 +10,11 @@ import { fileURLToPath } from "node:url";
 import { EVENTS, PODS, BASE } from "./audit-fixture.mjs";
 
 // Injected before the app boots so relative times ("7s ago") are computed from a
-// fixed clock — makes the screenshot deterministic.
-const FREEZE = `<script>(function(){var F=new Date(${JSON.stringify(BASE)}).getTime(),R=Date;function D(){return arguments.length?new R(...arguments):new R(F)}D.now=function(){return F};D.parse=R.parse;D.UTC=R.UTC;D.prototype=R.prototype;window.Date=D;})()</script>`;
+// fixed clock — makes the screenshot deterministic. BASE is a hardcoded fixture
+// timestamp; resolve it to a numeric epoch here so the injected script embeds only
+// a number (no string payload can break out of the <script>).
+const FREEZE_MS = Number(new Date(BASE));
+const FREEZE = `<script>(function(){var F=${FREEZE_MS},R=Date;function D(){return arguments.length?new R(...arguments):new R(F)}D.now=function(){return F};D.parse=R.parse;D.UTC=R.UTC;D.prototype=R.prototype;window.Date=D;})()</script>`;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIST = join(HERE, "..", "..", "..", "cli", "dashboard", "dist"); // src/cli/dashboard/dist
