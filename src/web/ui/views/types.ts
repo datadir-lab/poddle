@@ -9,7 +9,7 @@ export type Event = {
 };
 export type Policy = {
   name: string; description?: string; allow_upstreams?: string[]; deny_upstreams?: string[];
-  methods?: Record<string, string[]>; egress?: string; monitor?: boolean; intercept?: boolean;
+  methods?: Record<string, string[]>; egress?: string; monitor?: boolean; intercept?: boolean; intercept_hosts?: string[];
 };
 export type Pod = {
   name: string; state: string; size: string; mode: string; policy: string;

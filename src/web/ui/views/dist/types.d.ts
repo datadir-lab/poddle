@@ -20,6 +20,7 @@ export type Policy = {
     egress?: string;
     monitor?: boolean;
     intercept?: boolean;
+    intercept_hosts?: string[];
 };
 export type Pod = {
     name: string;
