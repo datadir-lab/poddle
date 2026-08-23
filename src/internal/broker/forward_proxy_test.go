@@ -173,6 +173,63 @@ func TestForwardProxy_InterceptRelaysUpstreamResponse(t *testing.T) {
 	}
 }
 
+// TestForwardProxy_InterceptForcesHTTP1Upstream guards the HTTP/2 relay hang:
+// re-origination must speak HTTP/1.1 so an HTTP/2-capable upstream's response is
+// not relayed verbatim onto the HTTP/1.1 pod connection (a bogus "HTTP/2.0"
+// status line with no HTTP/1 body framing hangs the pod's client).
+func TestForwardProxy_InterceptForcesHTTP1Upstream(t *testing.T) {
+	// The default re-origination transport pins ALPN to http/1.1.
+	def, ok := NewForwardProxy(allowAll{}, nil).tr.(*http.Transport)
+	if !ok || def.TLSClientConfig == nil {
+		t.Fatalf("default upstream transport = %#v, want *http.Transport with a TLS config", def)
+	}
+	if np := def.TLSClientConfig.NextProtos; len(np) != 1 || np[0] != "http/1.1" {
+		t.Fatalf("default upstream ALPN = %v, want [http/1.1]", np)
+	}
+
+	ca, err := tlsca.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An HTTP/2-capable upstream; with ALPN forced to http/1.1 it serves 1.1.
+	const body = "relayed over http/1.1"
+	up := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, body)
+	}))
+	up.EnableHTTP2 = true
+	up.StartTLS()
+	t.Cleanup(up.Close)
+
+	fp := NewForwardProxy(interceptRO{}, &recAuditor{})
+	fp.SetLeafSource(ca)
+	upAddr := up.Listener.Addr().String()
+	fp.tr = &http.Transport{
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, upAddr)
+		},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}}, //nolint:gosec // test upstream, self-signed
+	}
+	srv := httptest.NewServer(fp)
+	t.Cleanup(srv.Close)
+
+	tconn := dialIntercepted(t, srv.Listener.Addr().String(), ca, "poddle_egr_x")
+	defer tconn.Close()
+	br := bufio.NewReader(tconn)
+	fmt.Fprintf(tconn, "GET /page HTTP/1.1\r\nHost: read.test\r\n\r\n")
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read GET response: %v", err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.Proto != "HTTP/1.1" {
+		t.Errorf("pod-facing proto = %q, want HTTP/1.1 (an HTTP/2 status line hangs the pod)", resp.Proto)
+	}
+	if resp.StatusCode != http.StatusOK || string(got) != body {
+		t.Errorf("relayed = %d %q, want 200 %q", resp.StatusCode, got, body)
+	}
+}
+
 // dialIntercepted opens a CONNECT to the proxy and completes the TLS handshake
 // through it, trusting the egress CA as an intercepted pod would, returning the
 // live TLS connection to the (terminated) tunnel.

@@ -31,10 +31,16 @@ type ForwardProxy struct {
 
 // NewForwardProxy returns a forward proxy governed by pc and audited by a.
 func NewForwardProxy(pc PolicyChecker, a Auditor) *ForwardProxy {
-	// A zero-value transport uses the system roots and ignores HTTP(S)_PROXY, so a
-	// re-originated intercept verifies the real upstream and never loops back
-	// through this proxy.
-	return &ForwardProxy{policy: pc, auditor: a, tr: &http.Transport{}}
+	// The re-origination transport uses the system roots and ignores HTTP(S)_PROXY
+	// (so an intercept verifies the real upstream and never loops back through this
+	// proxy), and it speaks HTTP/1.1 ONLY. The pod-facing leg is HTTP/1.1, so an
+	// HTTP/2 upstream response must not be relayed verbatim: its "HTTP/2.0" status
+	// line is invalid over HTTP/1.1 and it carries no HTTP/1 body framing, which
+	// hangs the pod's client. Pinning ALPN to http/1.1 keeps the relay 1.1 end to
+	// end. RootCAs stays nil (system roots) so upstream verification is unchanged.
+	return &ForwardProxy{policy: pc, auditor: a, tr: &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}},
+	}}
 }
 
 // SetLeafSource enables TLS interception for pods whose policy opts in, using ls
