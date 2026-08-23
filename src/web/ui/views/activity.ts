@@ -39,7 +39,7 @@ export function categorize(events: Event[]): CategoryRollup[] {
     const r = m.get(key) ?? { key, label: labelFor(key), total: 0, hosts: [], methods: [], allow: 0, redact: 0, deny: 0, block: 0, _hosts: new Set(), _methods: new Set() };
     r.total++;
     r._hosts.add(e.upstream);
-    if (e.method) r._methods.add(e.method.toUpperCase());
+    if (e.method && e.method.toUpperCase() !== "CONNECT") r._methods.add(e.method.toUpperCase());
     if (e.decision === "allow") r.allow++;
     else if (e.decision === "redact") r.redact++;
     else if (e.decision === "deny") r.deny++;
@@ -61,7 +61,7 @@ export function suggestPolicy(events: Event[], name: string): Policy {
     if (e.kind !== "request" || !e.upstream) continue;
     if (e.decision !== "allow" && e.decision !== "redact") continue;
     hosts.add(e.upstream);
-    if (e.method) {
+    if (e.method && e.method.toUpperCase() !== "CONNECT") {
       const s = verbs.get(e.upstream) ?? new Set<string>();
       s.add(e.method.toUpperCase());
       verbs.set(e.upstream, s);

@@ -59,4 +59,28 @@ describe("ActivityProfile", () => {
     expect(el.textContent).toContain("No egress recorded");
     expect(findButton(el, /create policy/i)).toBeFalsy();
   });
+
+  it("disables the policy button for an all-denied pod (no allow-all suggestion)", () => {
+    const events: Event[] = [
+      ev({ upstream: "evil.test", decision: "deny", pod: "p" }),
+    ];
+    let suggested: Policy | null = null;
+    const el = mount(
+      <ActivityProfile
+        podName="p"
+        events={events}
+        onSuggestPolicy={(pp) => { suggested = pp; }}
+      />,
+    );
+    mounted.push(el);
+
+    // Profile still renders (non-empty) even though nothing was allowed.
+    expect(el.textContent).toContain("Other");
+
+    const btn = findButton(el, /create policy/i);
+    expect(btn.disabled).toBe(true);
+
+    act(() => { btn.click(); });
+    expect(suggested).toBeNull();
+  });
 });

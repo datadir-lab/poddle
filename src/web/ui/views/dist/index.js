@@ -1258,7 +1258,7 @@ function G(e) {
 			_hosts: /* @__PURE__ */ new Set(),
 			_methods: /* @__PURE__ */ new Set()
 		};
-		i.total++, i._hosts.add(r.upstream), r.method && i._methods.add(r.method.toUpperCase()), r.decision === "allow" ? i.allow++ : r.decision === "redact" ? i.redact++ : r.decision === "deny" ? i.deny++ : r.decision === "block" && i.block++, n.set(e, i);
+		i.total++, i._hosts.add(r.upstream), r.method && r.method.toUpperCase() !== "CONNECT" && i._methods.add(r.method.toUpperCase()), r.decision === "allow" ? i.allow++ : r.decision === "redact" ? i.redact++ : r.decision === "deny" ? i.deny++ : r.decision === "block" && i.block++, n.set(e, i);
 	}
 	return [...n.values()].map((e) => ({
 		key: e.key,
@@ -1274,7 +1274,7 @@ function G(e) {
 }
 function K(e, t) {
 	let n = /* @__PURE__ */ new Set(), r = /* @__PURE__ */ new Map();
-	for (let t of e) if (!(t.kind !== "request" || !t.upstream) && (t.decision === "allow" || t.decision === "redact") && (n.add(t.upstream), t.method)) {
+	for (let t of e) if (!(t.kind !== "request" || !t.upstream) && (t.decision === "allow" || t.decision === "redact") && (n.add(t.upstream), t.method && t.method.toUpperCase() !== "CONNECT")) {
 		let e = r.get(t.upstream) ?? /* @__PURE__ */ new Set();
 		e.add(t.method.toUpperCase()), r.set(t.upstream, e);
 	}
@@ -1291,7 +1291,7 @@ function K(e, t) {
 //#endregion
 //#region views/ActivityProfile.tsx
 function q({ podName: e, events: t, onSuggestPolicy: n }) {
-	let i = r(() => G(t), [t]), a = r(() => i.filter((e) => e.deny + e.block > 0), [i]);
+	let i = r(() => G(t), [t]), a = r(() => i.filter((e) => e.deny + e.block > 0), [i]), o = r(() => i.some((e) => e.allow + e.redact > 0), [i]);
 	return i.length === 0 ? /* @__PURE__ */ O("section", {
 		class: "activity",
 		children: [/* @__PURE__ */ O("h2", {
@@ -1312,6 +1312,8 @@ function q({ podName: e, events: t, onSuggestPolicy: n }) {
 				}), /* @__PURE__ */ O("button", {
 					type: "button",
 					class: "btn",
+					disabled: !o,
+					title: o ? void 0 : "No allowed egress yet — nothing to base a least-privilege policy on",
 					onClick: () => n(K(t, e + "-policy")),
 					children: "Create policy from this pod"
 				})]

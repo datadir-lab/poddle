@@ -19,7 +19,7 @@ describe("categorize", () => {
     const events: Event[] = [
       ev({ upstream: "api.anthropic.com", method: "POST", decision: "allow", pod: "p" }),
       ev({ upstream: "pypi.org", method: "GET", decision: "redact", pod: "p" }),
-      ev({ upstream: "github.com", decision: "allow", pod: "p" }), // tunnelled: no method
+      ev({ upstream: "github.com", method: "CONNECT", decision: "allow", pod: "p" }), // CONNECT is a tunnel, not a verb
       ev({ upstream: "evil.test", decision: "deny", pod: "p" }),
       ev({ kind: "pod.up", pod: "p" }), // non-request ignored
     ];
@@ -38,7 +38,7 @@ describe("suggestPolicy", () => {
   test("allows reached hosts, scopes methods where seen, denies metadata, excludes blocked", () => {
     const events: Event[] = [
       ev({ upstream: "api.anthropic.com", method: "POST", decision: "allow", pod: "p" }),
-      ev({ upstream: "github.com", decision: "allow", pod: "p" }),        // tunnelled
+      ev({ upstream: "github.com", method: "CONNECT", decision: "allow", pod: "p" }),        // tunnelled
       ev({ upstream: "pypi.org", method: "GET", decision: "redact", pod: "p" }),
       ev({ upstream: "evil.test", method: "POST", decision: "deny", pod: "p" }), // excluded
     ];

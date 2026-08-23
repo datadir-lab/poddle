@@ -16,6 +16,7 @@ export function ActivityProfile({ podName, events, onSuggestPolicy }: {
     () => rolls.filter((r) => r.deny + r.block > 0),
     [rolls],
   );
+  const reached = useMemo(() => rolls.some((r) => r.allow + r.redact > 0), [rolls]);
   if (rolls.length === 0) {
     return (
       <section class="activity">
@@ -28,7 +29,9 @@ export function ActivityProfile({ podName, events, onSuggestPolicy }: {
     <section class="activity">
       <div class="activity__head">
         <h2 class="detail-sub">Activity</h2>
-        <button type="button" class="btn" onClick={() => onSuggestPolicy(suggestPolicy(events, podName + "-policy"))}>
+        <button type="button" class="btn" disabled={!reached}
+          title={reached ? undefined : "No allowed egress yet — nothing to base a least-privilege policy on"}
+          onClick={() => onSuggestPolicy(suggestPolicy(events, podName + "-policy"))}>
           Create policy from this pod
         </button>
       </div>
