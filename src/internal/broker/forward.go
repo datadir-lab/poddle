@@ -23,14 +23,18 @@ import (
 // terminates TLS (presenting a leaf the pod trusts) so per-request method rules
 // apply on HTTPS; the pod must trust the egress CA (injected at `up`).
 type ForwardProxy struct {
-	policy  PolicyChecker // reused: Check(token, host, method); daemon maps token -> pod -> policy
-	auditor Auditor       // reused: one record per egress attempt
-	leaves  LeafSource    // nil = interception unavailable (always tunnel opaquely)
+	policy  PolicyChecker     // reused: Check(token, host, method); daemon maps token -> pod -> policy
+	auditor Auditor           // reused: one record per egress attempt
+	leaves  LeafSource        // nil = interception unavailable (always tunnel opaquely)
+	tr      http.RoundTripper // re-originates intercepted requests; system roots, no proxy-env
 }
 
 // NewForwardProxy returns a forward proxy governed by pc and audited by a.
 func NewForwardProxy(pc PolicyChecker, a Auditor) *ForwardProxy {
-	return &ForwardProxy{policy: pc, auditor: a}
+	// A zero-value transport uses the system roots and ignores HTTP(S)_PROXY, so a
+	// re-originated intercept verifies the real upstream and never loops back
+	// through this proxy.
+	return &ForwardProxy{policy: pc, auditor: a, tr: &http.Transport{}}
 }
 
 // SetLeafSource enables TLS interception for pods whose policy opts in, using ls
@@ -190,7 +194,7 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 	defer func() { _ = tconn.Close() }()
 
 	br := bufio.NewReader(tconn)
-	upstream := &http.Client{Transport: &http.Transport{}} // real roots verify the upstream
+	upstream := &http.Client{Transport: f.tr} // real roots verify the upstream
 	monitorMode := f.monitored(token)
 
 	for {

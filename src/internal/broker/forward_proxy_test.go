@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -47,30 +48,8 @@ func TestForwardProxy_InterceptEnforcesMethodOnHTTPS(t *testing.T) {
 
 	// Raw CONNECT to the proxy, then TLS-handshake THROUGH it, trusting the CA
 	// (as an intercepted pod would).
-	raw, err := net.Dial("tcp", srv.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer raw.Close()
-	fmt.Fprintf(raw, "CONNECT read.test:443 HTTP/1.1\r\nHost: read.test:443\r\nProxy-Authorization: %s\r\n\r\n", basicToken("poddle_egr_x"))
-	hb := bufio.NewReader(raw)
-	status, _ := hb.ReadString('\n')
-	if !strings.Contains(status, "200") {
-		t.Fatalf("CONNECT reply = %q, want 200", status)
-	}
-	for { // consume headers to the blank line
-		line, _ := hb.ReadString('\n')
-		if line == "\r\n" || line == "\n" || line == "" {
-			break
-		}
-	}
-
-	pool := x509.NewCertPool()
-	pool.AddCert(ca.Cert())
-	tconn := tls.Client(raw, &tls.Config{RootCAs: pool, ServerName: "read.test"})
-	if err := tconn.Handshake(); err != nil {
-		t.Fatalf("intercepted handshake failed: %v", err)
-	}
+	tconn := dialIntercepted(t, srv.Listener.Addr().String(), ca, "poddle_egr_x")
+	defer tconn.Close()
 	br := bufio.NewReader(tconn)
 
 	// POST is blocked by the proxy (403) — visible only because TLS was terminated.
@@ -119,6 +98,110 @@ func TestForwardProxy_InterceptEnforcesMethodOnHTTPS(t *testing.T) {
 	if !sawAllow {
 		t.Errorf("expected an allow for the GET; audit = %+v", aud.all())
 	}
+}
+
+// TestForwardProxy_InterceptRelaysUpstreamResponse proves the success path: an
+// allowed GET is decrypted, re-originated to a real HTTPS upstream, and that
+// upstream's status, body, and headers are relayed back down the intercepted
+// tunnel to the pod (and audited as an allow with the upstream's status).
+func TestForwardProxy_InterceptRelaysUpstreamResponse(t *testing.T) {
+	ca, err := tlsca.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const body = "hello from the real upstream"
+	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/page" {
+			w.WriteHeader(http.StatusTeapot)
+			return
+		}
+		w.Header().Set("X-Upstream", "yes")
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(up.Close)
+
+	aud := &recAuditor{}
+	fp := NewForwardProxy(interceptRO{}, aud)
+	fp.SetLeafSource(ca)
+	// Re-originate every intercepted request to the test upstream, trusting its
+	// self-signed cert. The pod-facing leg still uses the real CA-minted leaf.
+	upAddr := up.Listener.Addr().String()
+	fp.tr = &http.Transport{
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, upAddr)
+		},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test upstream, self-signed
+	}
+	srv := httptest.NewServer(fp)
+	t.Cleanup(srv.Close)
+
+	tconn := dialIntercepted(t, srv.Listener.Addr().String(), ca, "poddle_egr_x")
+	defer tconn.Close()
+	br := bufio.NewReader(tconn)
+
+	fmt.Fprintf(tconn, "GET /page HTTP/1.1\r\nHost: read.test\r\n\r\n")
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read GET response: %v", err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("relayed status = %d, want 200", resp.StatusCode)
+	}
+	if string(got) != body {
+		t.Errorf("relayed body = %q, want %q", got, body)
+	}
+	if resp.Header.Get("X-Upstream") != "yes" {
+		t.Errorf("upstream header not relayed: %+v", resp.Header)
+	}
+
+	var sawAllow bool
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		sawAllow = false
+		for _, rec := range aud.all() {
+			if rec.Method == http.MethodGet && rec.Decision == "allow" && rec.Status == http.StatusOK {
+				sawAllow = true
+			}
+		}
+		if sawAllow {
+			break
+		}
+	}
+	if !sawAllow {
+		t.Errorf("expected an allow@200 for the GET; audit = %+v", aud.all())
+	}
+}
+
+// dialIntercepted opens a CONNECT to the proxy and completes the TLS handshake
+// through it, trusting the egress CA as an intercepted pod would, returning the
+// live TLS connection to the (terminated) tunnel.
+func dialIntercepted(t *testing.T, proxyAddr string, ca *tlsca.Authority, token string) *tls.Conn {
+	t.Helper()
+	raw, err := net.Dial("tcp", proxyAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(raw, "CONNECT read.test:443 HTTP/1.1\r\nHost: read.test:443\r\nProxy-Authorization: %s\r\n\r\n", basicToken(token))
+	hb := bufio.NewReader(raw)
+	if status, _ := hb.ReadString('\n'); !strings.Contains(status, "200") {
+		_ = raw.Close()
+		t.Fatalf("CONNECT reply = %q, want 200", status)
+	}
+	for { // consume headers to the blank line
+		line, _ := hb.ReadString('\n')
+		if line == "\r\n" || line == "\n" || line == "" {
+			break
+		}
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(ca.Cert())
+	tconn := tls.Client(raw, &tls.Config{RootCAs: pool, ServerName: "read.test"})
+	if err := tconn.Handshake(); err != nil {
+		_ = raw.Close()
+		t.Fatalf("intercepted handshake failed: %v", err)
+	}
+	return tconn
 }
 
 // recAuditor records every egress decision the proxy emits. Proxy is called from
