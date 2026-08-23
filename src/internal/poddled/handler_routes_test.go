@@ -243,6 +243,22 @@ func TestDaemon_Monitored(t *testing.T) {
 	}
 }
 
+func TestDaemon_Intercepts(t *testing.T) {
+	d := New(&fakeBroker{}, nil)
+	if d.Intercepts("nope") {
+		t.Error("an unknown handle must not intercept")
+	}
+	d.handlePod["h1"] = "box"
+	d.podPolicy["box"] = &policy.Policy{Name: "ro", Intercept: true}
+	if !d.Intercepts("h1") {
+		t.Error("an intercept policy should report intercept")
+	}
+	d.podPolicy["box"] = &policy.Policy{Name: "plain"}
+	if d.Intercepts("h1") {
+		t.Error("a non-intercept policy must not report intercept")
+	}
+}
+
 func TestDaemon_Resolve(t *testing.T) {
 	d := New(&fakeBroker{}, nil)
 	target, err := d.Resolve("some-handle")

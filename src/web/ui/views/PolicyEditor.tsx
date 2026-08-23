@@ -23,6 +23,15 @@ const ENFORCEMENT_MODES: SegOption[] = [
   { value: "monitor", label: "Monitor", tone: "monitor" },
 ];
 
+// HTTPS egress: "tunnel" passes CONNECT through opaquely (method + body invisible);
+// "intercept" terminates TLS at the broker so method rules — and redaction — apply
+// on HTTPS. Interception is opt-in MITM: the pod trusts a poddle CA, and it breaks
+// certificate-pinned apps.
+const INTERCEPT_MODES: SegOption[] = [
+  { value: "tunnel", label: "Tunnel" },
+  { value: "intercept", label: "Intercept", tone: "monitor" },
+];
+
 // The cloud metadata endpoints — a top credential-theft target; the "Block them"
 // advisory fix adds these to the deny-list.
 const METADATA_HOSTS = ["169.254.169.254", "metadata.google.internal"];
@@ -91,13 +100,14 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
   const [egress, setEgress] = useState(policy.egress || "redact");
   const [monitor, setMonitor] = useState(!!policy.monitor);
+  const [intercept, setIntercept] = useState(!!policy.intercept);
   const [err, setErr] = useState("");
   const [probeHost, setProbeHost] = useState("");
   const [probeMethod, setProbeMethod] = useState("GET");
 
   useEffect(() => {
     setName(policy.name); setDesc(policy.description || ""); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
-    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor); setErr("");
+    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor); setIntercept(!!policy.intercept); setErr("");
   }, [policy]);
 
   const patchAllow = (i: number, patch: Partial<AllowRow>) => setAllows((a) => a.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -121,6 +131,8 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     setAllows(toRows({ name: t.id, ...t.policy }));
     setDenies(t.policy.deny_upstreams || []);
     setEgress(t.policy.egress || "redact");
+    setMonitor(!!t.policy.monitor);
+    setIntercept(!!t.policy.intercept);
     setErr("");
   };
 
@@ -132,7 +144,7 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
     const methods: Record<string, string[]> = {};
     for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
-    return { name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress, monitor: monitor || undefined };
+    return { name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress, monitor: monitor || undefined, intercept: intercept || undefined };
   };
 
   // Governance advisories on the live draft, and a single-request probe that runs
@@ -200,6 +212,9 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
       <label>Enforcement <span class="label-hint">Monitor logs would-be denials without blocking — roll out safely, then Enforce</span></label>
       <SegmentedControl value={monitor ? "monitor" : "enforce"} options={ENFORCEMENT_MODES} onChange={(v) => setMonitor(v === "monitor")} ariaLabel="enforcement mode" />
+
+      <label>HTTPS egress <span class="label-hint">Intercept terminates TLS so method rules apply on HTTPS (the pod trusts a poddle CA) — breaks certificate-pinned apps</span></label>
+      <SegmentedControl value={intercept ? "intercept" : "tunnel"} options={INTERCEPT_MODES} onChange={(v) => setIntercept(v === "intercept")} ariaLabel="https egress mode" />
 
       {!blank && advisories.length > 0 && (
         <div class="advisories">

@@ -598,7 +598,7 @@ function L({ size: e = 30 }) {
 }
 //#endregion
 //#region views/EgressChart.tsx
-function ee({ events: e }) {
+function R({ events: e }) {
 	let [t, n] = a(null), i = r(() => E(e, 14), [e]);
 	if (i.length === 0) return /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -721,7 +721,7 @@ function ee({ events: e }) {
 }
 //#endregion
 //#region views/PostureBar.tsx
-function R({ counts: e }) {
+function z({ counts: e }) {
 	let t = S.reduce((t, n) => t + (e[n.key] || 0), 0);
 	if (t === 0) return /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -770,7 +770,7 @@ function R({ counts: e }) {
 }
 //#endregion
 //#region views/FleetLoad.tsx
-function te({ pods: e }) {
+function ee({ pods: e }) {
 	let t = e.filter((e) => e.state === "running");
 	return t.length === 0 ? /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -811,7 +811,7 @@ function te({ pods: e }) {
 }
 //#endregion
 //#region views/MixBar.tsx
-function z({ d: e }) {
+function B({ d: e }) {
 	let t = [
 		["allow", e.allow],
 		["redact", e.redact],
@@ -831,7 +831,7 @@ function z({ d: e }) {
 }
 //#endregion
 //#region views/Skeletons.tsx
-function ne() {
+function te() {
 	return /* @__PURE__ */ O("div", {
 		class: "cards",
 		"aria-hidden": "true",
@@ -846,7 +846,7 @@ function ne() {
 		}, e))
 	});
 }
-function B({ rows: e = 6 }) {
+function V({ rows: e = 6 }) {
 	return /* @__PURE__ */ O("div", {
 		class: "table-wrap skel-table",
 		"aria-hidden": "true",
@@ -859,7 +859,7 @@ function B({ rows: e = 6 }) {
 }
 //#endregion
 //#region views/LiveDot.tsx
-function re({ status: e }) {
+function ne({ status: e }) {
 	let t = e === "live" ? "Live" : e === "down" ? "Reconnecting" : "Connecting";
 	return /* @__PURE__ */ O("span", {
 		class: "live live--" + e,
@@ -873,12 +873,12 @@ function re({ status: e }) {
 }
 //#endregion
 //#region views/Fact.tsx
-function V({ label: e, children: t }) {
+function H({ label: e, children: t }) {
 	return /* @__PURE__ */ O("div", { children: [/* @__PURE__ */ O("dt", { children: e }), /* @__PURE__ */ O("dd", { children: t })] });
 }
 //#endregion
 //#region views/csv.ts
-function H(e) {
+function U(e) {
 	let t = [
 		"seq",
 		"time",
@@ -895,13 +895,13 @@ function H(e) {
 	}, r = e.map((e) => t.map((t) => n(e[t])).join(","));
 	return [t.join(","), ...r].join("\n");
 }
-function U(e, t) {
-	let n = new Blob([H(t)], { type: "text/csv;charset=utf-8" }), r = URL.createObjectURL(n), i = document.createElement("a");
+function W(e, t) {
+	let n = new Blob([U(t)], { type: "text/csv;charset=utf-8" }), r = URL.createObjectURL(n), i = document.createElement("a");
 	i.href = r, i.download = e, document.body.appendChild(i), i.click(), i.remove(), setTimeout(() => URL.revokeObjectURL(r), 0);
 }
 //#endregion
 //#region views/AuditLogTable.tsx
-var W = [
+var re = [
 	{
 		value: "",
 		label: "All"
@@ -954,7 +954,7 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 		};
 		for (let t of g) t.decision && t.decision in e && e[t.decision]++;
 		return e;
-	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = W.map((e) => ({
+	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = re.map((e) => ({
 		...e,
 		badge: y[e.value] ?? 0
 	})), C = /* @__PURE__ */ O("div", {
@@ -984,7 +984,7 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 				class: "btn btn--ghost btn--sm",
 				disabled: !x.length,
 				onClick: () => {
-					U("poddle-audit.csv", x), l?.(x);
+					W("poddle-audit.csv", x), l?.(x);
 				},
 				children: "Export CSV"
 			}),
@@ -994,7 +994,7 @@ function G({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 			})
 		]
 	});
-	return o ? /* @__PURE__ */ O("div", { children: [C, /* @__PURE__ */ O(B, { rows: 8 })] }) : /* @__PURE__ */ O("div", { children: [C, /* @__PURE__ */ O("div", {
+	return o ? /* @__PURE__ */ O("div", { children: [C, /* @__PURE__ */ O(V, { rows: 8 })] }) : /* @__PURE__ */ O("div", { children: [C, /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", {
 			class: "dense",
@@ -1192,21 +1192,21 @@ function ie({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 		n && /* @__PURE__ */ O("dl", {
 			class: "facts",
 			children: [
-				/* @__PURE__ */ O(V, {
+				/* @__PURE__ */ O(H, {
 					label: "size",
 					children: /* @__PURE__ */ O("span", {
 						class: "c-mono",
 						children: _(n.size)
 					})
 				}),
-				/* @__PURE__ */ O(V, {
+				/* @__PURE__ */ O(H, {
 					label: "mode",
 					children: /* @__PURE__ */ O("span", {
 						class: "c-mono",
 						children: n.mode ? _(n.mode) : "—"
 					})
 				}),
-				/* @__PURE__ */ O(V, {
+				/* @__PURE__ */ O(H, {
 					label: "policy",
 					children: n.policy ? /* @__PURE__ */ O("a", {
 						class: "fact-link c-mono",
@@ -1218,7 +1218,7 @@ function ie({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 						children: "none"
 					})
 				}),
-				/* @__PURE__ */ O(V, {
+				/* @__PURE__ */ O(H, {
 					label: "cpu",
 					children: /* @__PURE__ */ O("span", {
 						class: "perf-inline",
@@ -1228,7 +1228,7 @@ function ie({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 						})]
 					})
 				}),
-				/* @__PURE__ */ O(V, {
+				/* @__PURE__ */ O(H, {
 					label: "memory",
 					children: /* @__PURE__ */ O("span", {
 						class: "perf-inline",
@@ -1288,7 +1288,7 @@ function q({ stats: e }) {
 }
 //#endregion
 //#region views/AttentionPanel.tsx
-function J({ attention: t, onPod: n }) {
+function ae({ attention: t, onPod: n }) {
 	return /* @__PURE__ */ O(e, { children: [/* @__PURE__ */ O("h2", {
 		class: "section-title",
 		children: "Attention"
@@ -1323,7 +1323,7 @@ function J({ attention: t, onPod: n }) {
 }
 //#endregion
 //#region views/RedactionsTable.tsx
-function Y({ redactions: t, onPod: n }) {
+function J({ redactions: t, onPod: n }) {
 	return /* @__PURE__ */ O(e, { children: [/* @__PURE__ */ O("h2", {
 		class: "section-title",
 		children: "Secrets redacted"
@@ -1365,7 +1365,7 @@ function Y({ redactions: t, onPod: n }) {
 }
 //#endregion
 //#region views/PolicyList.tsx
-function ae({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
+function oe({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
 	return /* @__PURE__ */ O("div", {
 		class: "list",
 		children: [n ? [
@@ -1409,8 +1409,8 @@ function ae({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, ne
 }
 //#endregion
 //#region views/DestinationsTable.tsx
-function X({ dests: e, loading: t, onSelect: n }) {
-	return t ? /* @__PURE__ */ O(B, { rows: 6 }) : /* @__PURE__ */ O("div", {
+function Y({ dests: e, loading: t, onSelect: n }) {
+	return t ? /* @__PURE__ */ O(V, { rows: 6 }) : /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", { children: [/* @__PURE__ */ O("thead", { children: /* @__PURE__ */ O("tr", { children: [
 			/* @__PURE__ */ O("th", {
@@ -1458,7 +1458,7 @@ function X({ dests: e, loading: t, onSelect: n }) {
 					class: "num c-mono",
 					children: e.total
 				}),
-				/* @__PURE__ */ O("td", { children: /* @__PURE__ */ O(z, { d: e }) }),
+				/* @__PURE__ */ O("td", { children: /* @__PURE__ */ O(B, { d: e }) }),
 				/* @__PURE__ */ O("td", {
 					class: "num c-mono",
 					title: [...e.pods].join(", "),
@@ -1477,7 +1477,7 @@ function X({ dests: e, loading: t, onSelect: n }) {
 }
 //#endregion
 //#region views/PolicyEditor.tsx
-var oe = [
+var se = [
 	{
 		value: "redact",
 		label: "Redact",
@@ -1493,20 +1493,27 @@ var oe = [
 		label: "Off",
 		tone: "faint"
 	}
-], se = [{
+], ce = [{
 	value: "enforce",
 	label: "Enforce"
 }, {
 	value: "monitor",
 	label: "Monitor",
 	tone: "monitor"
-}], ce = ["169.254.169.254", "metadata.google.internal"];
-function le(e) {
+}], le = [{
+	value: "tunnel",
+	label: "Tunnel"
+}, {
+	value: "intercept",
+	label: "Intercept",
+	tone: "monitor"
+}], ue = ["169.254.169.254", "metadata.google.internal"];
+function de(e) {
 	let t = [], n = e.allow_upstreams || [], r = e.deny_upstreams || [], i = e.methods || {}, a = n.length === 0;
 	if (a && e.egress !== "block" && t.push({
 		level: "warn",
 		msg: "No allowed destinations, so every host is reachable. Add destinations, or set egress to Block."
-	}), ce.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
+	}), ue.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
 		level: "warn",
 		msg: "Cloud metadata endpoints are reachable — a common credential-theft target.",
 		fix: "block-metadata"
@@ -1523,27 +1530,27 @@ function le(e) {
 		msg: "Secret scanning is off — outbound secrets are sent as-is, not redacted."
 	}), t;
 }
-function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
-	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(""), [L, ee] = a(""), [R, te] = a("GET");
+function fe({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
+	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept), [L, R] = a(""), [z, ee] = a(""), [B, te] = a("GET");
 	n(() => {
-		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I("");
+		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept), R("");
 	}, [t]);
-	let z = (e, t) => w((n) => n.map((n, r) => r === e ? {
+	let V = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
 		...t
 	} : n)), ne = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
 		methods: n.methods.includes(t) ? n.methods.filter((e) => e !== t) : [...n.methods, t]
-	} : n)), B = () => w((e) => [...e, {
+	} : n)), H = () => w((e) => [...e, {
 		host: "",
 		methods: [],
 		open: !1
-	}]), re = (e) => w((t) => t.filter((t, n) => n !== e)), V = (e, t) => E((n) => n.map((n, r) => r === e ? t : n)), H = () => E((e) => [...e, ""]), U = (e) => E((t) => t.filter((t, n) => n !== e)), W = h ?? !!t.name, G = !W, K = !y && C.length === 0 && T.length === 0, ie = (e) => {
+	}]), U = (e) => w((t) => t.filter((t, n) => n !== e)), W = (e, t) => E((n) => n.map((n, r) => r === e ? t : n)), re = () => E((e) => [...e, ""]), G = (e) => E((t) => t.filter((t, n) => n !== e)), K = h ?? !!t.name, ie = !K, q = !y && C.length === 0 && T.length === 0, ae = (e) => {
 		b(e.id), w(p({
 			name: e.id,
 			...e.policy
-		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), I("");
-	}, q = () => {
+		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept), R("");
+	}, J = () => {
 		let e = C.map((e) => e.host.trim()).filter((e) => e && e !== "*"), t = T.map((e) => e.trim()).filter(Boolean), n = {};
 		for (let e of C) {
 			let t = e.host.trim();
@@ -1556,23 +1563,24 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 			deny_upstreams: t,
 			methods: n,
 			egress: D,
-			monitor: A || void 0
+			monitor: A || void 0,
+			intercept: F || void 0
 		};
-	}, J = r(() => le(q()), [
+	}, oe = r(() => de(J()), [
 		C,
 		T,
 		D
-	]), Y = r(() => L.trim() ? d(q(), L.trim(), R) : null, [
-		L,
-		R,
+	]), Y = r(() => z.trim() ? d(J(), z.trim(), B) : null, [
+		z,
+		B,
 		C,
 		T,
 		D
-	]), ae = () => E((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...ce])]), X = s.length > 0, Z = r(() => X ? i.filter((e) => e.pod && s.includes(e.pod)) : i, [
+	]), fe = () => E((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...ue])]), X = s.length > 0, Z = r(() => X ? i.filter((e) => e.pod && s.includes(e.pod)) : i, [
 		i,
 		s,
 		X
-	]), Q = r(() => f(q(), Z), [
+	]), Q = r(() => f(J(), Z), [
 		y,
 		C,
 		T,
@@ -1582,7 +1590,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 	return /* @__PURE__ */ O("div", {
 		class: "editor",
 		children: [
-			G && K && m && m.length > 0 && /* @__PURE__ */ O("div", {
+			ie && q && m && m.length > 0 && /* @__PURE__ */ O("div", {
 				class: "templates",
 				children: [
 					/* @__PURE__ */ O("div", {
@@ -1594,7 +1602,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						children: m.map((e) => /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "tmpl",
-							onClick: () => ie(e),
+							onClick: () => ae(e),
 							children: [/* @__PURE__ */ O("span", {
 								class: "tmpl__name",
 								children: e.label
@@ -1623,7 +1631,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					class: "narrow",
 					children: [/* @__PURE__ */ O("label", { children: "Egress mode" }), /* @__PURE__ */ O(N, {
 						value: D,
-						options: oe,
+						options: se,
 						onChange: k,
 						ariaLabel: "egress mode"
 					})]
@@ -1648,13 +1656,23 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 			})] }),
 			/* @__PURE__ */ O(N, {
 				value: A ? "monitor" : "enforce",
-				options: se,
+				options: ce,
 				onChange: (e) => M(e === "monitor"),
 				ariaLabel: "enforcement mode"
 			}),
-			!K && J.length > 0 && /* @__PURE__ */ O("div", {
+			/* @__PURE__ */ O("label", { children: ["HTTPS egress ", /* @__PURE__ */ O("span", {
+				class: "label-hint",
+				children: "Intercept terminates TLS so method rules apply on HTTPS (the pod trusts a poddle CA) — breaks certificate-pinned apps"
+			})] }),
+			/* @__PURE__ */ O(N, {
+				value: F ? "intercept" : "tunnel",
+				options: le,
+				onChange: (e) => I(e === "intercept"),
+				ariaLabel: "https egress mode"
+			}),
+			!q && oe.length > 0 && /* @__PURE__ */ O("div", {
 				class: "advisories",
-				children: J.map((e, t) => /* @__PURE__ */ O("div", {
+				children: oe.map((e, t) => /* @__PURE__ */ O("div", {
 					class: "advisory advisory--" + e.level,
 					children: [
 						/* @__PURE__ */ O("span", {
@@ -1672,7 +1690,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						e.fix === "block-metadata" && /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "advisory__fix",
-							onClick: ae,
+							onClick: fe,
 							children: "Block them"
 						})
 					]
@@ -1699,25 +1717,25 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 									value: e.host,
 									placeholder: "api.example.com",
 									"aria-label": "Allowed host",
-									onInput: (e) => z(t, { host: e.target.value })
+									onInput: (e) => V(t, { host: e.target.value })
 								}),
 								!e.open && (e.methods.length ? /* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__msum",
 									title: "Limited to " + e.methods.join(", ") + " — click to edit",
-									onClick: () => z(t, { open: !0 }),
+									onClick: () => V(t, { open: !0 }),
 									children: e.methods.length > 3 ? e.methods.length + " methods" : e.methods.join(", ")
 								}) : /* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__limit",
-									onClick: () => z(t, { open: !0 }),
+									onClick: () => V(t, { open: !0 }),
 									children: "＋ limit methods"
 								})),
 								/* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__rm",
 									"aria-label": "Remove destination",
-									onClick: () => re(t),
+									onClick: () => U(t),
 									children: "×"
 								})
 							]
@@ -1738,13 +1756,13 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 								/* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__mdone",
-									onClick: () => z(t, { open: !1 }),
+									onClick: () => V(t, { open: !1 }),
 									children: "Done"
 								}),
 								e.methods.length > 0 && /* @__PURE__ */ O("button", {
 									type: "button",
 									class: "rule__mclear",
-									onClick: () => z(t, {
+									onClick: () => V(t, {
 										methods: [],
 										open: !1
 									}),
@@ -1756,7 +1774,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					/* @__PURE__ */ O("button", {
 						type: "button",
 						class: "addrow",
-						onClick: B,
+						onClick: H,
 						children: "＋ Add destination"
 					})
 				]
@@ -1776,19 +1794,19 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 							value: e,
 							placeholder: "metadata.google.internal",
 							"aria-label": "Blocked host",
-							onInput: (e) => V(t, e.target.value)
+							onInput: (e) => W(t, e.target.value)
 						}), /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "rule__rm",
 							"aria-label": "Remove blocked host",
-							onClick: () => U(t),
+							onClick: () => G(t),
 							children: "×"
 						})]
 					})
 				}, t)), /* @__PURE__ */ O("button", {
 					type: "button",
 					class: "addrow",
-					onClick: H,
+					onClick: re,
 					children: "＋ Add blocked host"
 				})]
 			}),
@@ -1888,10 +1906,10 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						class: "rollout__enforce",
 						onClick: async () => {
 							let e = await c({
-								...q(),
+								...J(),
 								monitor: void 0
 							});
-							e.ok ? M(!1) : I(e.error || "Save failed");
+							e.ok ? M(!1) : R(e.error || "Save failed");
 						},
 						children: "Enforce now"
 					})
@@ -1908,12 +1926,12 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						class: "probe__row",
 						children: [/* @__PURE__ */ O("input", {
 							class: "probe__host",
-							value: L,
+							value: z,
 							placeholder: "host, e.g. api.github.com",
 							"aria-label": "Test request host",
 							onInput: (e) => ee(e.target.value)
 						}), /* @__PURE__ */ O(N, {
-							value: R,
+							value: B,
 							options: o.map((e) => ({
 								value: e,
 								label: e
@@ -1932,9 +1950,9 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 					})
 				]
 			}),
-			F && /* @__PURE__ */ O("div", {
+			L && /* @__PURE__ */ O("div", {
 				class: "err",
-				children: F
+				children: L
 			}),
 			/* @__PURE__ */ O("div", {
 				class: "actions",
@@ -1943,28 +1961,28 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 						class: "btn btn--primary",
 						onClick: async () => {
 							if (!y.trim()) {
-								I("Name is required.");
+								R("Name is required.");
 								return;
 							}
-							let e = await c(q());
-							e.ok || I(e.error || "Save failed");
+							let e = await c(J());
+							e.ok || R(e.error || "Save failed");
 						},
-						children: W && y.trim() && y.trim() !== t.name ? "Rename & save" : "Save"
+						children: K && y.trim() && y.trim() !== t.name ? "Rename & save" : "Save"
 					}),
-					W && /* @__PURE__ */ O("button", {
+					K && /* @__PURE__ */ O("button", {
 						class: "btn btn--danger",
 						onClick: async () => {
 							await l();
 						},
 						children: "Delete"
 					}),
-					W && v && /* @__PURE__ */ O("button", {
+					K && v && /* @__PURE__ */ O("button", {
 						type: "button",
 						class: "btn btn--ghost",
-						onClick: () => v(q()),
+						onClick: () => v(J()),
 						children: "Duplicate"
 					}),
-					W && _ && /* @__PURE__ */ O("button", {
+					K && _ && /* @__PURE__ */ O("button", {
 						type: "button",
 						class: "btn btn--ghost btn--default" + (g ? " is-default" : ""),
 						title: g ? "This policy is applied to pods started with no --policy. Click to clear." : "Apply this policy to any pod started with no --policy.",
@@ -1992,7 +2010,7 @@ function Z({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u
 }
 //#endregion
 //#region views/PodControls.tsx
-function Q({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
+function X({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 	let [s, c] = a(null), [l, u] = a(!1), [d, f] = a(null), p = async (e) => {
 		u(!0);
 		let t = await r(e);
@@ -2089,7 +2107,7 @@ function Q({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 }
 //#endregion
 //#region views/CommandPalette.tsx
-function $({ open: e, onClose: t, commands: r }) {
+function Z({ open: e, onClose: t, commands: r }) {
 	let [o, s] = a(""), [c, l] = a(0), u = i(null);
 	n(() => {
 		if (!e) return;
@@ -2168,7 +2186,7 @@ function $({ open: e, onClose: t, commands: r }) {
 }
 //#endregion
 //#region views/ToastHost.tsx
-function ue({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
+function Q({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	return e.length === 0 ? null : /* @__PURE__ */ O("div", {
 		class: "toasts",
 		role: "region",
@@ -2219,4 +2237,4 @@ function ue({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	});
 }
 //#endregion
-export { J as AttentionPanel, G as AuditLogTable, $ as CommandPalette, S as DECISIONS, P as DecisionBadge, X as DestinationsTable, ee as EgressChart, V as Fact, te as FleetLoad, o as HTTP_METHODS, A as ICONS, j as Icon, F as IntegrityBadge, I as IntegrityPanel, re as LiveDot, z as MixBar, q as OverviewCards, Q as PodControls, ie as PodDetailPanel, K as PodFleetTable, L as PoddleMark, Z as PolicyEditor, ae as PolicyList, R as PostureBar, c as RANGE_MS, Y as RedactionsTable, N as SegmentedControl, ne as SkelCards, B as SkelTable, k as Sparkline, M as StatCard, s as TIME_RANGES, ue as ToastHost, b as absTime, E as bucketEvents, _ as cap1, d as decide, C as decisionCounts, w as destinations, U as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, T as rowKey, m as secretsFrom, h as summarise, x as threshTone, H as toCsv, p as toRows };
+export { ae as AttentionPanel, G as AuditLogTable, Z as CommandPalette, S as DECISIONS, P as DecisionBadge, Y as DestinationsTable, R as EgressChart, H as Fact, ee as FleetLoad, o as HTTP_METHODS, A as ICONS, j as Icon, F as IntegrityBadge, I as IntegrityPanel, ne as LiveDot, B as MixBar, q as OverviewCards, X as PodControls, ie as PodDetailPanel, K as PodFleetTable, L as PoddleMark, fe as PolicyEditor, oe as PolicyList, z as PostureBar, c as RANGE_MS, J as RedactionsTable, N as SegmentedControl, te as SkelCards, V as SkelTable, k as Sparkline, M as StatCard, s as TIME_RANGES, Q as ToastHost, b as absTime, E as bucketEvents, _ as cap1, d as decide, C as decisionCounts, w as destinations, W as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, T as rowKey, m as secretsFrom, h as summarise, x as threshTone, U as toCsv, p as toRows };

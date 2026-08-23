@@ -218,6 +218,21 @@ describe("PolicyEditor", () => {
     expect((onSave.mock.calls[1][0] as Policy).monitor).toBe(true);
   });
 
+  it("the HTTPS-egress toggle writes the intercept flag", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={onSave} onDelete={noopDelete} />);
+    mounted.push(el);
+
+    // Default is Tunnel -> no intercept flag.
+    await act(async () => { findButton(el, "Save").click(); });
+    expect((onSave.mock.calls[0][0] as Policy).intercept).toBeFalsy();
+
+    // Flip to Intercept -> the built policy carries intercept: true.
+    act(() => { findButton(el, "Intercept").click(); });
+    await act(async () => { findButton(el, "Save").click(); });
+    expect((onSave.mock.calls[1][0] as Policy).intercept).toBe(true);
+  });
+
   it("treats a named policy as unsaved when isSaved is false (a duplicate seed)", () => {
     const el = mount(<PolicyEditor policy={{ ...POLICY, name: "prod-copy" }} events={[]} scopePods={[]} onSave={noopSave} onDelete={noopDelete} isSaved={false} onDuplicate={vi.fn()} onSetDefault={vi.fn()} />);
     mounted.push(el);

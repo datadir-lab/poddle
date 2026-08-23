@@ -23,6 +23,7 @@ type Policy struct {
 	Methods        map[string][]string `toml:"methods" json:"methods"`                             // per-host allowed HTTP methods ("*" key = all hosts)
 	Egress         string              `toml:"egress" json:"egress"`                               // redact (default) | block | off
 	Monitor        bool                `toml:"monitor,omitempty" json:"monitor,omitempty"`         // evaluate but don't block: log would-be denials (safe rollout)
+	Intercept      bool                `toml:"intercept,omitempty" json:"intercept,omitempty"`     // terminate TLS on the pod's HTTPS egress so method rules (and redaction) apply; opt-in MITM
 }
 
 // Decide evaluates one request against the policy. Order: the deny-list wins,

@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -43,6 +44,20 @@ type PolicyChecker interface {
 // enforcing it. A checker that does not implement it always enforces.
 type MonitorChecker interface {
 	Monitored(handle string) bool
+}
+
+// InterceptChecker is an optional companion to PolicyChecker: when the pod's
+// policy opts into interception, the forward proxy terminates TLS on its HTTPS
+// egress (rather than tunnelling opaquely) so per-request method rules apply.
+type InterceptChecker interface {
+	Intercepts(handle string) bool
+}
+
+// LeafSource mints a TLS leaf certificate for host, signed by the egress CA the
+// intercepted pod trusts. *tlsca.Authority satisfies it; kept as an interface so
+// the broker does not depend on the CA implementation.
+type LeafSource interface {
+	LeafFor(host string) (*tls.Certificate, error)
 }
 
 // Gateway is the secretless egress proxy. A pod's harness points at it

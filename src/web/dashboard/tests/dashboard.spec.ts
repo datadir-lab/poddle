@@ -538,7 +538,7 @@ test("policies: a starter template pre-fills the visual builder and dry-runs aga
   await page.goto("/policies/new");
 
   // A blank new policy offers the full ordered set of starter templates.
-  await expect(page.locator(".tmpl")).toHaveCount(8);
+  await expect(page.locator(".tmpl")).toHaveCount(9);
   await page.getByRole("button", { name: /Coding agent/ }).click();
 
   // Name, allow-list, and the metadata deny-list all populate from the template.
@@ -935,6 +935,28 @@ test("policies: a '*' catch-all method rule denies non-GET across all hosts in t
   await expect(page.locator(".dryrun__list")).toContainText("api.example");
   await expect(page.locator(".dryrun__list")).toContainText("other.example");
   await expect(page.locator(".dryrun__list")).not.toContainText("docs.example");
+});
+
+test("policies: the read-only-web template turns on interception and enforces GET-only", async ({ page }) => {
+  const t = new Date().toISOString();
+  const evs = [
+    { seq: 2, time: t, pod: "a", kind: "request", upstream: "docs.site", method: "GET" },  // allowed
+    { seq: 1, time: t, pod: "a", kind: "request", upstream: "api.site", method: "POST" },   // denied by "*"
+  ];
+  await page.route("**/v1/audit/verify", (r) => r.fulfill({ json: { ok: true, brokenAt: 0 } }));
+  await page.route("**/v1/audit/stream", (r) => r.fulfill({ status: 204, body: "" }));
+  await page.route(/\/v1\/audit(\?|$)/, (r) => r.fulfill({ json: evs }));
+  await page.route(/\/v1\/policies(\/|\?|$)/, (r) => r.fulfill({ json: [] }));
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  await page.getByRole("button", { name: /Read-only web/ }).click();
+  // HTTPS interception is on (so the GET-only rule can be enforced on HTTPS)...
+  await expect(page.getByRole("radio", { name: "Intercept", exact: true })).toBeChecked();
+  // ...and the catch-all method rule denies the POST while allowing the GET.
+  await expect(page.locator(".dryrun")).toContainText("1 would be denied");
+  await expect(page.locator(".dryrun__list")).toContainText("api.site");
+  await expect(page.locator(".dryrun__list")).not.toContainText("docs.site");
 });
 
 test("pod controls: Cancel dismisses a confirm without mutating", async ({ page }) => {
