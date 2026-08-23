@@ -100,14 +100,17 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const [denies, setDenies] = useState<string[]>(policy.deny_upstreams || []);
   const [egress, setEgress] = useState(policy.egress || "redact");
   const [monitor, setMonitor] = useState(!!policy.monitor);
-  const [intercept, setIntercept] = useState(!!policy.intercept);
+  const [intercept, setIntercept] = useState(!!policy.intercept || (policy.intercept_hosts?.length ?? 0) > 0);
+  const [interceptHosts, setInterceptHosts] = useState<string[]>(policy.intercept_hosts || []);
   const [err, setErr] = useState("");
   const [probeHost, setProbeHost] = useState("");
   const [probeMethod, setProbeMethod] = useState("GET");
 
   useEffect(() => {
     setName(policy.name); setDesc(policy.description || ""); setAllows(toRows(policy)); setDenies(policy.deny_upstreams || []);
-    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor); setIntercept(!!policy.intercept); setErr("");
+    setEgress(policy.egress || "redact"); setMonitor(!!policy.monitor);
+    setIntercept(!!policy.intercept || (policy.intercept_hosts?.length ?? 0) > 0);
+    setInterceptHosts(policy.intercept_hosts || []); setErr("");
   }, [policy]);
 
   const patchAllow = (i: number, patch: Partial<AllowRow>) => setAllows((a) => a.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -117,6 +120,9 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
   const patchDeny = (i: number, v: string) => setDenies((d) => d.map((x, j) => (j === i ? v : x)));
   const addDeny = () => setDenies((d) => [...d, ""]);
   const removeDeny = (i: number) => setDenies((d) => d.filter((_, j) => j !== i));
+  const patchIHost = (i: number, v: string) => setInterceptHosts((d) => d.map((x, j) => (j === i ? v : x)));
+  const addIHost = () => setInterceptHosts((d) => [...d, ""]);
+  const removeIHost = (i: number) => setInterceptHosts((d) => d.filter((_, j) => j !== i));
 
   // Whether this is a persisted policy. The container passes isSaved (a "new"
   // policy can carry a name via a Duplicate seed); fall back to the name for
@@ -132,7 +138,8 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     setDenies(t.policy.deny_upstreams || []);
     setEgress(t.policy.egress || "redact");
     setMonitor(!!t.policy.monitor);
-    setIntercept(!!t.policy.intercept);
+    setIntercept(!!t.policy.intercept || (t.policy.intercept_hosts?.length ?? 0) > 0);
+    setInterceptHosts(t.policy.intercept_hosts || []);
     setErr("");
   };
 
@@ -144,7 +151,12 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
     const deny_upstreams = denies.map((d) => d.trim()).filter(Boolean);
     const methods: Record<string, string[]> = {};
     for (const r of allows) { const h = r.host.trim(); if (h && r.methods.length) methods[h] = r.methods; }
-    return { name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress, monitor: monitor || undefined, intercept: intercept || undefined };
+    const ihosts = interceptHosts.map((h) => h.trim()).filter(Boolean);
+    return {
+      name: name.trim(), description: desc.trim() || undefined, allow_upstreams, deny_upstreams, methods, egress, monitor: monitor || undefined,
+      intercept: intercept && ihosts.length === 0 ? true : undefined,
+      intercept_hosts: intercept && ihosts.length ? ihosts : undefined,
+    };
   };
 
   // Governance advisories on the live draft, and a single-request probe that runs
@@ -215,6 +227,22 @@ export function PolicyEditor({ policy, events, scopePods, onSave, onDelete, hint
 
       <label>HTTPS egress <span class="label-hint">Intercept terminates TLS so method rules apply on HTTPS (the pod trusts a poddle CA) — breaks certificate-pinned apps</span></label>
       <SegmentedControl value={intercept ? "intercept" : "tunnel"} options={INTERCEPT_MODES} onChange={(v) => setIntercept(v === "intercept")} ariaLabel="https egress mode" />
+
+      {intercept && (
+        <div class="rules">
+          <p class="rules__empty" style="margin-top:.4rem">Intercept these hosts (blank = all HTTPS) · ".example.com" matches any subdomain</p>
+          {interceptHosts.map((h, i) => (
+            <div class="rule" key={i}>
+              <div class="rule__row">
+                <input class="rule__host" value={h} placeholder="api.internal.com" aria-label="Intercepted host"
+                  onInput={(e) => patchIHost(i, (e.target as HTMLInputElement).value)} />
+                <button type="button" class="rule__rm" aria-label="Remove intercepted host" onClick={() => removeIHost(i)}>×</button>
+              </div>
+            </div>
+          ))}
+          <button type="button" class="addrow" onClick={addIHost}>＋ Add intercepted host</button>
+        </div>
+      )}
 
       {!blank && advisories.length > 0 && (
         <div class="advisories">

@@ -253,6 +253,48 @@ describe("PolicyEditor", () => {
     expect(built.allow_upstreams).not.toContain("*"); // not a bogus allowed host
   });
 
+  it("Intercept with a host drafts intercept_hosts; Intercept with no host drafts intercept:true", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} onSave={onSave} onDelete={noopDelete} />);
+    mounted.push(el);
+
+    // Flip to Intercept, then add a scoped host.
+    act(() => { findButton(el, "Intercept").click(); });
+    act(() => { findButton(el, "＋ Add intercepted host").click(); });
+    setValue(el.querySelector("input[aria-label='Intercepted host']") as HTMLInputElement, "api.x.com");
+    await act(async () => { findButton(el, "Save").click(); });
+
+    expect((onSave.mock.calls[0][0] as Policy).intercept_hosts).toEqual(["api.x.com"]);
+    expect((onSave.mock.calls[0][0] as Policy).intercept).toBeUndefined();
+
+    // Clearing the host list falls back to intercepting everything.
+    onSave.mockClear();
+    act(() => { (el.querySelector("button[aria-label='Remove intercepted host']") as HTMLButtonElement).click(); });
+    await act(async () => { findButton(el, "Save").click(); });
+
+    expect((onSave.mock.calls[0][0] as Policy).intercept).toBe(true);
+    expect((onSave.mock.calls[0][0] as Policy).intercept_hosts).toBeUndefined();
+  });
+
+  it("reopening a per-host policy (intercept_hosts only, no intercept bool) keeps interception on", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    // Mirrors what draft() persists for a scoped-intercept policy: intercept_hosts
+    // set, intercept omitted entirely.
+    const p: Policy = { ...POLICY, intercept_hosts: ["api.x.com"] };
+    const el = mount(<PolicyEditor policy={p} events={[]} scopePods={[]} onSave={onSave} onDelete={noopDelete} />);
+    mounted.push(el);
+
+    // The Intercept control is active (not Tunnel) and the saved host shows.
+    expect(findButton(el, "Intercept").getAttribute("aria-checked")).toBe("true");
+    expect((el.querySelector("input[aria-label='Intercepted host']") as HTMLInputElement).value).toBe("api.x.com");
+
+    // Saving without touching the toggle preserves intercept_hosts and must not
+    // spuriously emit intercept: true.
+    await act(async () => { findButton(el, "Save").click(); });
+    expect((onSave.mock.calls[0][0] as Policy).intercept_hosts).toEqual(["api.x.com"]);
+    expect((onSave.mock.calls[0][0] as Policy).intercept).toBeUndefined();
+  });
+
   it("the Save button reads 'Rename & save' once a saved policy's name is edited", () => {
     const el = mount(<PolicyEditor policy={POLICY} events={[]} scopePods={[]} isSaved onSave={noopSave} onDelete={noopDelete} />);
     mounted.push(el);

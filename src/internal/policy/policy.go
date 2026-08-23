@@ -17,13 +17,14 @@ import (
 // Policy is a set of egress/access rules referenced by a pod.
 type Policy struct {
 	Name           string              `toml:"-" json:"name"`
-	Description    string              `toml:"description,omitempty" json:"description,omitempty"` // free-text note on intent; ignored by Decide
-	AllowUpstreams []string            `toml:"allow_upstreams" json:"allow_upstreams"`             // default-deny when non-empty; ".x" = any subdomain
-	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`               // always denied (wins over allow)
-	Methods        map[string][]string `toml:"methods" json:"methods"`                             // per-host allowed HTTP methods ("*" key = all hosts)
-	Egress         string              `toml:"egress" json:"egress"`                               // redact (default) | block | off
-	Monitor        bool                `toml:"monitor,omitempty" json:"monitor,omitempty"`         // evaluate but don't block: log would-be denials (safe rollout)
-	Intercept      bool                `toml:"intercept,omitempty" json:"intercept,omitempty"`     // terminate TLS on the pod's HTTPS egress so method rules (and redaction) apply; opt-in MITM
+	Description    string              `toml:"description,omitempty" json:"description,omitempty"`         // free-text note on intent; ignored by Decide
+	AllowUpstreams []string            `toml:"allow_upstreams" json:"allow_upstreams"`                     // default-deny when non-empty; ".x" = any subdomain
+	DenyUpstreams  []string            `toml:"deny_upstreams" json:"deny_upstreams"`                       // always denied (wins over allow)
+	Methods        map[string][]string `toml:"methods" json:"methods"`                                     // per-host allowed HTTP methods ("*" key = all hosts)
+	Egress         string              `toml:"egress" json:"egress"`                                       // redact (default) | block | off
+	Monitor        bool                `toml:"monitor,omitempty" json:"monitor,omitempty"`                 // evaluate but don't block: log would-be denials (safe rollout)
+	Intercept      bool                `toml:"intercept,omitempty" json:"intercept,omitempty"`             // terminate TLS on the pod's HTTPS egress so method rules (and redaction) apply; opt-in MITM
+	InterceptHosts []string            `toml:"intercept_hosts,omitempty" json:"intercept_hosts,omitempty"` // exact / .suffix hosts to TLS-terminate; empty falls back to the intercept bool (all/none)
 }
 
 // Decide evaluates one request against the policy. Order: the deny-list wins,
@@ -45,6 +46,19 @@ func (p *Policy) Decide(host, method string) (allow bool, reason string) {
 		return false, "method " + method + " not allowed for " + host
 	}
 	return true, ""
+}
+
+// InterceptsHost reports whether HTTPS egress to host should be TLS-terminated:
+// the host matches intercept_hosts, or — when that list is empty — the legacy
+// intercept bool terminates all hosts. A nil policy never intercepts.
+func (p *Policy) InterceptsHost(host string) bool {
+	if p == nil {
+		return false
+	}
+	if len(p.InterceptHosts) > 0 {
+		return matchHost(host, p.InterceptHosts)
+	}
+	return p.Intercept
 }
 
 // methodsFor returns the allowed methods for host (exact key, then a ".suffix"

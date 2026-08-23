@@ -115,13 +115,14 @@ func (d *Daemon) Monitored(handle string) bool {
 	return pol != nil && pol.Monitor
 }
 
-// Intercepts implements broker.InterceptChecker: the pod's policy opts into TLS
-// interception, so its HTTPS egress should be terminated (not tunnelled).
-func (d *Daemon) Intercepts(handle string) bool {
+// Intercepts implements broker.InterceptChecker: whether the pod's HTTPS egress
+// to host should be TLS-terminated (per-host intercept_hosts, or the legacy
+// intercept bool for all hosts).
+func (d *Daemon) Intercepts(handle, host string) bool {
 	d.mu.Lock()
 	pol := d.podPolicy[d.handlePod[handle]]
 	d.mu.Unlock()
-	return pol != nil && pol.Intercept
+	return pol.InterceptsHost(host)
 }
 
 // EgressMode implements broker.EgressModer: the pod policy's egress redaction

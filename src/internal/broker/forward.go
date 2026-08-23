@@ -51,12 +51,12 @@ func (f *ForwardProxy) SetLeafSource(ls LeafSource) { f.leaves = ls }
 
 // intercepts reports whether this CONNECT should be TLS-terminated: the pod opted
 // in and a leaf source is available.
-func (f *ForwardProxy) intercepts(token string) bool {
+func (f *ForwardProxy) intercepts(token, host string) bool {
 	if f.leaves == nil {
 		return false
 	}
 	ic, ok := f.policy.(InterceptChecker)
-	return ok && ic.Intercepts(token)
+	return ok && ic.Intercepts(token, host)
 }
 
 // monitored reports whether the pod's policy is in monitor mode.
@@ -98,7 +98,7 @@ func (f *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodConnect {
-		if f.intercepts(token) {
+		if f.intercepts(token, host) {
 			f.intercept(w, r, token, host, monitored)
 		} else {
 			f.tunnel(w, r, token, host, monitored)

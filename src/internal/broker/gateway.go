@@ -50,7 +50,7 @@ type MonitorChecker interface {
 // policy opts into interception, the forward proxy terminates TLS on its HTTPS
 // egress (rather than tunnelling opaquely) so per-request method rules apply.
 type InterceptChecker interface {
-	Intercepts(handle string) bool
+	Intercepts(handle, host string) bool
 }
 
 // EgressModer is an optional companion to PolicyChecker: it reports a pod's

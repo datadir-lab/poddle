@@ -30,7 +30,7 @@ func (interceptRO) Check(handle, host, method string) (bool, string) {
 	}
 	return false, method + " not allowed (read-only)"
 }
-func (interceptRO) Intercepts(string) bool { return true }
+func (interceptRO) Intercepts(string, string) bool { return true }
 
 // TestForwardProxy_InterceptEnforcesMethodOnHTTPS proves the headline capability:
 // with interception on, the proxy terminates the pod's HTTPS CONNECT, sees the
@@ -231,6 +231,61 @@ func TestForwardProxy_InterceptForcesHTTP1Upstream(t *testing.T) {
 	}
 }
 
+// hostScopedRO intercepts only read.test and enforces read-only there; any other
+// host is not intercepted (tunnelled).
+type hostScopedRO struct{}
+
+func (hostScopedRO) Check(_, _, method string) (bool, string) {
+	if method == http.MethodGet || method == http.MethodConnect {
+		return true, ""
+	}
+	return false, method + " not allowed (read-only)"
+}
+func (hostScopedRO) Intercepts(_, host string) bool { return host == "read.test" }
+
+// TestForwardProxy_InterceptScopedByHost proves per-host routing: a matched host
+// is TLS-terminated (POST visible → 403), an unmatched host is tunnelled (the
+// proxy dials it directly, so a refused target yields a 502 CONNECT reply — never
+// a "200 Connection established" + interception).
+func TestForwardProxy_InterceptScopedByHost(t *testing.T) {
+	ca, err := tlsca.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp := NewForwardProxy(hostScopedRO{}, &recAuditor{})
+	fp.SetLeafSource(ca)
+	srv := httptest.NewServer(fp)
+	t.Cleanup(srv.Close)
+
+	// Matched host: intercepted → POST is blocked.
+	tconn := dialIntercepted(t, srv.Listener.Addr().String(), ca, "tok")
+	defer tconn.Close()
+	br := bufio.NewReader(tconn)
+	fmt.Fprintf(tconn, "POST /w HTTP/1.1\r\nHost: read.test\r\nContent-Length: 0\r\n\r\n")
+	rp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read POST response: %v", err)
+	}
+	io.Copy(io.Discard, rp.Body)
+	rp.Body.Close()
+	if rp.StatusCode != http.StatusForbidden {
+		t.Errorf("matched host POST = %d, want 403 (intercepted)", rp.StatusCode)
+	}
+
+	// Unmatched host: NOT intercepted → tunnelled. CONNECT to a refused port, so
+	// the tunnel dial fails and the CONNECT reply is 502 (not a 200 established).
+	raw, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	fmt.Fprintf(raw, "CONNECT 127.0.0.1:1 HTTP/1.1\r\nHost: 127.0.0.1:1\r\nProxy-Authorization: %s\r\n\r\n", basicToken("tok"))
+	status, _ := bufio.NewReader(raw).ReadString('\n')
+	if !strings.Contains(status, "502") {
+		t.Errorf("unmatched host CONNECT = %q, want a 502 (tunnelled, not intercepted)", status)
+	}
+}
+
 // dialIntercepted opens a CONNECT to the proxy and completes the TLS handshake
 // through it, trusting the egress CA as an intercepted pod would, returning the
 // live TLS connection to the (terminated) tunnel.
@@ -291,7 +346,7 @@ func (allowAll) Check(string, string, string) (bool, string) { return true, "" }
 type egressChecker struct{ mode string }
 
 func (egressChecker) Check(string, string, string) (bool, string) { return true, "" }
-func (egressChecker) Intercepts(string) bool                      { return true }
+func (egressChecker) Intercepts(string, string) bool              { return true }
 func (e egressChecker) EgressMode(string) string                  { return e.mode }
 
 func TestForwardProxy_egressMode(t *testing.T) {

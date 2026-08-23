@@ -245,17 +245,22 @@ func TestDaemon_Monitored(t *testing.T) {
 
 func TestDaemon_Intercepts(t *testing.T) {
 	d := New(&fakeBroker{}, nil)
-	if d.Intercepts("nope") {
+	if d.Intercepts("nope", "api.x.com") {
 		t.Error("an unknown handle must not intercept")
 	}
 	d.handlePod["h1"] = "box"
-	d.podPolicy["box"] = &policy.Policy{Name: "ro", Intercept: true}
-	if !d.Intercepts("h1") {
-		t.Error("an intercept policy should report intercept")
+	// Legacy bool: intercept all hosts.
+	d.podPolicy["box"] = &policy.Policy{Name: "all", Intercept: true}
+	if !d.Intercepts("h1", "anything.com") {
+		t.Error("intercept:true should intercept every host")
 	}
-	d.podPolicy["box"] = &policy.Policy{Name: "plain"}
-	if d.Intercepts("h1") {
-		t.Error("a non-intercept policy must not report intercept")
+	// Per-host list: only matching hosts.
+	d.podPolicy["box"] = &policy.Policy{Name: "scoped", InterceptHosts: []string{".x.com"}}
+	if !d.Intercepts("h1", "api.x.com") {
+		t.Error("a host under intercept_hosts should intercept")
+	}
+	if d.Intercepts("h1", "github.com") {
+		t.Error("a host outside intercept_hosts must be tunnelled")
 	}
 }
 
