@@ -959,6 +959,25 @@ test("policies: the read-only-web template turns on interception and enforces GE
   await expect(page.locator(".dryrun__list")).not.toContainText("docs.site");
 });
 
+test("policies: per-host interception saves intercept_hosts", async ({ page }) => {
+  await page.route(/\/v1\/policies(\?|$)/, (r) => r.fulfill({ json: [] }));
+  let saved: { intercept_hosts?: string[] } | null = null;
+  await page.route("**/v1/policies/ihost-pol", (r) => {
+    if (r.request().method() === "PUT") saved = JSON.parse(r.request().postData() || "{}");
+    return r.fulfill({ status: 204, body: "" });
+  });
+  await mockAudit(page);
+  await mockPods(page);
+  await page.goto("/policies/new");
+
+  await page.locator("#pol-name").fill("ihost-pol");
+  await page.getByRole("radio", { name: "Intercept", exact: true }).click(); // HTTPS egress: intercept
+  await page.getByRole("button", { name: /Add intercepted host/i }).click();
+  await page.locator("input[aria-label='Intercepted host']").fill("api.internal.com");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect.poll(() => saved?.intercept_hosts).toContain("api.internal.com");
+});
+
 test("pod controls: Cancel dismisses a confirm without mutating", async ({ page }) => {
   await page.route(/\/v1\/pods(\?|$)/, (r) => r.fulfill({ json: [
     { name: "agent1", state: "running", size: "weak", mode: "headless", policy: "prod", autoscale: false, cpu: "1%", memPerc: "1%", mem: "" },
