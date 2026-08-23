@@ -174,6 +174,7 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 	}
 
 	tconn := tls.Server(client, &tls.Config{
+		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{"http/1.1"}, // parse the decrypted stream as HTTP/1.1
 		GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			name := chi.ServerName
@@ -186,7 +187,7 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 	if err := tconn.Handshake(); err != nil {
 		return // pod rejected the leaf (e.g. certificate pinning) — cannot inspect
 	}
-	defer tconn.Close()
+	defer func() { _ = tconn.Close() }()
 
 	br := bufio.NewReader(tconn)
 	upstream := &http.Client{Transport: &http.Transport{}} // real roots verify the upstream
@@ -233,7 +234,7 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 		}
 		status := resp.StatusCode
 		werr := resp.Write(tconn)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		f.emit(token, host, req.Method, decision, detail, status)
 		if werr != nil {
 			return // pod hung up mid-response
