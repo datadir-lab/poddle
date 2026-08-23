@@ -63,6 +63,18 @@ func (f *ForwardProxy) monitored(token string) bool {
 	return ok && mc.Monitored(token)
 }
 
+// egressMode returns the pod's egress redaction mode. It defaults to "redact"
+// (matching NewRedactor("") and the system default) when the policy does not
+// implement EgressModer or reports no mode.
+func (f *ForwardProxy) egressMode(token string) string {
+	if em, ok := f.policy.(EgressModer); ok {
+		if m := em.EgressMode(token); m != "" {
+			return m
+		}
+	}
+	return "redact"
+}
+
 func (f *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := proxyAuthToken(r.Header.Get("Proxy-Authorization"))
 	host := destinationHost(r)

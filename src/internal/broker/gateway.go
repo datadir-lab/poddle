@@ -53,6 +53,14 @@ type InterceptChecker interface {
 	Intercepts(handle string) bool
 }
 
+// EgressModer is an optional companion to PolicyChecker: it reports a pod's
+// egress redaction mode ("redact" | "block" | "off") by handle, so intercepted
+// HTTPS request bodies honour the same egress mode as the brokered path. A
+// checker that does not implement it defaults to "redact".
+type EgressModer interface {
+	EgressMode(handle string) string
+}
+
 // LeafSource mints a TLS leaf certificate for host, signed by the egress CA the
 // intercepted pod trusts. *tlsca.Authority satisfies it; kept as an interface so
 // the broker does not depend on the CA implementation.

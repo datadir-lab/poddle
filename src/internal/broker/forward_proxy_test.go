@@ -285,6 +285,29 @@ type allowAll struct{}
 
 func (allowAll) Check(string, string, string) (bool, string) { return true, "" }
 
+// egressChecker is a test policy: allows every method, intercepts, and reports a
+// fixed egress mode. Satisfies PolicyChecker, InterceptChecker, and EgressModer.
+type egressChecker struct{ mode string }
+
+func (egressChecker) Check(string, string, string) (bool, string) { return true, "" }
+func (egressChecker) Intercepts(string) bool                      { return true }
+func (e egressChecker) EgressMode(string) string                  { return e.mode }
+
+func TestForwardProxy_egressMode(t *testing.T) {
+	// Defaults to "redact" when the policy carries no EgressModer.
+	if got := NewForwardProxy(allowAll{}, nil).egressMode("t"); got != "redact" {
+		t.Errorf("egressMode with no EgressModer = %q, want redact", got)
+	}
+	// An empty mode from the policy also defaults to redact.
+	if got := NewForwardProxy(egressChecker{mode: ""}, nil).egressMode("t"); got != "redact" {
+		t.Errorf("egressMode empty = %q, want redact", got)
+	}
+	// Otherwise the policy's mode wins.
+	if got := NewForwardProxy(egressChecker{mode: "block"}, nil).egressMode("t"); got != "block" {
+		t.Errorf("egressMode = %q, want block", got)
+	}
+}
+
 func basicToken(token string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(token+":x"))
 }
