@@ -30,6 +30,13 @@ type Harness interface {
 	// "headless"). It reads the state dirs the move carried over. Empty if the
 	// harness can't resume (move then just recreates the shell).
 	ResumeCommand(mode string) string
+	// EgressHosts are the hosts this harness must reach to install and run
+	// itself (e.g. its package registry, its vendor's endpoints), beyond the
+	// pod's identity API and connectors. They seed the default-deny egress
+	// allow-list for a brokered pod that has no explicit policy, so the agent
+	// works out of the box while exfiltration to unrelated hosts stays blocked.
+	// Exact hosts, or ".suffix" for any subdomain.
+	EgressHosts() []string
 }
 
 // Registry maps harness names to implementations.

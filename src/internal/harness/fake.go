@@ -12,6 +12,7 @@ type FakeHarness struct {
 	States      []string // returned by StateDirs
 	Task        string   // returned by TaskCommand; %s is replaced with the prompt
 	Resume      string   // returned by ResumeCommand; %mode is replaced with the mode
+	Egress      []string // returned by EgressHosts
 }
 
 func (f *FakeHarness) Name() string { return f.HarnessName }
@@ -39,6 +40,8 @@ func (f *FakeHarness) TaskCommand(prompt string, _ int) string {
 }
 
 func (f *FakeHarness) StateDirs() []string { return f.States }
+
+func (f *FakeHarness) EgressHosts() []string { return f.Egress }
 
 func (f *FakeHarness) ResumeCommand(mode string) string {
 	if f.Resume == "" {

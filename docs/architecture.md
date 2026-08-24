@@ -114,9 +114,12 @@ Three data-plane channels carry this, depending on what the pod needs:
 | **forward proxy** | arbitrary HTTP(S) egress (npm, pip, git, fetch) | `HTTP(S)_PROXY` → the broker; governed by policy, optionally TLS-intercepted |
 | **L4 redis / postgres** | datastores | the pod connects to the broker's redis/postgres port using the handle as the password; the broker swaps in the real DSN |
 
-Every locked pod gets a forward proxy so *all* arbitrary egress is non-bypassable
-(default-allow without a policy, restricted with one) — otherwise a locked pod
-couldn't even install its harness.
+Every locked pod gets a forward proxy so *all* arbitrary egress is non-bypassable.
+Egress is also **contained by default**: a pod with no explicit policy gets a
+*derived* default-deny allow-list — exactly its identity's API host, its
+connectors' hosts, and its harness's install/runtime hosts (e.g. the npm
+registry) — so the agent works out of the box while it cannot exfiltrate to
+unrelated hosts. An explicit policy replaces the derived one. See *Governance*.
 
 ---
 
@@ -213,8 +216,11 @@ non-empty; `.suffix` = subdomains), `deny_upstreams` (always, wins), `methods`
 (per-host allowed HTTP methods; `*` key = all hosts), `egress`
 (redact | block | off — secret handling in bodies), `monitor` (evaluate but log,
 don't block — safe rollout), `intercept` / `intercept_hosts` (TLS interception,
-below). A pod with **no** policy is default-allow but still non-bypassable and
-audited; a nil/unknown token is denied.
+below). A pod with **no** explicit policy is **not** default-allow: `up` binds a
+derived **`poddle-default`** policy whose `allow_upstreams` are exactly the pod's
+identity API host, its connectors' hosts, and its harness's egress hosts — so it
+is contained by default and can't reach unrelated hosts. A nil/unknown egress
+token is denied.
 
 ---
 

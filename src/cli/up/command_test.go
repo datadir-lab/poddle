@@ -143,6 +143,18 @@ func (s *spyBroker) Egress(pod string) (string, string, error) {
 	return "poddle_egr_spy", "127.0.0.1:9", nil
 }
 
+// captureBroker records the policy bound via SetPolicy so tests can assert the
+// derived default-deny allow-list.
+type captureBroker struct {
+	stubBroker
+	policy *policy.Policy
+}
+
+func (c *captureBroker) SetPolicy(_ string, p *policy.Policy) error {
+	c.policy = p
+	return nil
+}
+
 // stubBroker is a no-op podBroker for tests that don't exercise brokered creds.
 type stubBroker struct{}
 
@@ -514,7 +526,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// exec replaces attach; the handle persists (poddled outlives up — no revoke).
-	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up", "exec"}
+	want := []string{"ensure", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up", "exec"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -545,7 +557,7 @@ func TestUp_DetachWithIdentity_Works(t *testing.T) {
 		t.Errorf("detached pod should be created, got %q", f.spec.Name)
 	}
 	// Detached: handle issued + pod created, but NOT attached and NOT revoked.
-	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up"}
+	want := []string{"ensure", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -572,7 +584,7 @@ func TestUp_Identity_IssuesHandleAndAttaches(t *testing.T) {
 	}
 	// Handles are issued before create/attach and persist (poddled outlives up).
 	// once the (instant, faked) attached session ends.
-	want := []string{"ensure", "gateway", "issue", "egress", "create", "audit:pod.up", "attach"}
+	want := []string{"ensure", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up", "attach"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
