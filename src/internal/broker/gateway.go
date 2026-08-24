@@ -75,10 +75,11 @@ type LeafSource interface {
 // also redacts secrets from outbound bodies (egress DLP) and reports every
 // request to an Auditor.
 type Gateway struct {
-	handles  *Handles
-	redactor *Redactor
-	auditor  Auditor
-	policy   PolicyChecker
+	handles      *Handles
+	redactor     *Redactor
+	auditor      Auditor
+	policy       PolicyChecker
+	loopbackHost string // if set, a loopback upstream is dialed here (the host); see RewriteLoopbackHost
 }
 
 // NewGateway returns a gateway backed by the handle registry, redacting egress
@@ -93,6 +94,28 @@ func (g *Gateway) SetAuditor(a Auditor) { g.auditor = a }
 
 // SetPolicyChecker sets the governance policy checker consulted per request.
 func (g *Gateway) SetPolicyChecker(pc PolicyChecker) { g.policy = pc }
+
+// SetLoopbackHost makes a loopback upstream (e.g. a local Postgres at
+// 127.0.0.1) dial loopbackHost instead — the host route from a containerized
+// broker (host.containers.internal). Empty (the default) disables the rewrite.
+func (g *Gateway) SetLoopbackHost(h string) { g.loopbackHost = h }
+
+// dialURL returns the URL the gateway should dial for upstream up: up itself,
+// or a copy with a loopback host rewritten to g.loopbackHost (scheme, port, and
+// path preserved). The upstream Host header stays up.Host regardless, so the
+// rewrite changes only where the packet goes, never what the upstream sees.
+func (g *Gateway) dialURL(up *url.URL) *url.URL {
+	if g.loopbackHost == "" {
+		return up
+	}
+	rw := RewriteLoopbackHost(up.Host, g.loopbackHost)
+	if rw == up.Host {
+		return up
+	}
+	u2 := *up
+	u2.Host = rw
+	return &u2
+}
 
 // statusCapture wraps a ResponseWriter to remember the upstream status code for
 // the audit record, passing Flush through so SSE (LLM streaming) still flushes.
@@ -151,11 +174,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return // blocked (403 already written)
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(up)
+	proxy := httputil.NewSingleHostReverseProxy(g.dialURL(up))
 	base := proxy.Director
 	proxy.Director = func(req *http.Request) {
-		base(req)          // scheme/host/path -> upstream
-		req.Host = up.Host // match the upstream Host header
+		base(req)          // scheme/host/path -> upstream (loopback dialed at the host)
+		req.Host = up.Host // match the REAL upstream Host header, not the dial host
 		applyAuth(req.Header, cred)
 	}
 	sc := &statusCapture{ResponseWriter: w, code: http.StatusOK}

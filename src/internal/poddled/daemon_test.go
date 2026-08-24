@@ -256,6 +256,40 @@ func TestDaemon_L4Redis_SwapsHandle(t *testing.T) {
 	}
 }
 
+func TestDaemon_Resolve_RewritesLoopbackDatastore(t *testing.T) {
+	// A locked pod's local datastore at 127.0.0.1 must be dialed at the host
+	// route from the containerized broker, with the real credential intact. When
+	// the rewrite is disabled (bare-host broker / tests), the address is untouched.
+	store := func(loopback string) (l4Addr, l4Pass string) {
+		d := New(broker.NewBroker(), nil)
+		d.SetLoopbackHost(loopback)
+		credID, err := d.broker.Store(broker.Credential{Vendor: "redis", BaseURL: "redis://:realpass@127.0.0.1:6379"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h, err := d.broker.IssueHandle(credID, "box", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tgt, err := d.Resolve(h.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tgt.Addr, tgt.Pass
+	}
+
+	addr, pass := store("host.containers.internal")
+	if addr != "host.containers.internal:6379" {
+		t.Errorf("loopback datastore dialed %q, want host.containers.internal:6379", addr)
+	}
+	if pass != "realpass" {
+		t.Errorf("real password must survive the rewrite, got %q", pass)
+	}
+	if addr, _ := store(""); addr != "127.0.0.1:6379" {
+		t.Errorf("with the rewrite disabled, the address must be untouched, got %q", addr)
+	}
+}
+
 func TestDaemon_RevokePod(t *testing.T) {
 	srv, fb := testServer(t)
 	h1 := issue(t, srv.URL, "box")

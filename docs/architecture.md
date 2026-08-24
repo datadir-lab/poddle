@@ -283,6 +283,31 @@ allow-list.
 See `docs/design/egress-lockdown-and-broker-placement.md` for the placement
 build-order and the remote-pod steps.
 
+### Local (loopback) upstreams
+
+A credential can point at a service on the developer's own machine — a local
+Postgres at `127.0.0.1:5432`, a Redis at `localhost:6379`, or a local HTTP API.
+Because the colocated broker runs **inside a container**, a bare `127.0.0.1`
+would resolve to the broker container's *own* (empty) loopback, not the host's.
+
+So the containerized broker is launched with
+`PODDLE_LOOPBACK_HOST=host.containers.internal`, and it rewrites a **loopback**
+upstream (`localhost`, `127.0.0.0/8`, `::1`) to that host route **at dial time**,
+preserving the port. The rewrite is applied on the L4 (redis/postgres), gateway,
+and forward-proxy plain/CONNECT paths (`broker.RewriteLoopbackHost`). Two
+properties are deliberate:
+
+- It runs *after* the policy check and keeps the upstream `Host` header, so
+  governance and audit still see the pod-configured host — only the packet's
+  destination changes.
+- It does **not** widen egress. Configured local upstreams already enter the
+  derived default-deny allow-list; a pod that *spontaneously* reaches for
+  `localhost` still needs an explicit allow-list entry. The rewrite fixes the
+  reachability mechanism, never the policy.
+
+A bare-host (non-container) broker leaves `PODDLE_LOOPBACK_HOST` unset, where
+loopback already means the host, so no rewrite happens.
+
 ---
 
 ## Autoscaler

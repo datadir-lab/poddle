@@ -60,6 +60,11 @@ func (b *Broker) SetAuditor(a Auditor) { b.server.gw.SetAuditor(a) }
 // SetPolicyChecker wires the governance policy checker consulted per request.
 func (b *Broker) SetPolicyChecker(pc PolicyChecker) { b.server.gw.SetPolicyChecker(pc) }
 
+// SetLoopbackHost makes a loopback upstream dial the host route instead (a
+// containerized broker's host.containers.internal). Empty disables it. Call
+// before Serve.
+func (b *Broker) SetLoopbackHost(h string) { b.server.gw.SetLoopbackHost(h) }
+
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }
 

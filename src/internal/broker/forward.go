@@ -25,10 +25,11 @@ import (
 // terminates TLS (presenting a leaf the pod trusts) so per-request method rules
 // apply on HTTPS; the pod must trust the egress CA (injected at `up`).
 type ForwardProxy struct {
-	policy  PolicyChecker     // reused: Check(token, host, method); daemon maps token -> pod -> policy
-	auditor Auditor           // reused: one record per egress attempt
-	leaves  LeafSource        // nil = interception unavailable (always tunnel opaquely)
-	tr      http.RoundTripper // re-originates intercepted requests; system roots, no proxy-env
+	policy       PolicyChecker     // reused: Check(token, host, method); daemon maps token -> pod -> policy
+	auditor      Auditor           // reused: one record per egress attempt
+	leaves       LeafSource        // nil = interception unavailable (always tunnel opaquely)
+	tr           http.RoundTripper // re-originates intercepted requests; system roots, no proxy-env
+	loopbackHost string            // if set, a loopback destination is dialed here (the host); see RewriteLoopbackHost
 }
 
 // NewForwardProxy returns a forward proxy governed by pc and audited by a.
@@ -48,6 +49,20 @@ func NewForwardProxy(pc PolicyChecker, a Auditor) *ForwardProxy {
 // SetLeafSource enables TLS interception for pods whose policy opts in, using ls
 // to mint per-host leaf certificates. Without it, every CONNECT is tunnelled.
 func (f *ForwardProxy) SetLeafSource(ls LeafSource) { f.leaves = ls }
+
+// SetLoopbackHost makes a loopback destination (e.g. a local dev server the
+// agent curls at 127.0.0.1) dial loopbackHost instead — the host route from a
+// containerized broker (host.containers.internal). Empty disables the rewrite.
+// Policy and audit still see the pod-requested host, so a loopback destination
+// must still be allow-listed by the pod's policy to be reachable.
+func (f *ForwardProxy) SetLoopbackHost(h string) { f.loopbackHost = h }
+
+// dialTarget returns the host:port the proxy should dial for a pod-requested
+// destination: hostport unchanged, or with a loopback host rewritten to
+// f.loopbackHost. Audit and policy always use the original destination host.
+func (f *ForwardProxy) dialTarget(hostport string) string {
+	return RewriteLoopbackHost(hostport, f.loopbackHost)
+}
 
 // intercepts reports whether this CONNECT should be TLS-terminated: the pod opted
 // in and a leaf source is available.
@@ -120,7 +135,7 @@ func decOrMonitor(monitored, decision, detail string) (string, string) {
 // tunnel handles CONNECT: dial the target and splice the two connections, so TLS
 // stays end-to-end (the proxy never sees the plaintext).
 func (f *ForwardProxy) tunnel(w http.ResponseWriter, r *http.Request, token, host, monitored string) {
-	dst, err := net.Dial("tcp", r.Host)
+	dst, err := net.Dial("tcp", f.dialTarget(r.Host))
 	if err != nil {
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		f.emit(token, host, r.Method, "allow", "upstream unreachable", http.StatusBadGateway)
@@ -151,6 +166,9 @@ func (f *ForwardProxy) forward(w http.ResponseWriter, r *http.Request, token, ho
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	// Dial a loopback destination at the host route; out.Host (the Host header)
+	// stays the pod-requested host, so only where the packet goes changes.
+	out.URL.Host = f.dialTarget(out.URL.Host)
 	for k, vs := range r.Header {
 		if strings.HasPrefix(strings.ToLower(k), "proxy-") {
 			continue // don't forward proxy hop headers
@@ -258,6 +276,10 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 			req.ContentLength = int64(len(scrubbed))
 		}
 
+		// Loopback is NOT rewritten on the intercept path: opt-in HTTPS MITM of a
+		// local loopback service is not a supported combination (and is entangled
+		// with the pending interception-CA gap). Datastores and local HTTP services
+		// use the L4, gateway, and plain/tunnel paths, which do rewrite.
 		out, err := http.NewRequest(req.Method, "https://"+host+req.URL.RequestURI(), req.Body)
 		if err != nil {
 			drain(req.Body)

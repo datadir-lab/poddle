@@ -188,6 +188,10 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		"--read-only",
 		"--tmpfs=/tmp",
 		"-e", "XDG_STATE_HOME=/state",
+		// The broker is containerized, so a pod's loopback upstream (a local
+		// Postgres/Redis, or a local HTTP service) means the HOST's loopback, not
+		// this container's. Dial such upstreams at the host route.
+		"-e", "PODDLE_LOOPBACK_HOST=host.containers.internal",
 		"-v", cfg.RunDir+":/run/poddle",
 		"-v", cfg.StateDir+":/state",
 		cfg.Image,

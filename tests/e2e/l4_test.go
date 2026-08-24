@@ -103,6 +103,72 @@ func TestE2E_L4_RedisThroughBroker(t *testing.T) {
 	}
 }
 
+// TestE2E_L4_RedisLoopbackRewrite proves a pod can reach a datastore configured
+// at loopback (redis://127.0.0.1:PORT) even though the broker is containerized.
+// The containerized broker rewrites the loopback upstream to the host route
+// (host.containers.internal) at dial time, so the user writes the natural
+// "127.0.0.1" address instead of the container-aware "host.containers.internal".
+func TestE2E_L4_RedisLoopbackRewrite(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const realPass = "REALPASS-loopback-e2e"
+	const upstreamPort = "16380"
+	_ = exec.Command("podman", "rm", "-f", "poddle-redis-loopback-upstream").Run()
+	// Host networking so redis binds 0.0.0.0, reachable at 127.0.0.1 on the host.
+	up := exec.Command("podman", "run", "-d", "--name", "poddle-redis-loopback-upstream", "--network=host",
+		"docker.io/library/redis:7", "redis-server", "--requirepass", realPass, "--port", upstreamPort)
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("start upstream redis: %v\n%s", err, out)
+	}
+	t.Cleanup(func() { _ = exec.Command("podman", "rm", "-f", "poddle-redis-loopback-upstream").Run() })
+	waitTCP(t, "127.0.0.1:"+upstreamPort)
+
+	xdg := t.TempDir()
+	connDir := filepath.Join(xdg, "poddle", "connections", "cache")
+	// The KEY difference: a loopback base_url, not host.containers.internal.
+	writeFile(t, filepath.Join(connDir, "meta.toml"),
+		"connector = \"redis\"\nbase_url = \"redis://127.0.0.1:"+upstreamPort+"\"\nowner = \"local\"\n")
+	writeFile(t, filepath.Join(connDir, "redis-token"), realPass)
+
+	proj := t.TempDir()
+	writeFile(t, filepath.Join(proj, ".poddle.toml"),
+		"image = \"docker.io/library/redis:7\"\nconnectors = [\"cache\"]\n")
+
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
+
+	pod := "poddle-l4-redis-loopback"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+	})
+
+	upCmd := exec.Command(bin, "up", pod, "--detach")
+	upCmd.Dir, upCmd.Env = proj, env
+	if out, err := upCmd.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// A PONG proves the broker rewrote 127.0.0.1 to the host route and reached the
+	// real Redis with the real password.
+	ping := exec.Command(bin, "run", pod, `redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" PING`)
+	ping.Env = env
+	out, err := ping.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run redis-cli failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "PONG") {
+		t.Fatalf("expected PONG through the broker (loopback rewrite), got:\n%s", out)
+	}
+
+	down := exec.Command(bin, "down", pod)
+	down.Env = env
+	if out, err := down.CombinedOutput(); err != nil {
+		t.Fatalf("down failed: %v\n%s", err, out)
+	}
+}
+
 // TestE2E_L4_PostgresThroughBroker proves the Postgres L4 broker end-to-end: a
 // pod runs psql against the broker with only a handle; the broker performs the
 // real SCRAM-SHA-256 handshake (postgres:16's default) with the real password.

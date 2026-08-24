@@ -62,6 +62,11 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 	}
 
 	d := New(broker.NewBroker(), store)
+	// A containerized broker sets PODDLE_LOOPBACK_HOST=host.containers.internal so
+	// a pod's loopback upstream (a local Postgres/Redis, or a local HTTP service)
+	// reaches the host, not the broker container's own empty loopback. Unset on a
+	// bare-host broker, where loopback already means the host.
+	d.SetLoopbackHost(os.Getenv("PODDLE_LOOPBACK_HOST"))
 	if _, err := d.Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind); err != nil {
 		return err
 	}

@@ -88,6 +88,24 @@ func TestEnsureBroker_HardensContainer(t *testing.T) {
 	}
 }
 
+func TestEnsureBroker_SetsLoopbackHostEnv(t *testing.T) {
+	// The broker is containerized, so a pod's loopback upstream (a local
+	// Postgres/Redis or HTTP service) means the HOST's loopback. The daemon reads
+	// PODDLE_LOOPBACK_HOST to dial such upstreams at the host route.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	if got := joinCalls(f); !strings.Contains(got, "PODDLE_LOOPBACK_HOST=host.containers.internal") {
+		t.Errorf("missing PODDLE_LOOPBACK_HOST env in:\n%s", got)
+	}
+}
+
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
 	p := New(f, "")
