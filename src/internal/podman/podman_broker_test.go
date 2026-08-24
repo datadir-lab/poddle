@@ -59,6 +59,35 @@ func TestEnsureBroker_RunsDetachedDualHomeMounts(t *testing.T) {
 	}
 }
 
+func TestEnsureBroker_HardensContainer(t *testing.T) {
+	// The broker is the single process that holds every plaintext secret and
+	// parses untrusted, pod-controlled bytes on the data plane. Run it least-
+	// privileged: drop all capabilities, forbid privilege escalation, and use a
+	// read-only rootfs (writes go to the /run/poddle + /state mounts) with a
+	// tmpfs /tmp. A regression that quietly re-grants privilege is a real
+	// security downgrade, so pin the flags.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	joined := joinCalls(f)
+	for _, want := range []string{
+		"--cap-drop=all",
+		"--security-opt=no-new-privileges",
+		"--read-only",
+		"--tmpfs=/tmp",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing hardening flag %q in:\n%s", want, joined)
+		}
+	}
+}
+
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
 	p := New(f, "")

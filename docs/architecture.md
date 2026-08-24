@@ -338,3 +338,11 @@ short; close items, don't let them rot.
   unauthenticated `poddle up` can't pull it until the package is made public.
 - **Broker coverage under e2e.** The broker runs a non-instrumented binary in its
   container, so e2e no longer captures broker/poddled/gateway coverage.
+- **Broker privilege separation (custody vs. parsing).** The broker holds every
+  plaintext secret in the *same* process that parses untrusted pod/upstream bytes.
+  Tier 0 (fuzz the redactor + proxy-auth parser, enforce the no-secret-egress
+  invariant) and Tier 1 (run the broker container `--cap-drop=all`,
+  `no-new-privileges`, read-only rootfs) have shipped; Tier 2 — an OpenSSH-style
+  split of custody from parsing — is scoped in
+  [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md)
+  and not yet implemented.
