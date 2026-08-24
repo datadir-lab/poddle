@@ -371,3 +371,10 @@ short; close items, don't let them rot.
   split of custody from parsing — is scoped in
   [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md)
   and not yet implemented.
+- **Single-broker blast radius (by design).** One shared broker per host holds
+  every pod's vault and audit chain, so a full vault compromise reaches all
+  co-located pods. This is a deliberate MVP trade-off (one surface to harden, one
+  audit chain); pods stay secretless and the control plane owner-only, which
+  bounds it. Per-tenant isolation is a poddle-cloud roadmap item, not an OSS
+  single-host change — see
+  [`design/broker-isolation-and-blast-radius.md`](./design/broker-isolation-and-blast-radius.md).
