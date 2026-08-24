@@ -135,6 +135,10 @@ through the broker with a handle. The real credentials are never present.
 The broker runs as a persistent daemon (`poddled`, auto-started), so pods keep
 working after the client exits and can be reattached.
 
+For the full picture — the containerized broker, egress lockdown, the
+control/data-plane split, governance, and TLS interception — with diagrams, see
+[`docs/architecture.md`](docs/architecture.md).
+
 ## What's brokered
 
 | Kind | Connectors |
