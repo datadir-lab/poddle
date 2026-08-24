@@ -1,5 +1,6 @@
 ---
 import Button from './Button.astro';
+import { cloud } from '../data/site';
 ---
 <section class="hero">
   <div class="container hero__inner">
@@ -11,7 +12,7 @@ import Button from './Button.astro';
       </p>
       <p class="hero__wit">Every secret stays out of the pod - especially the ones you forgot you had.</p>
       <div class="hero__cta">
-        <Button href="/cloud" variant="primary">Start free</Button>
+        <Button href={cloud.signUp} variant="primary">Start free</Button>
         <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">→</span></Button>
       </div>
       <p class="hero__meta">

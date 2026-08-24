@@ -1,6 +1,7 @@
 ---
 import Button from './Button.astro';
 import GhStars from './GhStars.astro';
+import { cloud } from '../data/site';
 ---
 <header class="nav" id="site-nav">
   <div class="container nav__inner">
@@ -14,10 +15,11 @@ import GhStars from './GhStars.astro';
       <a href="/pricing">Pricing</a>
       <a href="/docs">Docs</a>
       <a href="/blog">Blog</a>
+      <a href={cloud.signIn}>Sign in</a>
     </nav>
     <div class="nav__actions">
       <GhStars />
-      <Button href="/cloud" variant="primary">Start free</Button>
+      <Button href={cloud.signUp} variant="primary">Start free</Button>
       <button class="nav__toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
         <span class="nav__bars"></span>
       </button>
