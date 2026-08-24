@@ -8,6 +8,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/harness"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/policy"
 )
@@ -59,6 +60,50 @@ func TestBuildSpec_LocksEgressWhenBrokered(t *testing.T) {
 		if strings.Contains(v, "host.containers.internal") {
 			t.Fatalf("pod env still points at host.containers.internal: %s=%s", k, v)
 		}
+	}
+}
+
+func TestBuildSpec_DerivesDefaultDenyWhenNoPolicy(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s", BaseURL: "https://api.anthropic.com"},
+	}}
+	harnesses := harness.Registry{"claude-code": &harness.FakeHarness{
+		HarnessName: "claude-code", Vendors: []string{"anthropic"},
+		Egress: []string{"registry.npmjs.org", ".anthropic.com"},
+	}}
+	a := &app.App{Harnesses: harnesses, Identities: store, Providers: reg}
+	cb := &captureBroker{}
+	o := buildOpts{name: "box", harnessName: "claude-code", identityName: "work"} // no explicit policy
+
+	spec, _, _, err := buildSpec(&cobra.Command{}, a, cb, stubNet{}, o)
+	if err != nil {
+		t.Fatalf("buildSpec: %v", err)
+	}
+	// With no explicit policy, a brokered pod is contained by a derived
+	// default-deny allow-list scoped to what it needs — not left default-allow.
+	if cb.policy == nil || cb.policy.Name != "poddle-default" {
+		t.Fatalf("expected a derived poddle-default policy, got %+v", cb.policy)
+	}
+	if spec.PolicyName != "poddle-default" {
+		t.Errorf("spec.PolicyName = %q, want poddle-default", spec.PolicyName)
+	}
+	got := map[string]bool{}
+	for _, h := range cb.policy.AllowUpstreams {
+		got[h] = true
+	}
+	for _, want := range []string{"api.anthropic.com", "registry.npmjs.org", ".anthropic.com"} {
+		if !got[want] {
+			t.Errorf("derived allow-list missing %q; got %v", want, cb.policy.AllowUpstreams)
+		}
+	}
+	// A non-empty allow-list is what makes it default-deny; empty would allow all.
+	if len(cb.policy.AllowUpstreams) == 0 {
+		t.Error("derived policy must have a non-empty allow-list so it default-denies")
 	}
 }
 

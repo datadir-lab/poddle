@@ -57,6 +57,14 @@ func shellSingleQuote(s string) string {
 // /root/.claude.
 func (h *Harness) StateDirs() []string { return []string{"/root/.claude"} }
 
+// EgressHosts is what Claude Code needs to install and run: its npm registry
+// and Anthropic's endpoints (API, telemetry). The pod's identity already allows
+// its own API host; these seed the default-deny allow-list so `npm i` and the
+// agent's own traffic work while exfiltration elsewhere stays blocked.
+func (h *Harness) EgressHosts() []string {
+	return []string{"registry.npmjs.org", ".anthropic.com"}
+}
+
 // resumeNudge is the prompt fed to a headless resume. `claude -p` needs a turn
 // to drive; on a move the agent should pick its interrupted work back up, so we
 // hand it a continuation nudge rather than an empty stdin (which would no-op).

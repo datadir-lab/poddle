@@ -28,6 +28,25 @@ import (
 // egressCAPath is where an intercepted pod finds the poddle egress CA.
 const egressCAPath = "/etc/poddle/egress-ca.crt"
 
+// defaultPolicyName labels the derived default-deny policy poddle binds to a
+// brokered pod that has no explicit policy — scoped to exactly what the pod
+// needs so it is contained, not just audited.
+const defaultPolicyName = "poddle-default"
+
+// dedupeHosts drops empty and duplicate hosts, preserving first-seen order.
+func dedupeHosts(hosts []string) []string {
+	seen := make(map[string]bool, len(hosts))
+	var out []string
+	for _, h := range hosts {
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	return out
+}
+
 // injectEgressCA gives an intercepted pod the egress CA in its trust store, so
 // the broker can terminate TLS on its HTTPS egress. It mounts the CA cert
 // read-only and points the common toolchains (node, python, curl, git) at it via
@@ -326,10 +345,18 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 		ports := map[brokerendpoint.Channel]string{brokerendpoint.Gateway: port}
 		podBrokerAddr := net.JoinHostPort(brokerIP, port)
 
+		// egressHosts seeds a default-deny allow-list for a pod with no explicit
+		// policy: exactly the hosts it needs (identity API, HTTP connectors, and
+		// the harness's install/runtime hosts). Everything else is denied, so a
+		// brokered pod is contained by default, not merely audited.
+		var egressHosts []string
 		if identityName != "" {
-			if err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec); err != nil {
+			apiHost, err := applyIdentity(b, a.Identities, a.Providers, h, identityName, "http://"+podBrokerAddr, &spec)
+			if err != nil {
 				return fail(err)
 			}
+			egressHosts = append(egressHosts, apiHost)
+			egressHosts = append(egressHosts, h.EgressHosts()...)
 		}
 		var redisPodAddr, pgPodAddr string // resolved lazily, only if needed
 		for _, cn := range tpl.Connectors {
@@ -366,11 +393,26 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, &spec); err != nil {
 					return fail(err)
 				}
+				// HTTP connectors egress through the policy-checked gateway, so a
+				// default-deny pod must be allowed to reach the connector's host.
+				cb := conn.BaseURL
+				if !strings.Contains(cb, "://") {
+					cb = "https://" + cb
+				}
+				if u, err := url.Parse(cb); err == nil && u.Hostname() != "" {
+					egressHosts = append(egressHosts, u.Hostname())
+				}
 			}
 		}
-		// Bind the pod's governance policy (if any) so the daemon enforces it
-		// on every request the pod makes through the broker.
-		if policyName != "" && a.Policies != nil {
+		// Bind the pod's governance policy so the daemon enforces it on every
+		// request the pod makes through the broker. An explicit policy is the
+		// user's full intent. Otherwise a derived default-deny policy contains the
+		// pod to exactly the hosts it needs — so it can't exfiltrate to unrelated
+		// hosts out of the box while its own API, connectors, and `npm i` work.
+		// (defaultPolicyName is skipped as an "explicit" name so `move`, which
+		// replays buildSpec from the pod's policy label, re-derives it.)
+		switch {
+		case policyName != "" && policyName != defaultPolicyName && a.Policies != nil:
 			pol, err := a.Policies.Get(policyName)
 			if err != nil {
 				return fail(err)
@@ -386,16 +428,22 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 					return fail(fmt.Errorf("intercept: %w", err))
 				}
 			}
+		case len(egressHosts) > 0:
+			derived := &policy.Policy{Name: defaultPolicyName, AllowUpstreams: dedupeHosts(egressHosts)}
+			spec.PolicyName = defaultPolicyName
+			if err := b.SetPolicy(o.name, derived); err != nil {
+				return fail(err)
+			}
 		}
 		// Route ALL of the pod's arbitrary (non-brokered) egress through the
 		// broker's forward proxy. Egress lockdown makes the broker the sole exit,
-		// so a locked pod must reach the internet only THROUGH the broker: with a
-		// policy the destination rules govern it, without one it is default-allow
-		// but still audited and non-bypassable. Unconditional because a locked pod
-		// on the --internal net has no resolver/route of its own — without this it
-		// cannot even install its agent harness (npm/pip get ENOTFOUND). The
-		// broker's own peer IP is excluded (NO_PROXY) so brokered traffic reaches
-		// the gateway directly.
+		// so a locked pod reaches the internet only THROUGH the broker, where its
+		// policy governs it — an explicit policy, or the derived default-deny
+		// allow-list bound above. Unconditional because a locked pod on the
+		// --internal net has no resolver/route of its own — without this it cannot
+		// even install its agent harness (npm/pip get ENOTFOUND). The broker's own
+		// peer IP is excluded (NO_PROXY) so brokered traffic reaches the gateway
+		// directly.
 		if token, addr, err := b.Egress(o.name); err == nil {
 			if _, port, err := net.SplitHostPort(addr); err == nil {
 				proxy := "http://" + token + ":x@" + net.JoinHostPort(brokerIP, port)
@@ -422,35 +470,38 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 // Credential, issue a pod-scoped handle for it at poddled, and fold ONLY the
 // harness's broker-pointing env + install commands into the spec. The real
 // secret never touches the pod.
-func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Harness, name, podBrokerURL string, spec *sandbox.Spec) error {
+// applyIdentity returns the identity's real API host (from the credential's
+// BaseURL) so the caller can allow-list it — the gateway policy-checks the pod's
+// requests against that host, so a default-deny pod must permit its own API.
+func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Harness, name, podBrokerURL string, spec *sandbox.Spec) (apiHost string, err error) {
 	id, err := store.Get(name)
 	if err != nil {
-		return fmt.Errorf("identity %q: %w", name, err)
+		return "", fmt.Errorf("identity %q: %w", name, err)
 	}
 	p, ok := reg.Get(id.Provider)
 	if !ok {
-		return fmt.Errorf("unknown provider %q for identity %q", id.Provider, name)
+		return "", fmt.Errorf("unknown provider %q for identity %q", id.Provider, name)
 	}
 	authed, err := p.IsAuthenticated(id)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !authed {
 		if err := p.Authenticate(id); err != nil {
-			return fmt.Errorf("authenticate %q: %w", name, err)
+			return "", fmt.Errorf("authenticate %q: %w", name, err)
 		}
 	}
 	cred, err := p.Credential(id)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !h.Supports(cred.Vendor) {
-		return fmt.Errorf("harness %q does not support vendor %q", h.Name(), cred.Vendor)
+		return "", fmt.Errorf("harness %q does not support vendor %q", h.Name(), cred.Vendor)
 	}
 
 	handle, err := b.IssueHandle(spec.Name, spec.Name, cred) // scope = pod name
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if spec.Env == nil {
@@ -460,7 +511,10 @@ func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Ha
 		spec.Env[k] = v
 	}
 	spec.Setup = append(spec.Setup, h.Provisions()...)
-	return nil
+	if u, perr := url.Parse(cred.BaseURL); perr == nil {
+		apiHost = u.Hostname()
+	}
+	return apiHost, nil
 }
 
 // applyConnector issues a pod-scoped handle for a connection's service token at

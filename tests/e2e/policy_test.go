@@ -85,3 +85,55 @@ func TestE2E_Policy_DeniesDisallowedUpstream(t *testing.T) {
 		t.Errorf("the policy deny should be audited for %q:\n%s", pod, aout)
 	}
 }
+
+// TestE2E_Policy_DefaultDeniesWithoutPolicy proves egress is contained by
+// default: a brokered pod with NO explicit policy gets a derived default-deny
+// allow-list (its connector's host here), so reaching an unrelated host through
+// the forward proxy is denied with 403 and audited — not default-allowed.
+func TestE2E_Policy_DefaultDeniesWithoutPolicy(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	// A connector makes the pod brokered; its base_url host is the only thing the
+	// derived policy allows. No --policy is passed.
+	xdg := t.TempDir()
+	connDir := filepath.Join(xdg, "poddle", "connections", "svc")
+	writeFile(t, filepath.Join(connDir, "meta.toml"),
+		"connector = \"woodpecker\"\nbase_url = \"https://svc.allowed.example\"\nowner = \"local\"\n")
+	writeFile(t, filepath.Join(connDir, "woodpecker-token"), "SENTINEL")
+
+	proj := t.TempDir()
+	writeFile(t, filepath.Join(proj, ".poddle.toml"),
+		"image = \"docker.io/library/node:22\"\nconnectors = [\"svc\"]\n")
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
+
+	pod := "poddle-default-deny-e2e"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// An unrelated host, reached through the forward proxy, must be default-denied.
+	inPod := `curl -s -o /dev/null -w "%{http_code}" http://1.1.1.1/`
+	up := exec.Command(bin, "up", pod, "--exec", inPod)
+	up.Dir, up.Env = proj, env
+	out, err := up.CombinedOutput()
+	if err != nil {
+		t.Fatalf("up --exec failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "403") {
+		t.Fatalf("a brokered pod with no policy must default-deny an unrelated host (want 403); got:\n%s", out)
+	}
+
+	au := exec.Command(bin, "daemon", "audit", "--decision", "deny")
+	au.Env = env
+	aout, _ := au.CombinedOutput()
+	if !strings.Contains(string(aout), pod) {
+		t.Errorf("the default-deny should be audited for %q:\n%s", pod, aout)
+	}
+}
