@@ -177,6 +177,16 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 	args := p.podman("run", "-d",
 		"--name", cfg.Name,
 		"--network", cfg.EgressNet,
+		// Least privilege: the broker holds every secret and does no privileged
+		// work, so drop all Linux capabilities, forbid privilege escalation, and
+		// run a read-only rootfs. Its only writes are the control socket and audit
+		// db on the /run/poddle + /state mounts (still writable); /tmp is a tmpfs.
+		// This caps what a data-plane parser bug (the pod-facing attack surface)
+		// could reach.
+		"--cap-drop=all",
+		"--security-opt=no-new-privileges",
+		"--read-only",
+		"--tmpfs=/tmp",
 		"-e", "XDG_STATE_HOME=/state",
 		"-v", cfg.RunDir+":/run/poddle",
 		"-v", cfg.StateDir+":/state",
