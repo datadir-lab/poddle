@@ -57,6 +57,7 @@ type Daemon struct {
 	forward        net.Listener // egress forward proxy (arbitrary HTTP(S) egress)
 	forwardAddr    string
 	ca             *tlsca.Authority // egress-interception CA (nil until the forward proxy starts)
+	loopbackHost   string           // if set, a loopback upstream is dialed here (the host route); see broker.RewriteLoopbackHost
 }
 
 // maxEvents bounds the autoscale event ring surfaced in `daemon status`.
@@ -87,6 +88,12 @@ func New(b brokerAPI, aud *audit.Store) *Daemon {
 		podPolicy: map[string]*policy.Policy{},
 	}
 }
+
+// SetLoopbackHost configures the host route a loopback upstream is dialed at, so
+// a locked pod's local datastore (a Postgres/Redis at 127.0.0.1, or a local HTTP
+// service) reaches the *host* rather than the broker container's own loopback.
+// Empty (the default) disables the rewrite. Call before Start.
+func (d *Daemon) SetLoopbackHost(h string) { d.loopbackHost = h }
 
 // Check implements broker.PolicyChecker: resolve the pod holding handle and
 // evaluate its policy for (host, method). No policy = allow.
@@ -169,6 +176,9 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 	if p, ok := d.broker.(interface{ SetPolicyChecker(broker.PolicyChecker) }); ok {
 		p.SetPolicyChecker(d) // enforce each pod's governance policy
 	}
+	if lb, ok := d.broker.(interface{ SetLoopbackHost(string) }); ok {
+		lb.SetLoopbackHost(d.loopbackHost) // dial loopback upstreams at the host route
+	}
 	addr, err := d.broker.Serve(gatewayBind)
 	if err != nil {
 		return "", err
@@ -199,6 +209,7 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		d.forward = ln
 		d.forwardAddr = ln.Addr().String()
 		fp := broker.NewForwardProxy(d, d) // d is PolicyChecker + Auditor
+		fp.SetLoopbackHost(d.loopbackHost) // dial loopback destinations at the host route
 		// Load the egress-interception CA so opted-in pods' HTTPS can be inspected.
 		// Best-effort: on failure, interception is simply unavailable (opaque tunnel).
 		if ca, err := tlsca.Load(tlsca.DefaultDir()); err == nil {
@@ -231,6 +242,10 @@ func (d *Daemon) Resolve(handle string) (l4.Target, error) {
 	}
 	t, err := l4.TargetFromDSN(cred.BaseURL)
 	if err == nil {
+		// A loopback datastore (127.0.0.1/localhost) means the host's loopback,
+		// not this container's; dial it at the host route. Governance is unchanged
+		// (L4 has no host allow-list); the audit records the actually-dialed addr.
+		t.Addr = broker.RewriteLoopbackHost(t.Addr, d.loopbackHost)
 		d.mu.Lock()
 		pod := d.handlePod[handle]
 		d.mu.Unlock()
