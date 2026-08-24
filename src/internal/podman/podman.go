@@ -192,6 +192,11 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		// Postgres/Redis, or a local HTTP service) means the HOST's loopback, not
 		// this container's. Dial such upstreams at the host route.
 		"-e", "PODDLE_LOOPBACK_HOST=host.containers.internal",
+		// Persist the egress-interception CA on the bind-mounted state dir (the
+		// mount root, /state), so the broker signs leaves with the SAME CA `up`
+		// injects into pods — and it survives broker restarts. StateDir mounts to
+		// /state, so /state/egress-ca is the host's <StateDir>/egress-ca.
+		"-e", "PODDLE_EGRESS_CA_DIR=/state/egress-ca",
 		"-v", cfg.RunDir+":/run/poddle",
 		"-v", cfg.StateDir+":/state",
 		cfg.Image,

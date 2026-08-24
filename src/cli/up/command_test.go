@@ -18,6 +18,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/policy"
 	"github.com/datadir-lab/poddle/src/internal/prompt"
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
+	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
 
 // testHarnesses is a registry with a claude-code stand-in for up tests.
@@ -696,8 +697,15 @@ func TestUp_Policy_ExplicitEmptyOptsOutOfDefault(t *testing.T) {
 }
 
 func TestInjectEgressCA(t *testing.T) {
+	dir := t.TempDir()
+	// The broker generates + persists the CA on its state dir; injectEgressCA READS
+	// that cert (it no longer generates a competing one). Materialize it the same
+	// way the broker does, via tlsca.Load.
+	if _, err := tlsca.Load(dir); err != nil {
+		t.Fatal(err)
+	}
 	spec := &sandbox.Spec{}
-	if err := injectEgressCA(spec, t.TempDir()); err != nil {
+	if err := injectEgressCA(spec, dir); err != nil {
 		t.Fatal(err)
 	}
 	// The CA is mounted read-only at the expected in-pod path.
@@ -719,6 +727,11 @@ func TestInjectEgressCA(t *testing.T) {
 	// A Setup step adds it to the OS trust bundle.
 	if len(spec.Setup) == 0 || !strings.Contains(spec.Setup[len(spec.Setup)-1], "update-ca-certificates") {
 		t.Errorf("expected an OS-trust Setup step; got %v", spec.Setup)
+	}
+	// Fail-closed: with no CA cert on disk (broker never generated one), setting up
+	// interception must error rather than silently create a mismatched CA.
+	if err := injectEgressCA(&sandbox.Spec{}, t.TempDir()); err == nil {
+		t.Error("injectEgressCA must fail when the egress CA cert is absent")
 	}
 }
 

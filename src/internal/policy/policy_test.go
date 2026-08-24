@@ -234,3 +234,22 @@ func TestPolicy_InterceptsHost(t *testing.T) {
 		}
 	}
 }
+
+func TestPolicy_Intercepts(t *testing.T) {
+	cases := []struct {
+		name string
+		pol  *Policy
+		want bool
+	}{
+		{"nil never intercepts", nil, false},
+		{"neither bool nor list", &Policy{}, false},
+		{"legacy all-hosts bool", &Policy{Intercept: true}, true},
+		{"per-host list", &Policy{InterceptHosts: []string{"api.x.com"}}, true},
+		{"both set", &Policy{Intercept: true, InterceptHosts: []string{"api.x.com"}}, true},
+	}
+	for _, c := range cases {
+		if got := c.pol.Intercepts(); got != c.want {
+			t.Errorf("%s: Intercepts() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

@@ -48,6 +48,14 @@ func (p *Policy) Decide(host, method string) (allow bool, reason string) {
 	return true, ""
 }
 
+// Intercepts reports whether the policy TLS-terminates ANY HTTPS egress — the
+// legacy all-hosts intercept bool, or a non-empty per-host intercept_hosts list.
+// It decides whether a pod needs the egress CA injected into its trust store. A
+// nil policy never intercepts.
+func (p *Policy) Intercepts() bool {
+	return p != nil && (p.Intercept || len(p.InterceptHosts) > 0)
+}
+
 // InterceptsHost reports whether HTTPS egress to host should be TLS-terminated:
 // the host matches intercept_hosts, or — when that list is empty — the legacy
 // intercept bool terminates all hosts. A nil policy never intercepts.

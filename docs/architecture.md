@@ -257,13 +257,16 @@ sequenceDiagram
 - The **CA** (`tlsca`) is long-lived and self-signed; it mints short-lived
   per-host leaves cached in memory. The CA **cert** is injected into the pod's
   trust store (`up` mounts it + sets `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`/…); the
-  CA **key never leaves the broker**.
-- **Design requirement (shared CA):** the pod's trusted CA and the broker's
-  signing CA must be the *same* CA. It is persisted once, under a location both
-  the containerized broker (inside `/state`) and the host `up` resolve to the same
-  host file, and generated before `up` mounts it. See *Known gaps* — the current
-  code resolves the CA via `UserConfigDir` on both sides, which diverges across
-  the host↔container boundary and must move onto the broker's mounted state dir.
+  CA **key stays on the broker's side** — the pod only ever receives the cert.
+- **Shared CA across the container boundary.** The pod's trusted CA and the
+  broker's signing CA must be the *same* CA. The broker **generates and persists**
+  it on its bind-mounted state dir (`PODDLE_EGRESS_CA_DIR=/state/egress-ca`), so it
+  survives restarts, and `up` reads that same host file (`poddled.EgressCADir()` —
+  `/state`'s mount source) to inject the cert. `up`'s `EnsureRunning` waits for the
+  broker to be healthy before reading, so the broker is the sole generator and
+  there is no race. This replaces the old `UserConfigDir` resolution, which
+  diverged across the host↔container boundary (pod trusted a different CA than the
+  broker signed with). Proven end-to-end by `e2e-intercept`.
 
 ---
 
@@ -352,13 +355,6 @@ or altered row is detectable. Secrets are never written to it. Detail:
 Living list of where the code and the intended architecture above differ. Keep it
 short; close items, don't let them rot.
 
-- **Shared interception CA across the container boundary.** `tlsca.DefaultDir()`
-  resolves via `UserConfigDir`, which differs between the host (`up`) and the
-  broker *container*, and the CA dir isn't bind-mounted — so an `intercept` policy
-  currently pairs a pod that trusts the host CA with a broker that signs from a
-  different container-local CA. Fix: persist/resolve the CA on the broker's
-  mounted state dir so both sides see one file, and add an interception e2e
-  through the containerized broker (there is none today).
 - **`poddle-broker` image visibility.** The image is published but private; an
   unauthenticated `poddle up` can't pull it until the package is made public.
 - **Broker coverage under e2e.** The broker runs a non-instrumented binary in its

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 
@@ -51,13 +52,18 @@ func dedupeHosts(hosts []string) []string {
 // the broker can terminate TLS on its HTTPS egress. It mounts the CA cert
 // read-only and points the common toolchains (node, python, curl, git) at it via
 // env; a Setup step also adds it to the OS trust for anything using the system
-// bundle. The daemon generated the CA at start (EnsureRunning precedes this).
+// bundle. caDir is the broker's shared CA dir (poddled.EgressCADir()): the broker
+// GENERATES and signs with this CA at start (EnsureRunning precedes this call and
+// waits for health), so the cert is already on disk — this reads it rather than
+// generating a competing one, which is why interception is fail-closed if it is
+// somehow absent.
 func injectEgressCA(spec *sandbox.Spec, caDir string) error {
-	if _, err := tlsca.Load(caDir); err != nil { // ensure the CA is on disk
-		return fmt.Errorf("load egress CA: %w", err)
+	certPath := tlsca.CertPath(caDir)
+	if _, err := os.Stat(certPath); err != nil {
+		return fmt.Errorf("egress CA cert not found at %s (broker not running, or interception unavailable): %w", certPath, err)
 	}
 	spec.Mounts = append(spec.Mounts, sandbox.Mount{
-		Host: tlsca.CertPath(caDir), Container: egressCAPath, ReadOnly: true,
+		Host: certPath, Container: egressCAPath, ReadOnly: true,
 	})
 	if spec.Env == nil {
 		spec.Env = map[string]string{}
@@ -421,10 +427,13 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 			if err := b.SetPolicy(o.name, pol); err != nil {
 				return fail(err)
 			}
-			// An intercepting policy needs the pod to trust the egress CA so the
-			// broker can terminate TLS on its HTTPS egress (opt-in MITM).
-			if pol.Intercept {
-				if err := injectEgressCA(&spec, tlsca.DefaultDir()); err != nil {
+			// An intercepting policy — whether the legacy all-hosts bool or a
+			// per-host intercept_hosts list — needs the pod to trust the egress CA
+			// so the broker can terminate TLS on its HTTPS egress (opt-in MITM). The
+			// CA is the broker's own (poddled.EgressCADir()), so the pod trusts
+			// exactly what the broker signs with.
+			if pol.Intercepts() {
+				if err := injectEgressCA(&spec, poddled.EgressCADir()); err != nil {
 					return fail(fmt.Errorf("intercept: %w", err))
 				}
 			}
