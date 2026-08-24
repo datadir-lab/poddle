@@ -2,10 +2,9 @@
 import Base from '../layouts/Base.astro';
 import Button from '../components/Button.astro';
 import { pricing } from '../data/pricing';
-import legal from '../data/legal.json';
+import { cloud } from '../data/site';
 
 const managed = pricing.podCompute.managed;
-const early = `mailto:${legal.emails.general}?subject=poddle%20cloud%20early%20access`;
 
 const runFor = [
   {
@@ -39,10 +38,10 @@ const runFor = [
       open source, so you can self-host any time. In the cloud you are productive in minutes.
     </p>
     <div class="cl-cta">
-      <Button href={early} variant="primary">Start free</Button>
+      <Button href={cloud.signUp} variant="primary">Start free</Button>
       <Button href="/docs" variant="ghost">Self-host it <span aria-hidden="true">&rarr;</span></Button>
     </div>
-    <p class="cl-note">Poddle cloud is in early access. 14-day free trial at launch, no card to start.</p>
+    <p class="cl-note">14-day free trial. No credit card to start.</p>
   </section>
 
   <section class="container cl-body">
@@ -71,7 +70,7 @@ const runFor = [
             <li>Upgrades, backups, and uptime on us</li>
             <li>14-day free trial, no card to start</li>
           </ul>
-          <div class="cl-opt__cta"><Button href={early} variant="primary">Start free trial</Button></div>
+          <div class="cl-opt__cta"><Button href={cloud.signUp} variant="primary">Start free trial</Button></div>
         </div>
         <div class="cl-opt">
           <h3 class="cl-opt__h">Self-host</h3>
@@ -103,10 +102,10 @@ const runFor = [
     <div class="cl-close">
       <h2 class="cl-close__h">Get your agents a room in the cloud.</h2>
       <div class="cl-cta">
-        <Button href={early} variant="primary">Start free</Button>
+        <Button href={cloud.signUp} variant="primary">Start free</Button>
         <Button href="/compare" variant="ghost">How poddle compares <span aria-hidden="true">&rarr;</span></Button>
       </div>
-      <p class="cl-note">Early access. We will get you in fast.</p>
+      <p class="cl-note">Free to start. No credit card required.</p>
     </div>
   </section>
 </Base>
