@@ -25,6 +25,21 @@ func TestAuditDBPath_FallsBackWhenXDGUnset(t *testing.T) {
 	}
 }
 
+func TestEgressCADir_SharesTheStateMountRootWithAudit(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.FromSlash("/custom/state"))
+	// EgressCADir must live directly beside the audit db (same parent dir), because
+	// that parent is the host dir EnsureRunning bind-mounts to /state. That is what
+	// lets the containerized broker (PODDLE_EGRESS_CA_DIR=/state/egress-ca) and `up`
+	// (EgressCADir on the host) resolve one shared CA file.
+	ca := EgressCADir()
+	if want := filepath.Dir(AuditDBPath()); filepath.Dir(ca) != want {
+		t.Errorf("EgressCADir parent = %q, want %q (the state-mount source shared with audit)", filepath.Dir(ca), want)
+	}
+	if filepath.Base(ca) != "egress-ca" {
+		t.Errorf("EgressCADir = %q, want a .../egress-ca dir", ca)
+	}
+}
+
 func TestSocketPath_FallsBackWhenXDGUnset(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", "")
 	got := SocketPath()

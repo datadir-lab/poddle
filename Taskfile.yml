@@ -134,6 +134,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Lockdown ./tests/e2e/...
 
+  e2e-intercept:
+    desc: Interception e2e (needs podman) — opt-in TLS MITM works through the containerized broker (shared CA)
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Intercept ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:

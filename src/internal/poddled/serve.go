@@ -13,18 +13,34 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/broker"
 )
 
-// AuditDBPath is where the daemon keeps its audit log: under XDG_STATE_HOME when
+// stateHome is the root for the daemon's persistent state: XDG_STATE_HOME when
 // set (the right home for state), else the user config dir, else temp.
-func AuditDBPath() string {
-	dir := os.Getenv("XDG_STATE_HOME")
-	if dir == "" {
-		if cfg, err := os.UserConfigDir(); err == nil {
-			dir = cfg
-		} else {
-			dir = os.TempDir()
-		}
+func stateHome() string {
+	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
+		return dir
 	}
-	return filepath.Join(dir, "poddle", "audit.db")
+	if cfg, err := os.UserConfigDir(); err == nil {
+		return cfg
+	}
+	return os.TempDir()
+}
+
+// AuditDBPath is where the daemon keeps its audit log, under the state home.
+func AuditDBPath() string {
+	return filepath.Join(stateHome(), "poddle", "audit.db")
+}
+
+// EgressCADir is where the egress-interception CA is persisted: inside the
+// broker's state-mount source — the same host directory bind-mounted to /state
+// (its parent, filepath.Dir(AuditDBPath()), is what EnsureRunning mounts). So the
+// containerized broker (which generates and signs with the CA) and `up` (which
+// reads the CA cert to inject into a pod's trust store) resolve ONE shared CA
+// file: the host's <state>/poddle/egress-ca is the container's /state/egress-ca.
+// This replaces the old per-side UserConfigDir resolution, which diverged across
+// the container boundary and left the pod trusting a different CA than the broker
+// signed with.
+func EgressCADir() string {
+	return filepath.Join(filepath.Dir(AuditDBPath()), "egress-ca")
 }
 
 // SocketPath is the control-socket path. PODDLE_SOCKET overrides it outright (so

@@ -44,9 +44,12 @@ type Authority struct {
 	leaves  map[string]*tls.Certificate
 }
 
-// DefaultDir is where poddle persists the egress CA: <UserConfigDir>/poddle/
-// egress-ca (XDG_CONFIG_HOME honored). The daemon and `up` resolve it the same
-// way so both see one CA.
+// DefaultDir is the FALLBACK egress-CA location for a bare-host daemon and
+// tests: <UserConfigDir>/poddle/egress-ca (XDG_CONFIG_HOME honored). The shipped,
+// containerized broker does NOT use this — its UserConfigDir differs across the
+// container boundary, so the daemon and `up` would see different CAs. Instead the
+// broker persists the CA on its bind-mounted state dir (PODDLE_EGRESS_CA_DIR,
+// resolved by poddled.EgressCADir on the host) so both sides share one file.
 func DefaultDir() string {
 	cfg, err := os.UserConfigDir()
 	if err != nil {

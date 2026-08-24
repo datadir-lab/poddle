@@ -106,6 +106,24 @@ func TestEnsureBroker_SetsLoopbackHostEnv(t *testing.T) {
 	}
 }
 
+func TestEnsureBroker_SetsEgressCADirEnv(t *testing.T) {
+	// The broker persists the egress-interception CA on its bind-mounted state dir
+	// (the mount root, /state) so it signs leaves with the SAME CA `up` injects
+	// into pods — and it survives restarts.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	if got := joinCalls(f); !strings.Contains(got, "PODDLE_EGRESS_CA_DIR=/state/egress-ca") {
+		t.Errorf("missing PODDLE_EGRESS_CA_DIR env in:\n%s", got)
+	}
+}
+
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
 	p := New(f, "")

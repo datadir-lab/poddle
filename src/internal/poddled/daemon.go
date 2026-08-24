@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -211,8 +212,17 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		fp := broker.NewForwardProxy(d, d) // d is PolicyChecker + Auditor
 		fp.SetLoopbackHost(d.loopbackHost) // dial loopback destinations at the host route
 		// Load the egress-interception CA so opted-in pods' HTTPS can be inspected.
-		// Best-effort: on failure, interception is simply unavailable (opaque tunnel).
-		if ca, err := tlsca.Load(tlsca.DefaultDir()); err == nil {
+		// The containerized broker is pointed at its bind-mounted state dir
+		// (PODDLE_EGRESS_CA_DIR=/state/egress-ca) so the CA it signs leaves with is
+		// the SAME file `up` reads to inject into a pod's trust store — and it
+		// persists across broker restarts. Falls back to the user config dir for a
+		// bare-host daemon / tests. Best-effort: on failure, interception is simply
+		// unavailable (opaque tunnel).
+		caDir := os.Getenv("PODDLE_EGRESS_CA_DIR")
+		if caDir == "" {
+			caDir = tlsca.DefaultDir()
+		}
+		if ca, err := tlsca.Load(caDir); err == nil {
 			d.ca = ca
 			fp.SetLeafSource(ca)
 		}

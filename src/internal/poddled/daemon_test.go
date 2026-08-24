@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -287,6 +288,25 @@ func TestDaemon_Resolve_RewritesLoopbackDatastore(t *testing.T) {
 	}
 	if addr, _ := store(""); addr != "127.0.0.1:6379" {
 		t.Errorf("with the rewrite disabled, the address must be untouched, got %q", addr)
+	}
+}
+
+func TestDaemon_LoadsInterceptionCAFromEnvDir(t *testing.T) {
+	// The containerized broker is pointed at its bind-mounted state dir
+	// (PODDLE_EGRESS_CA_DIR) so the CA it signs leaves with is the SAME file `up`
+	// injects into pods. Setting the env must make the daemon persist/load the CA
+	// there — not under the container-local UserConfigDir, which `up` can't see.
+	dir := t.TempDir()
+	t.Setenv("PODDLE_EGRESS_CA_DIR", dir)
+
+	d := New(broker.NewBroker(), nil)
+	if _, err := d.Start("0.0.0.0:0", "redact", "", "", "127.0.0.1:0"); err != nil { // forward proxy loads the CA
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Stop(context.Background()) })
+
+	if _, err := os.Stat(filepath.Join(dir, "egress-ca.crt")); err != nil {
+		t.Errorf("daemon must persist the interception CA under PODDLE_EGRESS_CA_DIR: %v", err)
 	}
 }
 
