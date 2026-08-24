@@ -34,13 +34,24 @@ func ensureBrokerImage(t *testing.T) {
 	t.Helper()
 	brokerImageOnce.Do(func() {
 		root := repoRoot(t)
-		out, err := exec.Command("podman", "build",
-			"-f", filepath.Join(root, "Containerfile.broker"),
-			"-t", "poddle-broker:test", root).CombinedOutput()
-		if err != nil {
+		tag := "poddle-broker:test"
+		args := []string{"build", "-f", filepath.Join(root, "Containerfile.broker"), "-t", tag, root}
+		if os.Getenv("GOCOVERDIR") != "" {
+			// Instrument the broker binary so the CONTAINERIZED broker's own coverage
+			// (broker/poddled/gateway/l4) is captured, mirroring buildBinary for the
+			// host CLI. A distinct tag avoids reusing a cached non-instrumented image;
+			// the broker writes covdata to the bind-mounted GOCOVERDIR (wired in
+			// EnsureRunning) on graceful shutdown.
+			tag = "poddle-broker:cover"
+			args = []string{"build",
+				"-f", filepath.Join(root, "Containerfile.broker"),
+				"--build-arg", "COVERPKG=" + module + "/src/...",
+				"-t", tag, root}
+		}
+		if out, err := exec.Command("podman", args...).CombinedOutput(); err != nil {
 			t.Fatalf("build broker image: %v\n%s", err, out)
 		}
-		os.Setenv("PODDLE_BROKER_IMAGE", "poddle-broker:test")
+		os.Setenv("PODDLE_BROKER_IMAGE", tag)
 	})
 }
 

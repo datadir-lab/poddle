@@ -4,8 +4,18 @@ WORKDIR /src
 COPY . .
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+# COVERPKG, when set (the nightly e2e-coverage job passes it), builds a
+# coverage-instrumented broker binary: run with GOCOVERDIR set it writes covdata
+# on graceful exit, so the containerized broker's own code (broker/poddled/gateway
+# /l4) is captured by the e2e coverage report, not just the host CLI. Empty (the
+# default, and every published image) builds the normal binary.
+ARG COVERPKG=""
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOTOOLCHAIN=local \
-    go build -trimpath -o /out/poddle ./src/cli
+    sh -c 'if [ -n "$COVERPKG" ]; then \
+        go build -cover -coverpkg="$COVERPKG" -trimpath -o /out/poddle ./src/cli; \
+    else \
+        go build -trimpath -o /out/poddle ./src/cli; \
+    fi'
 
 # Root (uid 0), NOT :nonroot. Under rootless podman the container's uid 0 maps to
 # the host rootless owner, who owns the bind-mounted /run/poddle (control socket)

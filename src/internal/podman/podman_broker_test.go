@@ -124,6 +124,41 @@ func TestEnsureBroker_SetsEgressCADirEnv(t *testing.T) {
 	}
 }
 
+func TestEnsureBroker_MountsCoverDirWhenSet(t *testing.T) {
+	// The nightly e2e-coverage job sets CoverDir (from GOCOVERDIR); the broker then
+	// gets a covdata bind mount + GOCOVERDIR env so an instrumented image writes its
+	// coverage to the host dir.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:cover", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x", CoverDir: "/cov/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	got := joinCalls(f)
+	if !strings.Contains(got, "GOCOVERDIR=/covdata") || !strings.Contains(got, "-v /cov/x:/covdata") {
+		t.Errorf("coverage mount/env missing when CoverDir set:\n%s", got)
+	}
+}
+
+func TestEnsureBroker_NoCoverMountWhenUnset(t *testing.T) {
+	// Production: no CoverDir, so no coverage mount or env leaks into the run.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	if got := joinCalls(f); strings.Contains(got, "GOCOVERDIR") || strings.Contains(got, "/covdata") {
+		t.Errorf("no coverage mount expected when CoverDir empty:\n%s", got)
+	}
+}
+
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
 	p := New(f, "")

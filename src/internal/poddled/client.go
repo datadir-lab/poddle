@@ -102,6 +102,10 @@ func (c *Client) EnsureRunning() error {
 		EgressNet: "poddle-egress",
 		RunDir:    runDir,
 		StateDir:  stateDir,
+		// In the nightly e2e-coverage job GOCOVERDIR is set; forward it so a
+		// coverage-instrumented broker image writes its covdata to the shared dir
+		// alongside the host CLI's. Empty (and ignored) in every normal run.
+		CoverDir: os.Getenv("GOCOVERDIR"),
 	}
 	if err := l.EnsureBroker(cfg); err != nil {
 		return err
