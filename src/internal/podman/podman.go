@@ -129,6 +129,11 @@ type BrokerConfig struct {
 	EgressNet string // "poddle-egress"
 	RunDir    string // host dir bind-mounted to /run/poddle (holds the control socket)
 	StateDir  string // host dir bind-mounted to /state (holds audit.db)
+	// CoverDir, when set (the nightly e2e-coverage job, from the host's GOCOVERDIR),
+	// bind-mounts a covdata dir into the broker and points GOCOVERDIR at it, so a
+	// coverage-instrumented broker image writes its coverage on graceful shutdown.
+	// Empty in production — no mount, no env.
+	CoverDir string
 }
 
 // EnsureEgressNetwork creates the shared network the broker uses to reach the
@@ -199,8 +204,15 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		"-e", "PODDLE_EGRESS_CA_DIR=/state/egress-ca",
 		"-v", cfg.RunDir+":/run/poddle",
 		"-v", cfg.StateDir+":/state",
-		cfg.Image,
 	)
+	if cfg.CoverDir != "" {
+		// Capture the containerized broker's own coverage: mount the host covdata
+		// dir and point GOCOVERDIR at it. A read-only rootfs is fine — this is a
+		// writable bind mount, like /state. Only meaningful for a -cover broker
+		// image; a normal binary ignores GOCOVERDIR.
+		args = append(args, "-e", "GOCOVERDIR=/covdata", "-v", cfg.CoverDir+":/covdata")
+	}
+	args = append(args, cfg.Image)
 
 	res, err := p.Runner.Run("podman", args...)
 	if err != nil {

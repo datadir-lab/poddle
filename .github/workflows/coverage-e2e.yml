@@ -48,6 +48,7 @@ jobs:
           - e2e-audit
           - e2e-policy
           - e2e-forward
+          - e2e-intercept
           - e2e-lockdown
           - e2e-secure
           - e2e-poddled
@@ -76,6 +77,10 @@ jobs:
             echo "HAS_COV=1" >> "$GITHUB_ENV"
             echo "coverage from ${{ matrix.suite }}:"
             go tool cover -func=coverage-e2e.txt | tail -1
+            # The containerized broker now writes its own covdata (instrumented
+            # image + bind-mounted GOCOVERDIR); this should be >0, where it was 0
+            # while the broker ran a non-instrumented binary.
+            echo "broker-side funcs captured: $(grep -cE 'src/internal/(broker|poddled|l4)/' coverage-e2e.txt || true)"
           else
             echo "::warning::${{ matrix.suite }} produced no coverage data"
           fi

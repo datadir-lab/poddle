@@ -357,8 +357,6 @@ short; close items, don't let them rot.
 
 - **`poddle-broker` image visibility.** The image is published but private; an
   unauthenticated `poddle up` can't pull it until the package is made public.
-- **Broker coverage under e2e.** The broker runs a non-instrumented binary in its
-  container, so e2e no longer captures broker/poddled/gateway coverage.
 - **Broker privilege separation (custody vs. parsing).** The broker holds every
   plaintext secret in the *same* process that parses untrusted pod/upstream bytes.
   Tier 0 (fuzz the redactor + proxy-auth parser, enforce the no-secret-egress
