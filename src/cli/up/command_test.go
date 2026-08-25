@@ -842,6 +842,119 @@ func TestUp_ConfigDirEqualsStateDir_NoDuplicateVolume(t *testing.T) {
 	}
 }
 
+func TestUp_MCPConnector_WiresHandleEnvAndSetupAfterProvisions(t *testing.T) {
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "PAT-XYZ", ""); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	capB := &captureBroker{}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: hreg,
+		Connections: cstore, Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, capB)
+	c.SetArgs([]string{"box", "--identity", "work", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if tok := f.spec.Env["PODDLE_MCP_LINEAR"]; !strings.HasPrefix(tok, "poddle_") {
+		t.Errorf("PODDLE_MCP_LINEAR = %q, want a handle", tok)
+	}
+	for k, v := range f.spec.Env {
+		if strings.Contains(v, "PAT-XYZ") {
+			t.Fatalf("the MCP PAT leaked into pod env: %s=%s", k, v)
+		}
+	}
+	joined := strings.Join(f.spec.Setup, "\n")
+	if !strings.Contains(joined, "MCP-WIRED") {
+		t.Errorf("MCPWiring setup missing: %v", f.spec.Setup)
+	}
+	iInstall, iWire := idxContains(f.spec.Setup, "install-fake"), idxContains(f.spec.Setup, "MCP-WIRED")
+	if iInstall < 0 || iWire < 0 || iWire < iInstall {
+		t.Errorf("MCP wiring must run AFTER Provisions; setup = %v", f.spec.Setup)
+	}
+	if capB.policy == nil {
+		t.Fatal("a derived default-deny policy should be bound")
+	}
+	found := false
+	for _, up := range capB.policy.AllowUpstreams {
+		if up == "mcp.linear.app" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("MCP host not in the egress allow-list; AllowUpstreams = %v", capB.policy.AllowUpstreams)
+	}
+}
+
+// idxContains returns the first index of ss whose element contains sub, else -1.
+func idxContains(ss []string, sub string) int {
+	for i, s := range ss {
+		if strings.Contains(s, sub) {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestMcpEnvVar(t *testing.T) {
+	// Non-alphanumeric characters in a connection name become underscores.
+	if got := mcpEnvVar("my-mcp.srv 1"); got != "PODDLE_MCP_MY_MCP_SRV_1" {
+		t.Errorf("mcpEnvVar = %q, want PODDLE_MCP_MY_MCP_SRV_1", got)
+	}
+}
+
+func TestUp_MCPConnector_BareHostURLIsSchemeDefended(t *testing.T) {
+	// A connection base_url with no scheme must still resolve a host for the egress
+	// allow-list (applyMCPConnector prepends https:// before parsing).
+	store := idn.NewStore(t.TempDir())
+	if _, err := store.Create("work", "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	reg := idn.Registry{"anthropic": &idn.FakeProvider{
+		ProviderName: "anthropic", Authed: true,
+		Cred: broker.Credential{Vendor: "anthropic", Secret: "s"},
+	}}
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("bare", "mcp", "mcp.bare.test/mcp", "", "PAT", ""); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	capB := &captureBroker{}
+	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: hreg,
+		Connections: cstore, Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"bare"}}}}, capB)
+	c.SetArgs([]string{"box", "--identity", "work", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if capB.policy == nil {
+		t.Fatal("a derived policy should be bound")
+	}
+	found := false
+	for _, up := range capB.policy.AllowUpstreams {
+		if up == "mcp.bare.test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("bare-host MCP url should resolve to mcp.bare.test in egress; got %v", capB.policy.AllowUpstreams)
+	}
+}
+
 func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {

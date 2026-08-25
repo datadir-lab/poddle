@@ -73,3 +73,6 @@ func (h *Harness) EgressHosts() []string {
 // ConfigDir is empty: aider's user-customizable config seed/persist dir is
 // deferred to a rollout follow-up.
 func (h *Harness) ConfigDir() string { return "" }
+
+// MCPWiring is nil: aider has no MCP auto-wiring implemented here yet.
+func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }

@@ -148,10 +148,8 @@ const opencodeMcpExample = `{
     <p class="doc-p">
       A <em>local</em> stdio MCP server runs inside the pod. One bundled into the image works as-is; one that
       fetches at launch - the <code>npx</code> above pulls from npm - needs its registry in the pod's egress
-      allow-list, which codex and opencode already permit by default. A <em>remote</em> MCP server additionally
-      needs an explicit egress allow-list entry (see <a href="/docs/governance">Governance</a>) and its token
-      brokered as a <a href="/docs/connectors">connector</a>, so no secret lands in the pod - that wiring is a
-      follow-up.
+      allow-list, which codex and opencode already permit by default. A <em>remote</em> MCP server can be
+      brokered instead, so its token never lands in the pod - see <a href="#brokered-mcp">Brokered MCP</a> below.
     </p>
     <p class="doc-p">
       For claude-code, poddle merges <code>hasCompletedOnboarding</code> into <code>~/.claude.json</code>
@@ -162,6 +160,58 @@ const opencodeMcpExample = `{
     <p class="doc-p">
       aider's config is a project file - <code>.aider.conf.yml</code> - in the repo, and <code>/workspace</code>
       is already a persisted volume, so it persists with no extra setup.
+    </p>
+
+    <h2 id="brokered-mcp" style="margin-top:2.4rem">Brokered MCP</h2>
+    <p class="doc-p">
+      A remote MCP server (Streamable HTTP) can be wired in the same way as a git host or registry: the
+      token is sealed in the broker's vault, never in the pod. Add it as a connector, same as any other
+      service:
+    </p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmt"># pipe the PAT on stdin so it never hits your shell history</span>
+<span class="cmd">echo $MCP_TOKEN | poddle connect add search \
+  --connector mcp --url https://mcp.example.com/mcp</span>
+<span class="ok">✓ connection “search” added (brokered)</span></code></pre>
+    </div>
+    <p class="doc-p">
+      Then opt a pod into it the same way as any connector - list it in the template's
+      <code>connectors</code>. On <code>poddle up</code>, poddle issues a pod-scoped handle for the token,
+      sets it in an env var, and registers the MCP server with the agent through the agent's own
+      channel - pointed at the broker's gateway instead of the real endpoint. The agent presents the
+      handle on every request; the broker swaps in the real token and relays to the server (both the
+      POST request/response leg and the server-initiated SSE stream). The real token never enters the
+      pod, and <code>poddle down</code> revokes it immediately.
+    </p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Harness</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>codex</td><td data-label="Info">Wired today - <code>codex mcp add</code> registers the brokered server with a bearer-token env var.</td></tr>
+          <tr><td>claude-code, opencode</td><td data-label="Info">Follow-up - not wired yet.</td></tr>
+          <tr><td>pi, aider</td><td data-label="Info">Not planned yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <Callout type="note" title="Bearer token today, OAuth is a follow-up">
+      <p>
+        Brokered MCP currently covers servers that authenticate with a static bearer token / API key
+        (the <code>--token</code> a <a href="/docs/connectors">connector</a> seals). MCP servers that
+        require an OAuth 2.1 browser-consent flow are a follow-up.
+      </p>
+    </Callout>
+    <Callout type="warn" title="Explicit policies don't auto-add the MCP host">
+      <p>
+        With no explicit policy, poddle derives a default-deny allow-list and adds the MCP server's host
+        to it automatically. Under an <strong>explicit named policy</strong>, poddle uses your
+        <code>allow_upstreams</code> as-is and does not merge connector hosts into it - add the MCP
+        host yourself (see <a href="/docs/governance">Governance</a>).
+      </p>
+    </Callout>
+    <p class="doc-p">
+      This covers <em>remote</em> Streamable HTTP servers only. A <em>local</em> stdio MCP server that
+      needs a secret of its own is a separate, unbuilt mechanism.
     </p>
 
     <h2 style="margin-top:2.4rem">Environment variables</h2>

@@ -67,6 +67,11 @@ var builtins = map[string]Definition{
 	// honor it). ⚠ the official jenkins-cli.jar takes -auth separately — pass the
 	// handle there. base_url per connection (self-hosted).
 	"jenkins": {Mode: "basic", Env: map[string]string{"JENKINS_URL": "http://{handle}:x@{broker}"}},
+	// MCP — a remote Model Context Protocol server (Streamable HTTP). Bearer token
+	// held in the vault; the agent reaches it through the broker gateway with a
+	// handle. Transport "mcp" routes up to per-agent wiring (MCPWiring), not the
+	// git/env templates. base_url = the full MCP endpoint per connection.
+	"mcp": {Mode: "bearer", Transport: "mcp"},
 	// registries — package-manager / container config pointed at the broker
 	"npm": {
 		Mode:    "bearer",

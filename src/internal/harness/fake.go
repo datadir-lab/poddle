@@ -14,6 +14,7 @@ type FakeHarness struct {
 	Resume      string   // returned by ResumeCommand; %mode is replaced with the mode
 	Egress      []string // returned by EgressHosts
 	ConfigDirs  string   // returned by ConfigDir
+	MCPWire     []string // returned by MCPWiring
 }
 
 func (f *FakeHarness) Name() string { return f.HarnessName }
@@ -52,3 +53,5 @@ func (f *FakeHarness) ResumeCommand(mode string) string {
 	}
 	return strings.ReplaceAll(f.Resume, "%mode", mode)
 }
+
+func (f *FakeHarness) MCPWiring(_, _, _ string) []string { return f.MCPWire }

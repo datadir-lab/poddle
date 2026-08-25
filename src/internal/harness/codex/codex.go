@@ -95,3 +95,14 @@ func (h *Harness) EgressHosts() []string {
 // other user-customizable settings. Seeded from the user's host config and
 // persisted as a named volume so customizations survive `move`.
 func (h *Harness) ConfigDir() string { return "/root/.codex" }
+
+// MCPWiring registers a brokered MCP server with Codex via `codex mcp add` — its
+// native command, which merges an [mcp_servers.<name>] entry into config.toml
+// (preserving the rest) and applies to every codex invocation. bearer-token-env-var
+// makes Codex read the handle from the env var at runtime, so it never lands on
+// disk. Runs after Provisions installs codex. Verified against Codex 0.149.1.
+func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string {
+	return []string{"codex mcp add " + shellSingleQuote(name) +
+		" --url " + shellSingleQuote(agentURL) +
+		" --bearer-token-env-var " + shellSingleQuote(handleEnv)}
+}

@@ -42,6 +42,12 @@ type Harness interface {
 	// (~/.config/poddle/harness/<name>/) into it and persists it as a named volume
 	// so customizations survive `move`. Empty = the harness has no seed/persist dir.
 	ConfigDir() string
+	// MCPWiring returns pod Setup commands that register a brokered MCP server
+	// named `name`, reachable at `agentURL` (the broker gateway root + the server's
+	// endpoint path), presenting the handle held in env var `handleEnv` as its
+	// bearer token — via the agent's own MCP-registration channel, without
+	// clobbering the user's config. nil = this harness has no MCP auto-wiring yet.
+	MCPWiring(name, agentURL, handleEnv string) []string
 }
 
 // Registry maps harness names to implementations.
