@@ -5,6 +5,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -566,6 +567,120 @@ func TestE2E_Edit_ClaudeCode(t *testing.T) {
 	runCmd.Env = env
 	if out, err := runCmd.CombinedOutput(); err != nil {
 		t.Fatalf("claude run failed: %v\n%s", err, out)
+	}
+
+	assertFileInPod(t, pod)
+	assertSecretless(t, auths, sentinel, &mu)
+}
+
+// opencodeEditSSE builds opencode's two-turn chat-completions conversation
+// (captured from the opencode edit spike): turn 1 streams a `bash` tool_call whose
+// arguments create the file; turn 2 is a plain text completion. Reuses piChunk
+// (opencode also speaks streaming chat-completion-chunks).
+func opencodeEditSSE() (toolCall, text string) {
+	argsJSON := `{"command":"printf 'PODDLE_EDIT_OK' > ` + editFile + `","description":"create the marker file"}`
+	toolCall = piChunk(map[string]any{"role": "assistant", "content": "", "tool_calls": []any{
+		map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "bash", "arguments": ""}},
+	}}, nil) +
+		piChunk(map[string]any{"tool_calls": []any{
+			map[string]any{"index": 0, "function": map[string]any{"arguments": argsJSON}},
+		}}, nil) +
+		piChunk(map[string]any{}, "tool_calls") +
+		"data: [DONE]\n\n"
+	text = piChunk(map[string]any{"role": "assistant", "content": ""}, nil) +
+		piChunk(map[string]any{"content": editMarker + " done"}, nil) +
+		piChunk(map[string]any{}, "stop") +
+		"data: [DONE]\n\n"
+	return toolCall, text
+}
+
+// startOpencodeEditMock serves opencode's chat-completions SSE. opencode fires a
+// title-generation call (no tools) before the main turn, and re-POSTs after running
+// the tool, so a pure request counter is unreliable. Instead: return the `bash`
+// tool_call for the first request that carries the bash tool DEFINITION and has no
+// tool RESULT yet (the main turn); everything else (title-gen, the post-tool turn)
+// gets a plain text reply. Records auth headers; binds 0.0.0.0.
+func startOpencodeEditMock(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	toolCall, text := opencodeEditSSE()
+	var fired bool
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		s := string(body)
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		useTool := strings.Contains(s, `"name":"bash"`) && !strings.Contains(s, `"role":"tool"`) && !fired
+		if useTool {
+			fired = true
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if useTool {
+			_, _ = w.Write([]byte(toolCall))
+		} else {
+			_, _ = w.Write([]byte(text))
+		}
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestE2E_Edit_Opencode proves the opencode agent does REAL work through the
+// broker: a scripted chat-completions SSE mock drives opencode to run its `bash`
+// tool to create a file, secretlessly. opencode reuses the `openai` provider and is
+// configured via an opencode.json the harness writes.
+func TestE2E_Edit_Opencode(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-EDIT-OPENCODE"
+	var mu sync.Mutex
+	var auths []string
+	mock := startOpencodeEditMock(t, &auths, &mu)
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeOpenAIIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_OPENAI_BASE_URL="+mockURL)
+
+	pod := "poddle-edit-opencode"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// Bring the pod up (installs opencode + writes its opencode.json via Provisions).
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "opencode",
+		"--image", "docker.io/library/node:22")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Run opencode headless in the workspace to create the file (through the broker).
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && opencode run 'create "+editFile+" containing "+editMarker+
+			" using a shell command' -m poddle/poddle-model --format json --auto")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("opencode run failed: %v\n%s", err, out)
 	}
 
 	assertFileInPod(t, pod)
