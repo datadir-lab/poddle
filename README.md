@@ -169,9 +169,14 @@ and `/workspace` already persists.
 
 A *local* stdio MCP server runs in the pod; one that fetches at launch needs its
 registry allowed (codex and opencode permit npm by default). A *remote* MCP
-server additionally needs an egress allow-list entry and its token brokered as a
-connector — that wiring is a follow-up. See
-[Configuration](https://poddle.dev/docs/configuration) for copy-pasteable examples.
+server can be brokered too: `echo $MCP_TOKEN | poddle connect add search
+--connector mcp --url https://mcp.example.com/mcp` seals the token in the
+broker vault; add the connector to a pod and poddle registers the server with
+the agent through a revocable handle — the real token never enters the pod,
+and `poddle down` revokes it. Wired for **codex** today (claude-code and
+opencode are a follow-up); bearer-token / API-key servers only (OAuth 2.1 is a
+follow-up). See [Configuration](https://poddle.dev/docs/configuration#brokered-mcp)
+for the full walkthrough, including the egress note for explicit policies.
 
 ## Secret-safety
 
