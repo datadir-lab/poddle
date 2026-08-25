@@ -114,3 +114,9 @@ func TestEgressHosts(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigDir(t *testing.T) {
+	if got := New().ConfigDir(); got != "/root/.codex" {
+		t.Errorf("ConfigDir = %q, want /root/.codex", got)
+	}
+}

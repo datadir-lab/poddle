@@ -73,3 +73,7 @@ func (h *Harness) ResumeCommand(mode string) string { return "" }
 func (h *Harness) EgressHosts() []string {
 	return []string{"registry.npmjs.org", "api.openai.com"}
 }
+
+// ConfigDir is empty: pi's user-customizable config seed/persist dir is
+// deferred to a rollout follow-up.
+func (h *Harness) ConfigDir() string { return "" }

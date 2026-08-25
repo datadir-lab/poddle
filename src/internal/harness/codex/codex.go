@@ -81,3 +81,8 @@ func (h *Harness) ResumeCommand(mode string) string {
 func (h *Harness) EgressHosts() []string {
 	return []string{"registry.npmjs.org", "api.openai.com"}
 }
+
+// ConfigDir is CODEX_HOME (/root/.codex), where Codex reads config.toml and
+// other user-customizable settings. Seeded from the user's host config and
+// persisted as a named volume so customizations survive `move`.
+func (h *Harness) ConfigDir() string { return "/root/.codex" }

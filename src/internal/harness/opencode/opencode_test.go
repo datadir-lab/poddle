@@ -84,3 +84,9 @@ func TestEgressHosts(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigDir(t *testing.T) {
+	if got := New().ConfigDir(); got != "/root/.config/opencode" {
+		t.Errorf("ConfigDir = %q, want /root/.config/opencode", got)
+	}
+}

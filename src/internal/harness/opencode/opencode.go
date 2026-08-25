@@ -84,3 +84,9 @@ func (h *Harness) EgressHosts() []string {
 		"models.dev",
 	}
 }
+
+// ConfigDir is opencode's global config directory (~/.config/opencode), where
+// opencode.json (and any user customizations) live. Seeded from the user's
+// host config and persisted as a named volume so customizations survive
+// `move`.
+func (h *Harness) ConfigDir() string { return "/root/.config/opencode" }

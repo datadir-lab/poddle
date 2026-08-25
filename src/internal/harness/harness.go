@@ -37,6 +37,11 @@ type Harness interface {
 	// works out of the box while exfiltration to unrelated hosts stays blocked.
 	// Exact hosts, or ".suffix" for any subdomain.
 	EgressHosts() []string
+	// ConfigDir is the pod directory holding the agent's user-customizable config
+	// (settings, plugins, MCP declarations). poddle seeds a user's host config
+	// (~/.config/poddle/harness/<name>/) into it and persists it as a named volume
+	// so customizations survive `move`. Empty = the harness has no seed/persist dir.
+	ConfigDir() string
 }
 
 // Registry maps harness names to implementations.
