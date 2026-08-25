@@ -148,7 +148,7 @@ control/data-plane split, governance, and TLS interception — with diagrams, se
 | **CI** | woodpecker, drone, argocd, jenkins |
 | **Registries** | npm, pypi, docker |
 | **Databases** | postgres, redis |
-| **LLM** | anthropic (claude-code), openai (codex) |
+| **LLM** | anthropic (claude-code), openai (codex, aider) |
 
 New HTTP services are a few lines of declarative TOML, no code.
 
