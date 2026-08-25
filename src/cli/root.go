@@ -25,8 +25,10 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/exec"
 	"github.com/datadir-lab/poddle/src/internal/harness"
 	"github.com/datadir-lab/poddle/src/internal/harness/claudecode"
+	codexharness "github.com/datadir-lab/poddle/src/internal/harness/codex"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/identity/anthropic"
+	openaiprovider "github.com/datadir-lab/poddle/src/internal/identity/openai"
 	"github.com/datadir-lab/poddle/src/internal/poddled"
 	"github.com/datadir-lab/poddle/src/internal/podman"
 	"github.com/datadir-lab/poddle/src/internal/policy"
@@ -40,6 +42,18 @@ import (
 // poddled client is passed to `up` (issue handles) and `down` (revoke them).
 // version is stamped at build time via -ldflags "-X main.version=<v>".
 var version = "dev"
+
+// buildRegistries is the composition root's provider + harness registries,
+// factored out so the wiring is unit-testable.
+func buildRegistries() (idn.Registry, harness.Registry) {
+	return idn.Registry{
+			"anthropic": anthropic.New(),
+			"openai":    openaiprovider.New(),
+		}, harness.Registry{
+			"claude-code": claudecode.New(),
+			"codex":       codexharness.New(),
+		}
+}
 
 func NewRootCmd() *cobra.Command {
 	poddled.Version = version // pin the broker image to this CLI's version
@@ -64,14 +78,7 @@ func NewRootCmd() *cobra.Command {
 	// Identities live on the client (never only in poddle). Providers are the
 	// auth vendors, vertically sliced.
 	store := idn.NewStore(idn.DefaultBase())
-	reg := idn.Registry{
-		"anthropic": anthropic.New(),
-	}
-
-	// Harnesses are the pod-side coding-agent runtimes (--harness).
-	harnesses := harness.Registry{
-		"claude-code": claudecode.New(),
-	}
+	reg, harnesses := buildRegistries()
 
 	// The composition root: one App, injected into every command.
 	a := &app.App{
