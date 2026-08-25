@@ -58,13 +58,20 @@ var upCases = []upCase{
 		tokenFile:   "openai-token",
 		upstreamEnv: "PODDLE_OPENAI_BASE_URL",
 		podTokenEnv: "OPENAI_API_KEY",
-		// The codex harness's Provisions write $CODEX_HOME/config.toml pointing Codex at
-		// the broker, so `codex exec` here routes pod->broker->mock. --skip-git-repo-check
+		// The codex harness no longer writes $CODEX_HOME/config.toml — the broker
+		// provider now rides `-c model_providers.poddle...` overrides on `codex exec`
+		// (see codexProviderFlags in the codex harness) instead. --skip-git-repo-check
 		// because the pod workdir may not be a git repo. The prompt is irrelevant — the
 		// mock always replies with codexMarker.
-		inPod: `codex exec --skip-git-repo-check 'reply'`,
-		want:  codexMarker,
-		mock:  mockOpenAIUp,
+		inPod: `codex exec --skip-git-repo-check ` +
+			`-c 'model_provider="poddle"' ` +
+			`-c 'model_providers.poddle.name="poddle"' ` +
+			`-c model_providers.poddle.base_url="\"$PODDLE_CODEX_BASE_URL\"" ` +
+			`-c 'model_providers.poddle.env_key="OPENAI_API_KEY"' ` +
+			`-c 'model_providers.poddle.wire_api="responses"' ` +
+			`'reply'`,
+		want: codexMarker,
+		mock: mockOpenAIUp,
 	},
 	{
 		name:        "aider",

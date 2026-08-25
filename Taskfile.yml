@@ -146,6 +146,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Edit ./tests/e2e/...
 
+  e2e-harnessconfig:
+    desc: Harness config e2e (needs podman) — a user's seeded agent config is not clobbered by broker wiring
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_HarnessConfig ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:

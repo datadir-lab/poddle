@@ -1,12 +1,16 @@
 // Package opencode implements the harness.Harness for the open-source `opencode`
 // coding agent (opencode.ai / sst/opencode) in a pod, pointed at OpenAI-compatible
 // models through the broker. opencode has no base-URL env var for arbitrary
-// endpoints: a custom provider is configured via an opencode.json (written in
-// Provisions) using the @ai-sdk/openai-compatible provider, whose apiKey is
+// endpoints: a custom provider is configured via JSON (written in Provisions)
+// using the @ai-sdk/openai-compatible provider, whose apiKey is
 // "{env:OPENAI_API_KEY}" — opencode interpolates the pod's handle at runtime (never
 // on disk) and sends it as Authorization: Bearer, so the broker swaps in the real
-// secret. Verified against opencode 1.18.23 in a spike; reuses the `openai`
-// identity provider.
+// secret. That provider config is written to a dedicated OPENCODE_CONFIG layer
+// file (set by Env), not to the user's global ~/.config/opencode/opencode.json —
+// opencode merges OPENCODE_CONFIG as an extra layer between global and project
+// config, so the user's own global/project config is never overwritten and
+// merges on top. Verified against opencode 1.18.23 in a spike; reuses the
+// `openai` identity provider.
 //
 // opencode is heavier than the other harnesses: it always streams (stream:true),
 // fires a title-generation call before the main turn, and on first run fetches
@@ -23,30 +27,36 @@ func New() *Harness { return &Harness{} }
 
 func (h *Harness) Name() string { return "opencode" }
 
-// Provisions installs opencode and writes the global opencode.json that points it
-// at the broker. The config defines an OpenAI-compatible provider "poddle" whose
-// baseURL is the broker (from $PODDLE_OPENCODE_BASE_URL, set by Env) and whose
-// apiKey is "{env:OPENAI_API_KEY}" — opencode interpolates that env var (the pod's
+// Provisions installs opencode and writes poddle's provider config to the
+// dedicated OPENCODE_CONFIG layer file (set by Env) — not to the user's global
+// ~/.config/opencode/opencode.json, which is left untouched and merges on top.
+// The config defines an OpenAI-compatible provider "poddle" whose baseURL is the
+// broker (from $PODDLE_OPENCODE_BASE_URL, set by Env) and whose apiKey is
+// "{env:OPENAI_API_KEY}" — opencode interpolates that env var (the pod's
 // handle) at runtime, so the handle is never written to disk. The config-writer
 // reads env vars Env() sets on the container (Setup inherits them).
 func (h *Harness) Provisions() []string {
 	return []string{
 		"npm install -g opencode-ai@latest",
-		`mkdir -p "$HOME/.config/opencode" && printf '{"$schema":"https://opencode.ai/config.json","provider":{"poddle":{"npm":"@ai-sdk/openai-compatible","name":"Poddle","options":{"baseURL":"%s","apiKey":"{env:OPENAI_API_KEY}"},"models":{"poddle-model":{"name":"Poddle","limit":{"context":128000,"output":8192}}}}}}' "$PODDLE_OPENCODE_BASE_URL" > "$HOME/.config/opencode/opencode.json"`,
+		`mkdir -p "$(dirname "$OPENCODE_CONFIG")" && printf '{"$schema":"https://opencode.ai/config.json","provider":{"poddle":{"npm":"@ai-sdk/openai-compatible","name":"Poddle","options":{"baseURL":"%s","apiKey":"{env:OPENAI_API_KEY}"},"models":{"poddle-model":{"name":"Poddle","limit":{"context":128000,"output":8192}}}}}}' "$PODDLE_OPENCODE_BASE_URL" > "$OPENCODE_CONFIG"`,
 	}
 }
 
 func (h *Harness) Supports(vendor string) bool { return vendor == "openai" }
 
 // Env points opencode at the broker. OPENAI_API_KEY carries the handle (referenced
-// by opencode.json's apiKey and sent as Bearer); PODDLE_OPENCODE_BASE_URL carries
-// the broker's /v1 base (read by the Provisions config-writer — opencode has no
-// base-URL env var). The credential's upstream has no path, so opencode's
-// /v1/chat/completions rides through once — no /v1/v1.
+// by the provider config's apiKey and sent as Bearer); PODDLE_OPENCODE_BASE_URL
+// carries the broker's /v1 base (read by the Provisions config-writer — opencode
+// has no base-URL env var). OPENCODE_CONFIG points opencode at a poddle-owned
+// layer file (written by Provisions) instead of the user's global
+// ~/.config/opencode/opencode.json, so the user's own global/project config is
+// never overwritten and merges on top. The credential's upstream has no path, so
+// opencode's /v1/chat/completions rides through once — no /v1/v1.
 func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 	return map[string]string{
 		"OPENAI_API_KEY":           handle,
 		"PODDLE_OPENCODE_BASE_URL": strings.TrimRight(brokerAddr, "/") + "/v1",
+		"OPENCODE_CONFIG":          "/run/poddle/opencode.json",
 	}
 }
 
@@ -84,3 +94,10 @@ func (h *Harness) EgressHosts() []string {
 		"models.dev",
 	}
 }
+
+// ConfigDir is opencode's global config directory (~/.config/opencode), where the
+// user's own opencode.json and customizations live — untouched by poddle, whose
+// provider config is written separately to the OPENCODE_CONFIG layer file.
+// Seeded from the user's host config and persisted as a named volume so
+// customizations survive `move`.
+func (h *Harness) ConfigDir() string { return "/root/.config/opencode" }

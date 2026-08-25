@@ -31,9 +31,17 @@ func TestEnv_HandleAndBaseURL(t *testing.T) {
 		t.Errorf("OPENAI_API_KEY = %q, want the handle", env["OPENAI_API_KEY"])
 	}
 	// opencode has no base-URL env var; the broker /v1 base travels via
-	// PODDLE_OPENCODE_BASE_URL (read by the Provisions config-writer), with /v1.
+	// PODDLE_OPENCODE_BASE_URL (read by the Provisions config-writer via
+	// OPENCODE_CONFIG), with /v1.
 	if env["PODDLE_OPENCODE_BASE_URL"] != "http://10.0.0.5:9000/v1" {
 		t.Errorf("PODDLE_OPENCODE_BASE_URL = %q, want broker + /v1", env["PODDLE_OPENCODE_BASE_URL"])
+	}
+}
+
+func TestEnv_SetsOpencodeConfigLayer(t *testing.T) {
+	env := New().Env("http://10.0.0.5:9000", "poddle_abc")
+	if env["OPENCODE_CONFIG"] == "" {
+		t.Error("Env must set OPENCODE_CONFIG to poddle's dedicated provider layer")
 	}
 }
 
@@ -42,9 +50,13 @@ func TestProvisions_InstallsOpencodeAndWritesConfig(t *testing.T) {
 	if !strings.Contains(got, "opencode-ai") {
 		t.Errorf("provisions missing the opencode npm install: %q", got)
 	}
-	// Writes an opencode.json with a custom openai-compatible provider.
+	// Writes poddle's provider to the dedicated OPENCODE_CONFIG layer, NOT the
+	// user's global ~/.config/opencode/opencode.json.
+	if strings.Contains(got, ".config/opencode/opencode.json") {
+		t.Errorf("opencode must not write the user's global config; use $OPENCODE_CONFIG:\n%s", got)
+	}
 	for _, want := range []string{
-		"$HOME/.config/opencode", "$PODDLE_OPENCODE_BASE_URL", "opencode.json",
+		"$OPENCODE_CONFIG", "$PODDLE_OPENCODE_BASE_URL",
 		`@ai-sdk/openai-compatible`, `"apiKey":"{env:OPENAI_API_KEY}"`, `"baseURL":"%s"`,
 	} {
 		if !strings.Contains(got, want) {
@@ -82,5 +94,11 @@ func TestEgressHosts(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("EgressHosts missing %q: %v", want, got)
 		}
+	}
+}
+
+func TestConfigDir(t *testing.T) {
+	if got := New().ConfigDir(); got != "/root/.config/opencode" {
+		t.Errorf("ConfigDir = %q, want /root/.config/opencode", got)
 	}
 }

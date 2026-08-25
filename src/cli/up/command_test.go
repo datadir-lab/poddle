@@ -3,6 +3,8 @@ package up
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -732,6 +734,111 @@ func TestInjectEgressCA(t *testing.T) {
 	// interception must error rather than silently create a mismatched CA.
 	if err := injectEgressCA(&sandbox.Spec{}, t.TempDir()); err == nil {
 		t.Error("injectEgressCA must fail when the egress CA cert is absent")
+	}
+}
+
+func TestUp_SeedsAndPersistsHarnessConfig(t *testing.T) {
+	// os.UserConfigDir reads %AppData% on Windows and $XDG_CONFIG_HOME on Linux;
+	// set both so harnessconfig.Dir resolves under tmp on either platform.
+	tmp := t.TempDir()
+	t.Setenv("AppData", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	hdir := filepath.Join(tmp, "poddle", "harness", "cfgharness")
+	if err := os.MkdirAll(hdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hdir, "settings.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := harness.Registry{"cfgharness": &harness.FakeHarness{
+		HarnessName: "cfgharness", ConfigDirs: "/root/.cfg", Provs: []string{"install"},
+	}}
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Harnesses: reg}, stubBroker{})
+	c.SetArgs([]string{"box", "--harness", "cfgharness", "--detach"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	foundMount := false
+	for _, m := range f.spec.Mounts {
+		if m.Host == hdir && m.ReadOnly {
+			foundMount = true
+		}
+	}
+	if !foundMount {
+		t.Errorf("expected a read-only mount of %q; mounts = %+v", hdir, f.spec.Mounts)
+	}
+	foundCopy := false
+	for _, s := range f.spec.Setup {
+		if strings.Contains(s, "/root/.cfg") {
+			foundCopy = true
+		}
+	}
+	if !foundCopy {
+		t.Errorf("expected a seed-copy Setup step into ConfigDir; setup = %v", f.spec.Setup)
+	}
+	foundVol := false
+	for _, v := range f.spec.Volumes {
+		if v.Container == "/root/.cfg" {
+			foundVol = true
+		}
+	}
+	if !foundVol {
+		t.Errorf("expected ConfigDir as a persisted volume; volumes = %+v", f.spec.Volumes)
+	}
+}
+
+func TestUp_NoSeedWhenHostConfigAbsent(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("AppData", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	// no host dir created for cfgharness -> no seed mount, but persist volume still applies.
+	reg := harness.Registry{"cfgharness": &harness.FakeHarness{HarnessName: "cfgharness", ConfigDirs: "/root/.cfg"}}
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Harnesses: reg}, stubBroker{})
+	c.SetArgs([]string{"box", "--harness", "cfgharness", "--detach"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, m := range f.spec.Mounts {
+		if m.Container == "/run/poddle/harness-seed" {
+			t.Errorf("no seed mount expected when host config dir is absent; mounts = %+v", f.spec.Mounts)
+		}
+	}
+	foundVol := false
+	for _, v := range f.spec.Volumes {
+		if v.Container == "/root/.cfg" {
+			foundVol = true
+		}
+	}
+	if !foundVol {
+		t.Errorf("persist volume for ConfigDir should still apply; volumes = %+v", f.spec.Volumes)
+	}
+}
+
+func TestUp_ConfigDirEqualsStateDir_NoDuplicateVolume(t *testing.T) {
+	// A harness whose ConfigDir coincides with a StateDir (e.g. codex: both
+	// /root/.codex) must produce exactly ONE named volume for that path — podman
+	// rejects a duplicate mount destination.
+	reg := harness.Registry{"dupharness": &harness.FakeHarness{
+		HarnessName: "dupharness", ConfigDirs: "/root/.dup", States: []string{"/root/.dup"},
+	}}
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Harnesses: reg}, stubBroker{})
+	c.SetArgs([]string{"box", "--harness", "dupharness", "--detach"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	n := 0
+	for _, v := range f.spec.Volumes {
+		if v.Container == "/root/.dup" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("expected exactly one volume at /root/.dup, got %d; volumes = %+v", n, f.spec.Volumes)
 	}
 }
 

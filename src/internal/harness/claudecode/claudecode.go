@@ -82,3 +82,7 @@ func (h *Harness) ResumeCommand(mode string) string {
 		fmt.Sprintf("claude -p %s --continue --output-format json --dangerously-skip-permissions </dev/null",
 			shellSingleQuote(resumeNudge))
 }
+
+// ConfigDir is empty: Claude Code's user-customizable config seed/persist dir
+// is deferred to a rollout follow-up.
+func (h *Harness) ConfigDir() string { return "" }

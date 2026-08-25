@@ -9,6 +9,7 @@ const paths: [string, string, string][] = [
   ['Identities', '~/.config/poddle/identities/<name>/', 'One directory per login - meta.toml plus the sealed token, mode 0600.'],
   ['User templates', '~/.config/poddle/templates/<name>.toml', 'Your personal blueprints, available in any project.'],
   ['Connectors', '~/.config/poddle/connectors/', 'Brokered service definitions added with poddle connect.'],
+  ['Agent config', '~/.config/poddle/harness/<harness>/', "A pod agent's own native config (settings, plugins, MCP servers) - seeded into the pod and persisted."],
   ['Project templates', '.poddle/<name>.toml', 'Checked into the repo and shared with the team.'],
   ['Project default', '.poddle.toml', 'Auto-applied when you run poddle up with no --template.'],
 ];
@@ -23,6 +24,26 @@ const envs: { name: string; def: string; desc: string }[] = [
   { name: 'PODDLE_OPENAI_BASE_URL', def: 'https://api.openai.com', desc: 'Point the OpenAI provider at a compatible proxy or gateway instead of the public API.' },
   { name: 'PODDLE_AUTOSCALE_INTERVAL', def: '15s', desc: 'How often the daemon’s autoscaler samples memory pressure (a Go duration like 5s or 1m).' },
 ];
+
+// Illustrative custom-config examples for the "Customizing your agent config"
+// section. These are each agent's OWN native format (not parsed by poddle), shown
+// so a reader knows exactly what to drop in the seeded host dir.
+const codexMcpExample = `# Your Codex settings and MCP servers. Poddle injects its broker provider via
+# -c flags on each \`codex exec\`, so it never writes or overwrites this file.
+
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]`;
+
+const opencodeMcpExample = `{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    }
+  }
+}`;
 ---
 <DocsLayout title="Configuration" description="Where poddle stores identities, templates, and connectors - how templates resolve and merge, and every environment variable.">
   <div class="doc-intro">
@@ -80,6 +101,55 @@ const envs: { name: string; def: string; desc: string }[] = [
     <Callout type="tip" title="One base, many specializations">
       <p>Because lists append and scalars override, a shared <code>base</code> that sets safe defaults (image, <code>secret_scan</code>, <code>egress</code>) is inherited by every template that extends it - a project template only states what differs. See the <a href="/docs/templates">Templates</a> examples for the pattern.</p>
     </Callout>
+
+    <h2 style="margin-top:2.4rem">Customizing your agent config</h2>
+    <p class="doc-p">
+      Each pod-side agent reads its own native config file. Drop yours under
+      <code>~/.config/poddle/harness/&lt;harness&gt;/</code> and poddle seeds it into the pod's config
+      directory on <code>up</code>, then persists that directory as a named volume so it survives
+      <code>move</code>. Poddle's broker wiring rides a separate side channel and never writes - or
+      overwrites - these files, so the agent's full native config (settings, plugins, MCP servers) is
+      yours to own.
+    </p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Harness</th><th>Host file</th><th>What goes there</th></tr></thead>
+        <tbody>
+          <tr><td>codex</td><td data-label="Path"><code>codex/config.toml</code></td><td data-label="Info">Codex's own settings and its <code>[mcp_servers]</code> block.</td></tr>
+          <tr><td>opencode</td><td data-label="Path"><code>opencode/opencode.json</code></td><td data-label="Info">opencode's settings, plugins, and its <code>mcp</code> block.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="doc-p">For example, to give Codex a filesystem MCP server scoped to the workspace:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">~/.config/poddle/harness/codex/config.toml</span></div>
+      <pre class="term__body"><code>{codexMcpExample}</code></pre>
+    </div>
+
+    <p class="doc-p">opencode uses the same idea under an <code>mcp</code> key in its JSON config:</p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">~/.config/poddle/harness/opencode/opencode.json</span></div>
+      <pre class="term__body"><code>{opencodeMcpExample}</code></pre>
+    </div>
+
+    <Callout type="warn" title="Codex provider config is user-scope only">
+      <p>
+        Codex only reads provider keys (<code>model_provider</code>, <code>model_providers</code>) from its
+        <strong>user-scope</strong> <code>config.toml</code> - a <em>project</em> <code>.codex/config.toml</code>
+        is ignored for provider settings. Keep any custom provider config in the seeded, user-scope file.
+        Poddle's own provider override rides <code>-c</code> flags on every <code>codex exec</code>, so it never
+        touches this file and won't collide with yours.
+      </p>
+    </Callout>
+    <p class="doc-p">
+      A <em>local</em> stdio MCP server runs inside the pod. One bundled into the image works as-is; one that
+      fetches at launch - the <code>npx</code> above pulls from npm - needs its registry in the pod's egress
+      allow-list, which codex and opencode already permit by default. A <em>remote</em> MCP server additionally
+      needs an explicit egress allow-list entry (see <a href="/docs/governance">Governance</a>) and its token
+      brokered as a <a href="/docs/connectors">connector</a>, so no secret lands in the pod - that wiring is a
+      follow-up.
+    </p>
 
     <h2 style="margin-top:2.4rem">Environment variables</h2>
     <p class="doc-p">A handful of variables tune the CLI and daemon. All are optional - the defaults are the common case.</p>

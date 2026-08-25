@@ -69,3 +69,7 @@ func (h *Harness) ResumeCommand(mode string) string {
 func (h *Harness) EgressHosts() []string {
 	return []string{"pypi.org", "files.pythonhosted.org", "api.openai.com"}
 }
+
+// ConfigDir is empty: aider's user-customizable config seed/persist dir is
+// deferred to a rollout follow-up.
+func (h *Harness) ConfigDir() string { return "" }

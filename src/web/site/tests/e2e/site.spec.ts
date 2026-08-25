@@ -15,7 +15,9 @@ test.describe("homepage", () => {
   test("shows the dark audit-dashboard screenshot section", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Provable after the fact." })).toBeVisible();
-    await expect(page.locator("img.shot__img")).toBeVisible();
+    // Scope to the audit-dashboard shot: the homepage now has two .shot__img figures
+    // (the terminal demo and this one), so the bare class matches 2 under strict mode.
+    await expect(page.locator('img.shot__img[src="/dashboard-audit.png"]')).toBeVisible();
   });
 
   test('"How it works" is a click-driven tabset (no auto-rotation)', async ({ page }) => {

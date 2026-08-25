@@ -289,7 +289,7 @@ func TestE2E_Edit_Codex(t *testing.T) {
 		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
-	// Bring the pod up (installs codex + writes its config.toml via Provisions).
+	// Bring the pod up (installs codex; the provider rides -c flags, no config.toml).
 	up := exec.Command(bin, "up", pod, "--detach",
 		"--identity", "work", "--harness", "codex",
 		"--image", "docker.io/library/node:22")
@@ -303,6 +303,11 @@ func TestE2E_Edit_Codex(t *testing.T) {
 	// autonomously in the (isolated) pod.
 	runCmd := exec.Command(bin, "run", pod,
 		"cd /workspace && codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "+
+			`-c 'model_provider="poddle"' `+
+			`-c 'model_providers.poddle.name="poddle"' `+
+			`-c model_providers.poddle.base_url="\"$PODDLE_CODEX_BASE_URL\"" `+
+			`-c 'model_providers.poddle.env_key="OPENAI_API_KEY"' `+
+			`-c 'model_providers.poddle.wire_api="responses"' `+
 			"'create a file "+editFile+" containing "+editMarker+"'")
 	runCmd.Env = env
 	if out, err := runCmd.CombinedOutput(); err != nil {
@@ -665,7 +670,7 @@ func TestE2E_Edit_Opencode(t *testing.T) {
 		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
-	// Bring the pod up (installs opencode + writes its opencode.json via Provisions).
+	// Bring the pod up (installs opencode; the provider rides the OPENCODE_CONFIG layer, not the user's opencode.json).
 	up := exec.Command(bin, "up", pod, "--detach",
 		"--identity", "work", "--harness", "opencode",
 		"--image", "docker.io/library/node:22")
