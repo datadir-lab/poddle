@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -305,6 +306,150 @@ func TestE2E_Edit_Codex(t *testing.T) {
 	runCmd.Env = env
 	if out, err := runCmd.CombinedOutput(); err != nil {
 		t.Fatalf("codex run failed: %v\n%s", err, out)
+	}
+
+	assertFileInPod(t, pod)
+	assertSecretless(t, auths, sentinel, &mu)
+}
+
+// writeAnthropicIdentity writes a sentinel anthropic identity (claude-code's
+// provider) so the broker holds `sentinel` and the pod only gets a handle.
+func writeAnthropicIdentity(t *testing.T, cfg, sentinel string) {
+	t.Helper()
+	idDir := filepath.Join(cfg, "poddle", "identities", "work")
+	if err := os.MkdirAll(idDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(idDir, "meta.toml"), "name = \"work\"\nprovider = \"anthropic\"\n")
+	writeFile(t, filepath.Join(idDir, "anthropic-token"), sentinel)
+}
+
+// jsonQuote returns s as a JSON string literal (quoted + escaped).
+func jsonQuote(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+// startClaudeEditMock serves the Anthropic Messages API (SSE) that the broker
+// forwards from claude-code: a `Bash` tool_use on the first POST /v1/messages, an
+// end_turn text reply on later ones; count_tokens is stubbed and never counted.
+// (claude-code's unauthenticated HEAD / connectivity probe never reaches the mock
+// — the broker gateway absorbs it, so only the forwarded, handle-bearing POSTs
+// arrive here.) Records auth headers; binds 0.0.0.0.
+func startClaudeEditMock(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	var turns int
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		if strings.HasSuffix(r.URL.Path, "count_tokens") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"input_tokens":1}`))
+			return
+		}
+		if r.Method != http.MethodPost || !strings.Contains(r.URL.Path, "/v1/messages") {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		mu.Lock()
+		turns++
+		turn := turns
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		fl, _ := w.(http.Flusher)
+		ev := func(event, data string) {
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+			if fl != nil {
+				fl.Flush()
+			}
+		}
+		if turn == 1 {
+			claudeBashToolUse(ev)
+		} else {
+			claudeEndTurnText(ev, "poddle-edit-done")
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// claudeBashToolUse streams one assistant turn with a `Bash` tool_use that runs a
+// POSIX command creating the file (shape + tool captured from the claude-code edit
+// spike). The input JSON assembles from a single input_json_delta chunk.
+func claudeBashToolUse(ev func(string, string)) {
+	inputJSON := `{"command":` + jsonQuote("echo "+editMarker+" > "+editFile) + `}`
+	ev("message_start", `{"type":"message_start","message":{"id":"m2","type":"message","role":"assistant","model":"claude-opus-4-8","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"output_tokens":1}}}`)
+	ev("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	ev("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"On it."}}`)
+	ev("content_block_stop", `{"type":"content_block_stop","index":0}`)
+	ev("content_block_start", `{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_poddle_edit","name":"Bash","input":{}}}`)
+	ev("content_block_delta", `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":`+jsonQuote(inputJSON)+`}}`)
+	ev("content_block_stop", `{"type":"content_block_stop","index":1}`)
+	ev("message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":30}}`)
+	ev("message_stop", `{"type":"message_stop"}`)
+}
+
+// claudeEndTurnText streams a plain-text end_turn assistant reply (baseline shape).
+func claudeEndTurnText(ev func(string, string), text string) {
+	ev("message_start", `{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"claude-opus-4-8","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}`)
+	ev("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	ev("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":`+jsonQuote(text)+`}}`)
+	ev("content_block_stop", `{"type":"content_block_stop","index":0}`)
+	ev("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`)
+	ev("message_stop", `{"type":"message_stop"}`)
+}
+
+// TestE2E_Edit_ClaudeCode proves claude-code does REAL work through the broker: a
+// scripted Messages-API mock drives it to run its Bash tool to create a file,
+// secretlessly (the pod holds only a handle; the upstream sees only the sentinel).
+func TestE2E_Edit_ClaudeCode(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-EDIT-CLAUDE"
+	var mu sync.Mutex
+	var auths []string
+	mock := startClaudeEditMock(t, &auths, &mu)
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeAnthropicIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_ANTHROPIC_BASE_URL="+mockURL)
+
+	pod := "poddle-edit-claude"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "claude-code",
+		"--image", "docker.io/library/node:22")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Run claude-code headless in the workspace to create the file (through the
+	// broker), using the harness's verified non-interactive recipe.
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && export IS_SANDBOX=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1; "+
+			`echo '{"hasCompletedOnboarding":true}' > $HOME/.claude.json; `+
+			"claude -p 'create a file "+editFile+" containing "+editMarker+"' "+
+			"--dangerously-skip-permissions --max-turns 5 --output-format json </dev/null")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("claude run failed: %v\n%s", err, out)
 	}
 
 	assertFileInPod(t, pod)
