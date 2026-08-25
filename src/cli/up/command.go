@@ -436,6 +436,14 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 				if _, p, err := net.SplitHostPort(pgPodAddr); err == nil {
 					ports[brokerendpoint.Postgres] = p
 				}
+			case "mcp":
+				host, err := applyMCPConnector(b, h, conn, def, o.name, "http://"+podBrokerAddr, &spec)
+				if err != nil {
+					return fail(err)
+				}
+				if host != "" {
+					egressHosts = append(egressHosts, host)
+				}
 			default:
 				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, &spec); err != nil {
 					return fail(err)
@@ -591,6 +599,48 @@ func applyConnector(b podBroker, conn connector.Connection, def connector.Defini
 	}
 	spec.Setup = append(setup, spec.Setup...) // connector setup before the clone
 	return nil
+}
+
+// applyMCPConnector wires a brokered remote MCP server. It issues a pod-scoped
+// handle for the MCP token, exposes it in an env var, and APPENDS the harness's
+// MCP registration (MCPWiring) to Setup — which runs after the harness install
+// because applyIdentity (Provisions) has already run when the connector loop
+// executes. Per the spike, Credential.BaseURL must be the server ORIGIN (no
+// path); the agent-facing url is the broker gateway root + the server's endpoint
+// path. Returns the MCP host to add to the egress allow-list.
+func applyMCPConnector(b podBroker, h harness.Harness, conn connector.Connection, def connector.Definition, podName, brokerGatewayURL string, spec *sandbox.Spec) (egressHost string, err error) {
+	cred, err := connector.Credential(conn, def) // BaseURL = full endpoint here
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(cred.BaseURL)
+	if err != nil {
+		return "", fmt.Errorf("mcp connection %q url: %w", conn.Name, err)
+	}
+	endpointPath := u.Path                   // e.g. /mcp — rides the request path
+	cred.BaseURL = u.Scheme + "://" + u.Host // origin only (spike-proven)
+	handle, err := b.IssueHandle(podName, podName+"/"+conn.Name, cred)
+	if err != nil {
+		return "", err
+	}
+	envVar := mcpEnvVar(conn.Name)
+	if spec.Env == nil {
+		spec.Env = map[string]string{}
+	}
+	spec.Env[envVar] = handle
+	agentURL := strings.TrimRight(brokerGatewayURL, "/") + endpointPath
+	spec.Setup = append(spec.Setup, h.MCPWiring(conn.Name, agentURL, envVar)...)
+	return u.Hostname(), nil
+}
+
+// mcpEnvVar is the pod env var holding the handle for MCP connection name.
+func mcpEnvVar(name string) string {
+	return "PODDLE_MCP_" + strings.Map(func(r rune) rune {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, strings.ToUpper(name))
 }
 
 // applyRedisDatastore issues a handle for a Redis connection at poddled and
