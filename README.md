@@ -154,14 +154,19 @@ New HTTP services are a few lines of declarative TOML, no code.
 
 ## Customizing your agent
 
-Drop an agent's own config at `~/.config/poddle/harness/<harness>/` — e.g.
-`codex/config.toml` with a `[mcp_servers]` block, or `opencode/opencode.json`
-with an `mcp` block — and poddle seeds it into the pod's config dir on `up`,
-persisting it across `move` without ever overwriting it.
+Each pod-side agent reads its own native config. Drop yours at
+`~/.config/poddle/harness/<harness>/` — e.g. `codex/config.toml` with a
+`[mcp_servers]` block, or `opencode/opencode.json` with an `mcp` block — and
+poddle seeds it into the pod on `up` and persists it across `move`, without ever
+overwriting it. Poddle's broker wiring rides a separate side channel (codex via
+`-c` overrides, opencode via a dedicated config layer), so your full native
+config — settings, plugins, MCP servers — stays yours.
 
-A *local* stdio MCP server bundled in the pod image works as-is. A *remote*
-MCP server also needs an egress-policy allow-list entry and its token
-brokered as a connector — that wiring is a follow-up.
+A *local* stdio MCP server runs in the pod; one that fetches at launch needs its
+registry allowed (codex and opencode permit npm by default). A *remote* MCP
+server additionally needs an egress allow-list entry and its token brokered as a
+connector — that wiring is a follow-up. See
+[Configuration](https://poddle.dev/docs/configuration) for copy-pasteable examples.
 
 ## Secret-safety
 
