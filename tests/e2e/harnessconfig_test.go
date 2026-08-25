@@ -46,6 +46,14 @@ func TestE2E_HarnessConfig_NotClobbered(t *testing.T) {
 			podPath: "/root/.config/opencode/opencode.json",
 			seed:    `{"$schema":"https://opencode.ai/config.json","mcp":{"` + cfgMarker + `":{"type":"local","command":["echo"]}}}`,
 		},
+		{
+			name:    "pi",
+			harness: "pi",
+			image:   "docker.io/library/node:22",
+			seedRel: "mcp.json",
+			podPath: "/root/.pi/mcp.json",
+			seed:    `{"` + cfgMarker + `":{"command":"echo"}}`,
+		},
 	}
 
 	for _, tc := range cases {
