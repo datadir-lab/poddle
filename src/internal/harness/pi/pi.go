@@ -74,6 +74,8 @@ func (h *Harness) EgressHosts() []string {
 	return []string{"registry.npmjs.org", "api.openai.com"}
 }
 
-// ConfigDir is empty: pi's user-customizable config seed/persist dir is
-// deferred to a rollout follow-up.
-func (h *Harness) ConfigDir() string { return "" }
+// ConfigDir is PI_CODING_AGENT_DIR (/root/.pi), where pi keeps user config. poddle
+// seeds a user's host config here and persists it as a named volume. models.json is
+// poddle-owned (rewritten each up by Provisions to pin the broker provider); a user's
+// mcp.json / extensions/ live alongside it and are the seed/persist target.
+func (h *Harness) ConfigDir() string { return "/root/.pi" }

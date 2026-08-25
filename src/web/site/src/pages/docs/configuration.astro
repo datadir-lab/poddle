@@ -113,10 +113,13 @@ const opencodeMcpExample = `{
     </p>
     <div class="doc-table">
       <table class="flags">
-        <thead><tr><th>Harness</th><th>Host file</th><th>What goes there</th></tr></thead>
+        <thead><tr><th>Harness</th><th>Config file</th><th>What goes there</th></tr></thead>
         <tbody>
           <tr><td>codex</td><td data-label="Path"><code>codex/config.toml</code></td><td data-label="Info">Codex's own settings and its <code>[mcp_servers]</code> block.</td></tr>
           <tr><td>opencode</td><td data-label="Path"><code>opencode/opencode.json</code></td><td data-label="Info">opencode's settings, plugins, and its <code>mcp</code> block.</td></tr>
+          <tr><td>pi</td><td data-label="Path"><code>pi/mcp.json</code> (+ <code>extensions/</code>)</td><td data-label="Info">pi's MCP servers and extensions. <code>models.json</code> is poddle-owned.</td></tr>
+          <tr><td>claude-code</td><td data-label="Path"><code>~/.claude.json</code> (<code>mcpServers</code>)</td><td data-label="Info">Preserved, not overwritten - poddle merges only the onboarding flag. A project <code>.mcp.json</code> in the repo persists too.</td></tr>
+          <tr><td>aider</td><td data-label="Path"><code>.aider.conf.yml</code> (in the repo)</td><td data-label="Info">A project config in <code>/workspace</code>, which already persists - no host seed needed.</td></tr>
         </tbody>
       </table>
     </div>
@@ -149,6 +152,16 @@ const opencodeMcpExample = `{
       needs an explicit egress allow-list entry (see <a href="/docs/governance">Governance</a>) and its token
       brokered as a <a href="/docs/connectors">connector</a>, so no secret lands in the pod - that wiring is a
       follow-up.
+    </p>
+    <p class="doc-p">
+      For claude-code, poddle merges <code>hasCompletedOnboarding</code> into <code>~/.claude.json</code>
+      rather than overwriting it, so your user-scope MCP servers survive a <code>poddle task</code>.
+      (Seeding the home-level <code>~/.claude.json</code> from the host dir is a follow-up; <code>~/.claude/</code>
+      and a project <code>.mcp.json</code> already persist.)
+    </p>
+    <p class="doc-p">
+      aider's config is a project file - <code>.aider.conf.yml</code> - in the repo, and <code>/workspace</code>
+      is already a persisted volume, so it persists with no extra setup.
     </p>
 
     <h2 style="margin-top:2.4rem">Environment variables</h2>

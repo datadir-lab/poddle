@@ -34,6 +34,13 @@ func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 	}
 }
 
+// onboardingMerge marks Claude Code's onboarding complete WITHOUT overwriting the
+// user's ~/.claude.json (where user-scope MCP servers and settings live). It reads
+// the existing file if present, sets hasCompletedOnboarding=true, and writes it back
+// — a merge, not a clobber. node is always present (claude-code runs on it). Verified
+// against node: preserves mcpServers/theme; writes {"hasCompletedOnboarding":true} when absent.
+const onboardingMerge = `node -e 'const f=process.env.HOME+"/.claude.json",fs=require("fs");let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){};c.hasCompletedOnboarding=true;fs.writeFileSync(f,JSON.stringify(c))'`
+
 // TaskCommand runs claude-code headless to completion. It uses the verified
 // headless recipe: IS_SANDBOX + disabled non-essential traffic, a pre-seeded
 // onboarding marker, and `-p` with stdin from /dev/null (which otherwise blocks).
@@ -42,7 +49,7 @@ func (h *Harness) TaskCommand(prompt string, maxTurns int) string {
 		maxTurns = 24
 	}
 	return "export IS_SANDBOX=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1; " +
-		`echo '{"hasCompletedOnboarding":true}' > $HOME/.claude.json; ` +
+		onboardingMerge + "; " +
 		fmt.Sprintf("claude -p %s --output-format json --max-turns %d --dangerously-skip-permissions </dev/null",
 			shellSingleQuote(prompt), maxTurns)
 }
@@ -78,11 +85,17 @@ func (h *Harness) ResumeCommand(mode string) string {
 		return "claude --continue"
 	}
 	return "export IS_SANDBOX=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1; " +
-		`echo '{"hasCompletedOnboarding":true}' > $HOME/.claude.json; ` +
+		onboardingMerge + "; " +
 		fmt.Sprintf("claude -p %s --continue --output-format json --dangerously-skip-permissions </dev/null",
 			shellSingleQuote(resumeNudge))
 }
 
-// ConfigDir is empty: Claude Code's user-customizable config seed/persist dir
-// is deferred to a rollout follow-up.
+// ConfigDir is empty: claude-code is env-provider (broker wiring goes through
+// Env, not a seeded config file), so Provisions never clobbers a config file.
+// The onboarding write, which used to overwrite ~/.claude.json outright, now
+// merges into it (see onboardingMerge) so a user's existing mcpServers/settings
+// survive. ~/.claude/ (conversation state, etc.) persists via StateDirs, and a
+// project-scope .mcp.json persists via /workspace. A host-seed of the
+// home-level ~/.claude.json itself (so it never needs a merge in the first
+// place) is a rollout follow-up.
 func (h *Harness) ConfigDir() string { return "" }
