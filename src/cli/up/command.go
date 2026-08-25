@@ -213,6 +213,20 @@ func dirHasEntries(path string) bool {
 	return err == nil && len(entries) > 0
 }
 
+// hasVolumeContainer reports whether vols already mounts a volume at the given
+// container path. Used to avoid registering a second, duplicate named volume when
+// a harness's ConfigDir coincides with one of its StateDirs (e.g. codex, whose
+// ConfigDir and StateDir are both /root/.codex) — podman rejects a duplicate
+// mount destination.
+func hasVolumeContainer(vols []sandbox.Volume, container string) bool {
+	for _, v := range vols {
+		if v.Container == container {
+			return true
+		}
+	}
+	return false
+}
+
 // buildSpec resolves the template + flag overrides, runs secret-safety, and
 // issues broker handles (identity + connectors) against poddled — returning a
 // ready-to-create spec and the resolved harness. It does not create the pod, so
@@ -304,7 +318,10 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 	// secretless regardless. Copy (not mount-in-place) so the agent keeps the dir
 	// writable for its own session state.
 	if cd := h.ConfigDir(); cd != "" {
-		if o.withVolumes {
+		// Persist ConfigDir as a named volume — unless it's already registered as a
+		// StateDir (codex's ConfigDir and StateDir are both /root/.codex); a second
+		// identical volume would make podman reject a duplicate mount destination.
+		if o.withVolumes && !hasVolumeContainer(spec.Volumes, cd) {
 			spec.Volumes = append(spec.Volumes, sandbox.Volume{Name: stateVolName(o.name, cd), Container: cd})
 		}
 		if hostCfg := harnessconfig.Dir(harnessName); dirHasEntries(hostCfg) {

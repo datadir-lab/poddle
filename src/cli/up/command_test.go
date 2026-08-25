@@ -818,6 +818,30 @@ func TestUp_NoSeedWhenHostConfigAbsent(t *testing.T) {
 	}
 }
 
+func TestUp_ConfigDirEqualsStateDir_NoDuplicateVolume(t *testing.T) {
+	// A harness whose ConfigDir coincides with a StateDir (e.g. codex: both
+	// /root/.codex) must produce exactly ONE named volume for that path — podman
+	// rejects a duplicate mount destination.
+	reg := harness.Registry{"dupharness": &harness.FakeHarness{
+		HarnessName: "dupharness", ConfigDirs: "/root/.dup", States: []string{"/root/.dup"},
+	}}
+	f := &fakeCreator{}
+	c := NewCmd(&app.App{Engine: f, Harnesses: reg}, stubBroker{})
+	c.SetArgs([]string{"box", "--harness", "dupharness", "--detach"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	n := 0
+	for _, v := range f.spec.Volumes {
+		if v.Container == "/root/.dup" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("expected exactly one volume at /root/.dup, got %d; volumes = %+v", n, f.spec.Volumes)
+	}
+}
+
 func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	store := idn.NewStore(t.TempDir())
 	if _, err := store.Create("work", "anthropic"); err != nil {
