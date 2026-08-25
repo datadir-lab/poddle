@@ -152,6 +152,17 @@ control/data-plane split, governance, and TLS interception — with diagrams, se
 
 New HTTP services are a few lines of declarative TOML, no code.
 
+## Customizing your agent
+
+Drop an agent's own config at `~/.config/poddle/harness/<harness>/` — e.g.
+`codex/config.toml` with a `[mcp_servers]` block, or `opencode/opencode.json`
+with an `mcp` block — and poddle seeds it into the pod's config dir on `up`,
+persisting it across `move` without ever overwriting it.
+
+A *local* stdio MCP server bundled in the pod image works as-is. A *remote*
+MCP server also needs an egress-policy allow-list entry and its token
+brokered as a connector — that wiring is a follow-up.
+
 ## Secret-safety
 
 - **`block_paths`**: mounts that would expose host secrets (`~/.ssh`, `~/.aws`,

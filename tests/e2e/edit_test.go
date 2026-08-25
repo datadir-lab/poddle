@@ -289,7 +289,7 @@ func TestE2E_Edit_Codex(t *testing.T) {
 		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
-	// Bring the pod up (installs codex + writes its config.toml via Provisions).
+	// Bring the pod up (installs codex; the provider rides -c flags, no config.toml).
 	up := exec.Command(bin, "up", pod, "--detach",
 		"--identity", "work", "--harness", "codex",
 		"--image", "docker.io/library/node:22")

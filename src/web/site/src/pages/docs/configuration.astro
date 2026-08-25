@@ -81,6 +81,38 @@ const envs: { name: string; def: string; desc: string }[] = [
       <p>Because lists append and scalars override, a shared <code>base</code> that sets safe defaults (image, <code>secret_scan</code>, <code>egress</code>) is inherited by every template that extends it - a project template only states what differs. See the <a href="/docs/templates">Templates</a> examples for the pattern.</p>
     </Callout>
 
+    <h2 style="margin-top:2.4rem">Customizing your agent config</h2>
+    <p class="doc-p">
+      Drop an agent's own native config under <code>~/.config/poddle/harness/&lt;harness&gt;/</code> and poddle
+      seeds it into the pod's config directory on <code>up</code>, then persists that directory as a named
+      volume so your customizations survive <code>move</code>. Poddle's own broker wiring writes elsewhere and
+      never touches these files.
+    </p>
+    <div class="doc-table">
+      <table class="flags">
+        <thead><tr><th>Harness</th><th>Host file</th><th>What goes there</th></tr></thead>
+        <tbody>
+          <tr><td>codex</td><td data-label="Path"><code>codex/config.toml</code></td><td data-label="Info">Codex's own settings, including a <code>[mcp_servers]</code> block.</td></tr>
+          <tr><td>opencode</td><td data-label="Path"><code>opencode/opencode.json</code></td><td data-label="Info">opencode's own settings, including an <code>mcp</code> block.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <Callout type="warn" title="Codex provider config is user-scope only">
+      <p>
+        Codex only reads provider keys (<code>model_provider</code>, <code>model_providers</code>) from its
+        <strong>user-scope</strong> <code>config.toml</code> - a <em>project</em> <code>.codex/config.toml</code>
+        is ignored for provider settings. Keep any custom provider config in the seeded, user-scope file.
+        Poddle's own provider override rides <code>-c</code> flags on every <code>codex exec</code>, so it never
+        touches this file and won't collide with yours.
+      </p>
+    </Callout>
+    <p class="doc-p">
+      This covers a <em>local</em> stdio MCP server bundled in the pod image - it works as-is. A
+      <em>remote</em> MCP server also needs an egress-policy allow-list entry (see
+      <a href="/docs/governance">Governance</a>) and its token brokered as a
+      <a href="/docs/connectors">connector</a> - that wiring is a follow-up.
+    </p>
+
     <h2 style="margin-top:2.4rem">Environment variables</h2>
     <p class="doc-p">A handful of variables tune the CLI and daemon. All are optional - the defaults are the common case.</p>
     <div class="doc-table">
