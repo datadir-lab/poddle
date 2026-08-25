@@ -10,7 +10,7 @@ import "@poddle/ui/views.css";
 import type { Stats, Cmd, Toast, PolicyTemplate, Event, Policy, Pod } from "@poddle/ui/views";
 import {
   SegmentedControl, IntegrityBadge, IntegrityPanel,
-  Icon, PoddleMark, EgressChart, PostureBar, FleetLoad,
+  Icon, PoddleMark, ThemeToggle, EgressChart, PostureBar, FleetLoad,
   SkelCards, SkelTable, LiveDot,
   OverviewCards, AttentionPanel, RedactionsTable, PodFleetTable, PodDetailPanel,
   AuditLogTable, PolicyList, DestinationsTable, PolicyEditor, PodControls,
@@ -495,10 +495,10 @@ const PAGE: Record<string, { title: string; sub: string }> = {
   policies: { title: "Policies", sub: "The egress rules your pods run under." },
 };
 
-function Sidebar({ active, v, collapsed }: { active: string; v: Verify; collapsed: boolean }) {
+function Sidebar({ active, v, collapsed, onNav }: { active: string; v: Verify; collapsed: boolean; onNav?: () => void }) {
   return (
     <aside class="sidebar">
-      <a class="brand" href="/overview" aria-label="poddle" onClick={linkTo("/overview")}>
+      <a class="brand" href="/overview" aria-label="poddle" onClick={(e) => { linkTo("/overview")(e); onNav?.(); }}>
         <PoddleMark size={27} />
         <span class="brand__name">poddle</span>
       </a>
@@ -506,7 +506,7 @@ function Sidebar({ active, v, collapsed }: { active: string; v: Verify; collapse
         {NAV.map((it) => (
           <a key={it.key} href={it.to} class={"nav__i" + (active === it.key ? " on" : "")}
             title={collapsed ? it.label : undefined}
-            aria-current={active === it.key ? "page" : undefined} onClick={linkTo(it.to)}>
+            aria-current={active === it.key ? "page" : undefined} onClick={(e) => { linkTo(it.to)(e); onNav?.(); }}>
             <Icon name={it.icon} size={17} /><span>{it.label}</span>
           </a>
         ))}
@@ -556,29 +556,6 @@ function PodDetailView({ name, events, loading }: { name: string; events: Event[
   );
 }
 
-// ThemeToggle flips light/dark and persists the choice. The initial attribute is
-// set by an inline script in index.html (before paint), so there is no flash.
-function ThemeToggle() {
-  const [theme, setTheme] = useState(
-    () => (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "light",
-  );
-  const apply = (t: string) => {
-    document.documentElement.setAttribute("data-theme", t);
-    try { localStorage.setItem("poddle-theme", t); } catch {}
-    setTheme(t);
-  };
-  const dark = theme === "dark";
-  return (
-    <button class="theme-toggle" type="button" aria-pressed={dark} title={dark ? "Light theme" : "Dark theme"}
-      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-      onClick={() => apply(dark ? "light" : "dark")}>
-      {dark
-        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
-        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>}
-    </button>
-  );
-}
-
 function App() {
   const route = useRoute();
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -598,22 +575,31 @@ function App() {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("poddle-sidebar") === "collapsed"; } catch { return false; }
   });
-  const toggleRail = () => setCollapsed((c) => {
-    const n = !c;
-    try { localStorage.setItem("poddle-sidebar", n ? "collapsed" : "expanded"); } catch {}
-    return n;
-  });
+  // Below 880px the rail is an off-canvas drawer this button opens/closes; at
+  // desktop widths the same button collapses the rail to an icon strip instead.
+  const [navOpen, setNavOpen] = useState(false);
+  const onMobile = () => typeof matchMedia !== "undefined" && matchMedia("(max-width: 880px)").matches;
+  const toggleRail = () => {
+    if (onMobile()) { setNavOpen((o) => !o); return; }
+    setCollapsed((c) => {
+      const n = !c;
+      try { localStorage.setItem("poddle-sidebar", n ? "collapsed" : "expanded"); } catch {}
+      return n;
+    });
+  };
 
   // Reflect the section in the tab title so history/tab-switching are legible.
   const docName = route.view === "pod" ? route.name : page.title;
   useEffect(() => { document.title = "poddle · " + docName; }, [docName]);
+  // Any navigation (link, palette, back button) closes the mobile drawer.
+  useEffect(() => { setNavOpen(false); }, [docName]);
 
   // ⌘K / Ctrl-K toggles the command palette from anywhere; Escape closes it.
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPaletteOpen((o) => !o); }
-      else if (e.key === "Escape") setPaletteOpen(false);
+      else if (e.key === "Escape") { setPaletteOpen(false); setNavOpen(false); }
     };
     addEventListener("keydown", on);
     return () => removeEventListener("keydown", on);
@@ -641,12 +627,13 @@ function App() {
   }, [palettePods, palettePols, events]);
 
   return (
-    <div class={"app" + (collapsed ? " app--collapsed" : "")}>
-      <Sidebar active={active} v={vf.verify} collapsed={collapsed} />
+    <div class={"app" + (collapsed ? " app--collapsed" : "") + (navOpen ? " app--nav-open" : "")}>
+      <Sidebar active={active} v={vf.verify} collapsed={collapsed} onNav={() => setNavOpen(false)} />
+      <button class="scrim" type="button" aria-label="Close navigation" tabIndex={navOpen ? 0 : -1} onClick={() => setNavOpen(false)} />
       <div class="content">
         <header class="topbar">
-          <button class="rail-toggle" type="button" aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={toggleRail}>
+          <button class="rail-toggle" type="button" aria-label="Toggle sidebar" aria-expanded={navOpen}
+            onClick={toggleRail}>
             <Icon name="panel" size={18} />
           </button>
           <div class="topbar__head">

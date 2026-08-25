@@ -64,41 +64,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--mono); font-size: 0.84rem; line-height: 1.5; }
 ::placeholder { color: var(--faint); }
 
-/* ---- app shell: a fixed left rail beside a scrolling content column ---- */
-.app { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns 0.2s ease; }
-.icon { flex: none; display: inline-block; vertical-align: middle; }
-
-.sidebar {
-  display: flex; flex-direction: column; gap: 0.15rem;
-  padding: 1.1rem 0.85rem 0.9rem;
-  border-right: 1px solid var(--border); background: var(--surface);
-  position: sticky; top: 0; height: 100vh; overflow-y: auto;
-}
-.brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; padding: 0.3rem 0.6rem 0.95rem; }
-.brand__name { font-family: var(--font-serif); font-size: 1.45rem; line-height: 1; color: var(--ink); letter-spacing: -0.01em; transform: translateY(-2px); }
-.pmark { display: block; transition: transform 0.12s ease; }
-.brand:hover .pmark { transform: translateY(-1px); }
-
-.nav { display: flex; flex-direction: column; gap: 0.15rem; }
-.nav__i {
-  display: flex; align-items: center; gap: 0.7rem; position: relative;
-  font: 600 0.9rem/1 var(--font-sans); color: var(--muted); text-decoration: none;
-  padding: 0.6rem 0.7rem; border-radius: var(--radius-sm); cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.nav__i:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
-.nav__i.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.nav__i.on::before {
-  content: ""; position: absolute; left: -0.85rem; top: 0.5rem; bottom: 0.5rem;
-  width: 3px; border-radius: 0 3px 3px 0; background: var(--accent);
-}
-.nav__i .icon { color: currentColor; }
-
-.sidebar__foot {
-  margin-top: auto; display: flex; flex-direction: row; align-items: center;
-  justify-content: space-between; gap: 0.6rem;
-  padding: 0.85rem 0.55rem 0.15rem; border-top: 1px solid var(--border);
-}
+/* ---- app shell ----
+   The rail, brand, nav, sidebar foot, topbar, theme toggle, the collapsed-rail
+   rules, and the responsive drawer now ship in @poddle/ui/views.css as the
+   single shared source used by both the dashboard and the cloud console. Only
+   the dashboard-specific chrome stays here: the integrity badge (below) and the
+   command-palette trigger. */
 
 .badge {
   position: relative;
@@ -124,53 +95,19 @@ textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--m
 /* compact (icon-only) verify badge for the collapsed rail */
 .badge--icon { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; }
 
-/* ---- collapsed rail (desktop only; mobile keeps its top-bar layout) ---- */
+/* collapsed rail: the compact integrity badge drops its hover tooltip (it uses
+   a native title instead); the rail layout itself lives in views.css. */
 @media (min-width: 881px) {
-  .app--collapsed { grid-template-columns: 68px minmax(0, 1fr); }
-  .app--collapsed .sidebar { padding-inline: 0.5rem; }
-  .app--collapsed .brand { justify-content: center; gap: 0; padding: 0.3rem 0 0.95rem; }
-  .app--collapsed .brand__name { display: none; }
-  .app--collapsed .nav__i { justify-content: center; gap: 0; padding: 0.6rem 0; }
-  .app--collapsed .nav__i span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-  .app--collapsed .nav__i.on::before { display: none; }
-  .app--collapsed .sidebar__foot { flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.85rem 0 0.15rem; }
-  .app--collapsed .badge::after { display: none; } /* compact badge uses a native title instead */
+  .app--collapsed .badge::after { display: none; }
 }
 .badge.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .badge.ok:hover { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .badge.bad { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 45%, var(--border)); background: color-mix(in srgb, var(--deny) 6%, transparent); }
 .badge.bad:hover { border-color: color-mix(in srgb, var(--deny) 70%, var(--border)); background: color-mix(in srgb, var(--deny) 11%, transparent); }
 
-/* light/dark toggle - sits at the right of the sidebar foot */
-.theme-toggle {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0;
-  background: transparent; color: var(--muted);
-  border: 1px solid var(--border); border-radius: 999px;
-  cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s;
-}
-.theme-toggle:hover { color: var(--ink); border-color: var(--faint); background: color-mix(in srgb, var(--ink) 5%, transparent); }
-
-/* ---- top bar: rail toggle + section name + live-stream status ---- */
-.content { min-width: 0; display: flex; flex-direction: column; }
-.topbar {
-  display: flex; align-items: center; gap: 0.85rem;
-  padding: 0.8rem 1.5rem 0.8rem 1.15rem;
-  border-bottom: 1px solid var(--border); background: var(--bone);
-  position: sticky; top: 0; z-index: 5;
-}
-.rail-toggle {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; padding: 0;
-  background: transparent; color: var(--muted);
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s;
-}
-.rail-toggle:hover { color: var(--ink); border-color: var(--faint); background: color-mix(in srgb, var(--ink) 5%, transparent); }
-.topbar__head { min-width: 0; }
-.topbar__title { font-family: var(--font-serif); font-size: 1.3rem; font-weight: 400; line-height: 1.15; letter-spacing: -0.01em; color: var(--ink); margin: 0; }
-.topbar__sub { margin: 0.08rem 0 0; font-size: 0.82rem; color: var(--faint); }
-.topbar__actions { margin-left: auto; display: flex; align-items: center; gap: 0.85rem; flex: none; }
+/* The theme toggle, content column, topbar, rail toggle, and topbar head/title/
+   sub/actions are part of the shared shell in views.css. The command-palette
+   trigger below is dashboard-only (the console has no ⌘K palette). */
 .topbar__search {
   display: inline-flex; align-items: center; gap: 0.5rem;
   font: 500 0.82rem/1 var(--font-sans); color: var(--muted);
@@ -181,12 +118,8 @@ textarea { width: 100%; min-height: 78px; resize: vertical; font-family: var(--m
 .topbar__kbd { font: 600 0.7rem/1 var(--mono); color: var(--faint); border: 1px solid var(--border); border-radius: 4px; padding: 0.12rem 0.32rem; background: var(--surface); }
 @media (max-width: 720px) { .topbar__searchlabel, .topbar__kbd { display: none; } .topbar__search { padding: 0.4rem; } }
 
-/* ---- content ---- */
-main { width: 100%; max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 3rem; }
-
-
-/* ---- shared primitives (single-line/base rules used by both the app shell
-   above and the @poddle/ui/views components, which ship in views.css) ---- */
+/* ---- shared primitives (small base rules; the page <main> wrapper, the app
+   shell, and the component styles all ship in @poddle/ui/views.css) ---- */
 .c-mono { font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .faint { color: var(--faint); }
 .btn {
@@ -196,31 +129,6 @@ main { width: 100%; max-width: var(--maxw-app); margin-inline: auto; padding: 1.
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
-/* ---- responsive: rail folds to a top bar below this width (component reflow
-   rules for charts, tables, and the policies layout ship in views.css) ---- */
-@media (max-width: 880px) {
-  .app { grid-template-columns: 1fr; }
-  .rail-toggle { display: none; }
-  .sidebar {
-    flex-direction: row; align-items: center; gap: 0.4rem;
-    height: auto; overflow-x: auto; z-index: 6;
-    padding: 0.55rem 1rem;
-    border-right: 0; border-bottom: 1px solid var(--border);
-  }
-  .brand { padding: 0 0.5rem 0 0.2rem; }
-  .nav { flex-direction: row; gap: 0.1rem; }
-  .nav__i { padding: 0.5rem 0.65rem; }
-  .nav__i.on::before { display: none; }
-  .sidebar__foot { flex-direction: row; align-items: center; gap: 0.5rem; margin: 0 0 0 auto; padding: 0; border-top: 0; }
-}
-
-@media (max-width: 720px) {
-  .topbar { padding-inline: 1rem; }
-  main { padding-inline: 1rem; }
-}
-
-/* smallest screens: nav collapses to icons (label kept for assistive tech) */
-@media (max-width: 560px) {
-  .nav__i span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-  .sidebar__foot .badge { display: none; }
-}
+/* The rail's responsive behaviour (the off-canvas drawer, scrim, and folds) all
+   lives in the shared shell in @poddle/ui/views.css. The integrity badge stays
+   visible in the drawer footer — there is room for it there. */
