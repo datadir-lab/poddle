@@ -8,6 +8,7 @@ package openai
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,9 @@ import (
 )
 
 const tokenFile = "openai-token"
+
+// stdin is injected for testing; in production it is os.Stdin.
+var stdin io.Reader = os.Stdin
 
 type Provider struct{}
 
@@ -34,7 +38,7 @@ func (p *Provider) Authenticate(id identity.Identity) error {
 	token := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	if token == "" {
 		fmt.Fprint(os.Stderr, "Paste an OpenAI API key (sk-...): ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		line, _ := bufio.NewReader(stdin).ReadString('\n')
 		token = strings.TrimSpace(line)
 	}
 	if token == "" {
@@ -62,6 +66,8 @@ func (p *Provider) Credential(id identity.Identity) (broker.Credential, error) {
 	if err != nil {
 		return broker.Credential{}, fmt.Errorf("read token: %w", err)
 	}
+	// PODDLE_OPENAI_BASE_URL overrides the upstream — for an OpenAI-compatible
+	// proxy/gateway, or a mock in e2e tests.
 	baseURL := "https://api.openai.com"
 	if o := strings.TrimSpace(os.Getenv("PODDLE_OPENAI_BASE_URL")); o != "" {
 		baseURL = o

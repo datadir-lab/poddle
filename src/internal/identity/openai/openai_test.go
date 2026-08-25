@@ -3,11 +3,15 @@ package openai
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/datadir-lab/poddle/src/internal/broker"
 	"github.com/datadir-lab/poddle/src/internal/identity"
 )
+
+// Ensure Provider implements identity.Provider.
+var _ identity.Provider = (*Provider)(nil)
 
 // idIn makes an Identity rooted at a temp dir for the provider to write into.
 func idIn(t *testing.T) identity.Identity {
@@ -85,5 +89,34 @@ func TestIsAuthenticated_FalseWhenAbsent(t *testing.T) {
 func TestCredential_ErrsWhenNoToken(t *testing.T) {
 	if _, err := New().Credential(idIn(t)); err == nil {
 		t.Error("want error when no token stored")
+	}
+}
+
+func TestAuthenticate_StdinFallback(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	old := stdin
+	defer func() { stdin = old }()
+	stdin = strings.NewReader("sk-from-stdin\n")
+	id := idIn(t)
+	p := New()
+	if err := p.Authenticate(id); err != nil {
+		t.Fatal(err)
+	}
+	tok, _ := os.ReadFile(filepath.Join(id.Dir(), "openai-token"))
+	if string(tok) != "sk-from-stdin" {
+		t.Errorf("token = %q, want sk-from-stdin", string(tok))
+	}
+}
+
+func TestAuthenticate_ErrsWhenNoKeyAnywhere(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	old := stdin
+	defer func() { stdin = old }()
+	stdin = strings.NewReader("")
+	id := idIn(t)
+	p := New()
+	err := p.Authenticate(id)
+	if err == nil {
+		t.Error("want error when no key provided")
 	}
 }
