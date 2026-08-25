@@ -40,11 +40,20 @@ func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 	}
 }
 
-// TaskCommand runs Codex headless (one-shot) to completion. --skip-git-repo-check
-// lets it run in a non-git workdir. Codex bounds its own turns; maxTurns is
-// advisory here (documented; a flag mapping can follow).
+// execFlags run Codex non-interactively with write access. The pod is already an
+// isolated, secretless, egress-locked sandbox — the same premise on which
+// claude-code runs with --dangerously-skip-permissions — so Codex's own default
+// read-only sandbox and approval prompts are both redundant and blocking for an
+// autonomous task. --dangerously-bypass-approvals-and-sandbox (whose own help
+// says it is "intended solely for running in environments that are externally
+// sandboxed") lets `poddle task` actually apply edits; --skip-git-repo-check
+// allows a non-git workdir.
+const execFlags = "--dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
+
+// TaskCommand runs Codex headless (one-shot) to completion. Codex bounds its own
+// turns; maxTurns is advisory here (documented; a flag mapping can follow).
 func (h *Harness) TaskCommand(prompt string, _ int) string {
-	return "codex exec --skip-git-repo-check " + shellSingleQuote(prompt)
+	return "codex exec " + execFlags + " " + shellSingleQuote(prompt)
 }
 
 func shellSingleQuote(s string) string {
@@ -57,12 +66,14 @@ func (h *Harness) StateDirs() []string { return []string{"/root/.codex"} }
 
 const resumeNudge = "continue where you left off"
 
-// ResumeCommand continues the most recent Codex session after a move.
+// ResumeCommand continues the most recent Codex session after a move. Headless
+// resume runs autonomously (execFlags, like TaskCommand); interactive hands the
+// TTY back so the user drives and approves.
 func (h *Harness) ResumeCommand(mode string) string {
 	if mode == "interactive" {
 		return "codex resume --last"
 	}
-	return "codex exec resume --last --skip-git-repo-check " + shellSingleQuote(resumeNudge)
+	return "codex exec resume --last " + execFlags + " " + shellSingleQuote(resumeNudge)
 }
 
 // EgressHosts is what Codex needs to install and run: the npm registry and

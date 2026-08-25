@@ -65,6 +65,12 @@ func TestTaskCommand_ExecOneShotSkipsGitCheckQuotesPrompt(t *testing.T) {
 	if !strings.Contains(cmd, "--skip-git-repo-check") {
 		t.Errorf("TaskCommand must pass --skip-git-repo-check: %q", cmd)
 	}
+	// The pod is the sandbox; an autonomous task must be able to write files, so
+	// Codex's read-only sandbox + approval prompts are bypassed (like claude-code's
+	// --dangerously-skip-permissions). Without this, poddle task can't apply edits.
+	if !strings.Contains(cmd, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Errorf("TaskCommand must bypass Codex's sandbox/approvals so it can edit: %q", cmd)
+	}
 	if !strings.Contains(cmd, "'do a thing'") {
 		t.Errorf("TaskCommand must single-quote the prompt: %q", cmd)
 	}
@@ -87,8 +93,16 @@ func TestResumeCommand(t *testing.T) {
 	if !strings.Contains(New().ResumeCommand("interactive"), "resume") {
 		t.Error("interactive resume must resume")
 	}
-	if !strings.Contains(New().ResumeCommand("headless"), "codex exec") {
+	headless := New().ResumeCommand("headless")
+	if !strings.Contains(headless, "codex exec") {
 		t.Error("headless resume must use codex exec")
+	}
+	if !strings.Contains(headless, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Errorf("headless resume must run autonomously (bypass sandbox/approvals): %q", headless)
+	}
+	// Interactive hands the TTY back — the user approves, so it must NOT force-bypass.
+	if strings.Contains(New().ResumeCommand("interactive"), "--dangerously-bypass") {
+		t.Error("interactive resume must not force-bypass approvals")
 	}
 }
 
