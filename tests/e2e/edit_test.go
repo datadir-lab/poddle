@@ -312,6 +312,122 @@ func TestE2E_Edit_Codex(t *testing.T) {
 	assertSecretless(t, auths, sentinel, &mu)
 }
 
+// piChunk formats one OpenAI chat.completion.chunk SSE data line.
+func piChunk(delta map[string]any, finish any) string {
+	obj := map[string]any{
+		"id": "c", "object": "chat.completion.chunk", "created": 1, "model": "poddle-model",
+		"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
+	}
+	b, _ := json.Marshal(obj)
+	return "data: " + string(b) + "\n\n"
+}
+
+// piEditSSE builds pi's two-turn chat-completions conversation (captured from the
+// pi edit spike): turn 1 streams a `bash` tool_call whose arguments create the file;
+// turn 2 is a plain text completion. pi requests stream:true, so both are SSE.
+func piEditSSE() (turn1, turn2 string) {
+	argsJSON := `{"command":"printf 'PODDLE_EDIT_OK' > ` + editFile + `"}`
+	turn1 = piChunk(map[string]any{"role": "assistant", "content": nil, "tool_calls": []any{
+		map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "bash", "arguments": ""}},
+	}}, nil) +
+		piChunk(map[string]any{"tool_calls": []any{
+			map[string]any{"index": 0, "function": map[string]any{"arguments": argsJSON}},
+		}}, nil) +
+		piChunk(map[string]any{}, "tool_calls") +
+		"data: [DONE]\n\n"
+	turn2 = piChunk(map[string]any{"role": "assistant", "content": ""}, nil) +
+		piChunk(map[string]any{"content": editMarker + " done"}, nil) +
+		piChunk(map[string]any{}, "stop") +
+		"data: [DONE]\n\n"
+	return turn1, turn2
+}
+
+// startPiEditMock serves pi's chat-completions SSE: the bash tool_call on the first
+// POST, the completion on later POSTs (a pure request counter suffices — the mock
+// never parses pi's tool-result). Records auth headers; binds 0.0.0.0.
+func startPiEditMock(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	turn1, turn2 := piEditSSE()
+	var calls int
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		calls++
+		body := turn2
+		if calls == 1 {
+			body = turn1
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestE2E_Edit_Pi proves the pi coding agent does REAL work through the broker: a
+// scripted chat-completions SSE mock drives pi to run its `bash` tool to create a
+// file, secretlessly (the pod holds only a handle; the upstream sees only the
+// sentinel). pi reuses the `openai` provider and is configured via a models.json
+// the harness writes.
+func TestE2E_Edit_Pi(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-EDIT-PI"
+	var mu sync.Mutex
+	var auths []string
+	mock := startPiEditMock(t, &auths, &mu)
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeOpenAIIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_OPENAI_BASE_URL="+mockURL)
+
+	pod := "poddle-edit-pi"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// Bring the pod up (installs pi + writes its models.json via Provisions).
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "pi",
+		"--image", "docker.io/library/node:22")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Run pi headless in the workspace to create the file (through the broker).
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && pi --provider poddle --model poddle-model -p "+
+			"'create "+editFile+" containing "+editMarker+" using a shell command'")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("pi run failed: %v\n%s", err, out)
+	}
+
+	assertFileInPod(t, pod)
+	assertSecretless(t, auths, sentinel, &mu)
+}
+
 // writeAnthropicIdentity writes a sentinel anthropic identity (claude-code's
 // provider) so the broker holds `sentinel` and the pod only gets a handle.
 func writeAnthropicIdentity(t *testing.T, cfg, sentinel string) {

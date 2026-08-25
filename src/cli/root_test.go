@@ -51,3 +51,10 @@ func TestBuildRegistries_IncludeAider(t *testing.T) {
 		t.Error("aider harness not registered")
 	}
 }
+
+func TestBuildRegistries_IncludePi(t *testing.T) {
+	_, harnesses := buildRegistries()
+	if _, ok := harnesses.Get("pi"); !ok {
+		t.Error("pi harness not registered")
+	}
+}
