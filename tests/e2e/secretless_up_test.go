@@ -27,6 +27,7 @@ type upCase struct {
 	upstreamEnv string                                                               // env var overriding the provider's upstream to the mock
 	podTokenEnv string                                                               // pod env var that must hold the handle, never the secret
 	inPod       string                                                               // command run in the pod via --exec (must print "works")
+	want        string                                                               // success substring in `poddle up --exec` output
 	mock        func(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server // provider-shaped mock upstream
 }
 
@@ -49,9 +50,22 @@ var upCases = []upCase{
 			return mockAnthropicUpOn(t, "0.0.0.0:0", auths, mu)
 		},
 	},
-	// Add more providers here, e.g.:
-	//   {name: "openai", provider: "openai", harness: "codex", image: ..., tokenFile: "openai-token",
-	//    upstreamEnv: "PODDLE_OPENAI_BASE_URL", podTokenEnv: "OPENAI_...", inPod: "...", mock: mockOpenAIUp},
+	{
+		name:        "openai",
+		provider:    "openai",
+		harness:     "codex",
+		image:       "docker.io/library/node:22",
+		tokenFile:   "openai-token",
+		upstreamEnv: "PODDLE_OPENAI_BASE_URL",
+		podTokenEnv: "OPENAI_API_KEY",
+		// The codex harness's Provisions write $CODEX_HOME/config.toml pointing Codex at
+		// the broker, so `codex exec` here routes pod->broker->mock. --skip-git-repo-check
+		// because the pod workdir may not be a git repo. The prompt is irrelevant — the
+		// mock always replies with codexMarker.
+		inPod: `codex exec --skip-git-repo-check 'reply'`,
+		want:  codexMarker,
+		mock:  mockOpenAIUp,
+	},
 }
 
 // selectUpCases returns the cases named in want (comma-separated), or all when
@@ -131,6 +145,46 @@ func mockAnthropicUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Se
 	return srv
 }
 
+// codexMarker is the assistant text the mock emits — distinctive so a success
+// assertion can't be satisfied by Codex echoing the prompt (Task 1 flagged that
+// the prompt echo would false-positive a naive "works" check).
+const codexMarker = "PODDLECODEXOK"
+
+// mockOpenAIUp records the Authorization header of every request and returns the
+// minimal Responses-API SSE stream `codex exec` needs (two events: output_item.done
+// then response.completed), shape captured in the Task 1 spike. Binds 0.0.0.0.
+func mockOpenAIUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		if !strings.Contains(r.URL.Path, "responses") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("{}"))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		item := `{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"` + codexMarker + `","annotations":[]}]}`
+		fmt.Fprintf(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":%s}\n\n", item)
+		fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"output\":[%s],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n", item)
+		if fl != nil {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // TestE2E_Up_Secretless drives the REAL `poddle up --identity --exec` against
 // podman for each selected provider: pod create + Setup (harness install) +
 // broker + the harness runs through the broker to a mock upstream. Proves the
@@ -199,8 +253,12 @@ func runUpCase(t *testing.T, bin string, tc upCase) {
 	if err != nil {
 		t.Fatalf("poddle up --exec failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), `"result":"works"`) {
-		t.Fatalf("%s did not return works through the broker:\n%s", tc.harness, out)
+	want := tc.want
+	if want == "" {
+		want = `"result":"works"` // back-compat default for anthropic
+	}
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("%s did not return the success marker %q through the broker:\n%s", tc.harness, want, out)
 	}
 
 	// The upstream saw the real secret and NEVER the handle.
