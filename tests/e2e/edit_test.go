@@ -670,7 +670,7 @@ func TestE2E_Edit_Opencode(t *testing.T) {
 		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
 	})
 
-	// Bring the pod up (installs opencode + writes its opencode.json via Provisions).
+	// Bring the pod up (installs opencode; the provider rides the OPENCODE_CONFIG layer, not the user's opencode.json).
 	up := exec.Command(bin, "up", pod, "--detach",
 		"--identity", "work", "--harness", "opencode",
 		"--image", "docker.io/library/node:22")
