@@ -860,9 +860,9 @@ func TestUp_MCPConnector_WiresHandleEnvAndSetupAfterProvisions(t *testing.T) {
 		MCPWire: []string{"MCP-WIRED"},
 	}}
 	f := &fakeCreator{}
-	cap := &captureBroker{}
+	capB := &captureBroker{}
 	c := NewCmd(&app.App{Engine: f, Identities: store, Providers: reg, Harnesses: hreg,
-		Connections: cstore, Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, cap)
+		Connections: cstore, Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, capB)
 	c.SetArgs([]string{"box", "--identity", "work", "--harness", "fake", "--exec", "true"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -883,17 +883,17 @@ func TestUp_MCPConnector_WiresHandleEnvAndSetupAfterProvisions(t *testing.T) {
 	if iInstall < 0 || iWire < 0 || iWire < iInstall {
 		t.Errorf("MCP wiring must run AFTER Provisions; setup = %v", f.spec.Setup)
 	}
-	if cap.policy == nil {
+	if capB.policy == nil {
 		t.Fatal("a derived default-deny policy should be bound")
 	}
 	found := false
-	for _, up := range cap.policy.AllowUpstreams {
+	for _, up := range capB.policy.AllowUpstreams {
 		if up == "mcp.linear.app" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("MCP host not in the egress allow-list; AllowUpstreams = %v", cap.policy.AllowUpstreams)
+		t.Errorf("MCP host not in the egress allow-list; AllowUpstreams = %v", capB.policy.AllowUpstreams)
 	}
 }
 
