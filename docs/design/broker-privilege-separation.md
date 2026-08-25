@@ -1,8 +1,10 @@
 # Broker privilege separation (Tier 2, roadmap)
 
 **Status:** roadmap / not yet implemented. Tier 0 and Tier 1 (below) have
-shipped. This document scopes Tier 2 so the design is settled before the work
-starts.
+shipped. The **SCRAM handshake-delegation spike is done and passed** (the
+`scramAuthenticator` seam is in `src/internal/l4/scram.go` today), so Tier 2 is
+**unblocked** — what remains is the process split, not feasibility. This document
+scopes it so the design is settled before the work starts.
 
 Extends [`security-design.md`](../security-design.md) and
 [`egress-lockdown-and-broker-placement.md`](./egress-lockdown-and-broker-placement.md).
@@ -126,6 +128,64 @@ a compromised worker could disable its own redaction.
   **data** plane's secret custody equally unreachable from the parsing code,
   even after an in-container compromise.
 
+## Spike: SCRAM handshake delegation (resolved — the gate is passed)
+
+The hardest delegation — the multi-step SCRAM-SHA-256 challenge used by Postgres
+— was spiked first, because if the streaming, password-bearing handshake could
+*not* be split cleanly, the whole Tier 2 shape would be in doubt. It splits
+cleanly.
+
+**Finding.** In `src/internal/l4/scram.go` the password is consumed at exactly
+one point: deriving `saltedPassword → clientKey → storedKey`. Everything before
+it is parsing untrusted server bytes (salt, iteration count, combined nonce);
+everything after it (`authMessage`, `clientSig`, the `proof` XOR) uses only
+derived key material. So the entire password dependency collapses to one narrow,
+typed call:
+
+```go
+// scramAuthenticator: the ONLY step that needs the password.
+Proof(salt []byte, iter int, authMessage string) (proof []byte, err error)
+```
+
+The SCRAM **state machine** (the byte-parsing worker) parses `salt`/`iter`/nonce,
+validates the nonce, and assembles the public `authMessage`; it then delegates
+`Proof(...)`. The **authenticator** (the vault) holds the password, derives
+`clientKey`/`storedKey` internally, and returns only the 32-byte proof. The
+worker never holds the password *or* any reusable password-derived key — the
+proof it receives is bound to this one `authMessage`, useless for replay (nonces
+are per-exchange).
+
+**Proven in code, today.** The seam is already in place as a behavior-preserving
+refactor (`newSCRAMWithAuth`, `localSCRAMAuthenticator`):
+
+- **Byte-identical.** The RFC 7677 known-answer proof (`TestSCRAM_RFC7677`) and
+  the wire-level `TestPgSCRAM_HappyPath` are unchanged — delegation produces the
+  same final message the in-process code did.
+- **Confinement, asserted.** `TestSCRAM_PrivsepBoundary_ProofDelegatedWithoutPassword`
+  routes the exchange through a spy that records everything crossing the boundary
+  (salt, iter, authMessage — exactly what would travel to the vault) and asserts
+  the password appears in none of it, while the golden proof still results.
+- **Self-protecting vault.** `Proof` re-checks the PBKDF2 iteration bound, so a
+  compromised worker can't force an unbounded loop even though the worker also
+  bounds it — defense in depth on the password-holding side.
+
+**Vault input surface stays tiny.** The vault receives a small salt, a bounded
+int, and an opaque `authMessage` it only HMACs — it never parses protocol bytes.
+That is the property that makes the vault side cheap to fuzz to exhaustion.
+
+**md5 delegates the same way** — `md5Auth(user, pass, salt)` is a pure
+`(user, salt) → response` function; it becomes a one-shot vault call, no state
+machine. **Cleartext is the exception:** the protocol sends the password verbatim
+to the upstream, so whoever writes the upstream socket (the worker) unavoidably
+holds it for that write. The mitigation is a policy that can forbid cleartext
+upstream auth (downgrade protection) and prefer SCRAM/md5 — a governance rule,
+not a privsep mechanism.
+
+**Conclusion:** the gate is passed. The password-bearing step delegates over the
+socketpair as one `Proof` RPC per exchange with no protocol parsing on the vault
+side, so the rest of the split (moving custody behind the boundary for HTTP
+injection and the other L4 handshakes) follows the same request/response shape.
+
 ## Cost, risks, and open questions
 
 This is a real re-architecture, not a flag. Scoped honestly:
@@ -133,16 +193,19 @@ This is a real re-architecture, not a flag. Scoped honestly:
 - **Latency.** Every brokered request gains one local socketpair round-trip to
   the vault. Expected sub-millisecond in-container, but it must be measured
   against the existing per-request budget, especially for the L4 splice path.
-- **Handshake delegation complexity.** HTTP header injection is a clean fit for
-  request/response delegation. The streaming L4 handshakes (SCRAM's multi-step
-  challenge) need careful framing so the worker relays without ever needing the
-  password — this is the hardest part and should be spiked first.
+- **Handshake delegation complexity.** ~~The hardest part.~~ **Resolved by the
+  SCRAM spike above.** HTTP header injection and md5 are one-shot `(inputs) →
+  result` calls; SCRAM's multi-step challenge splits into a single `Proof(salt,
+  iter, authMessage)` delegation with no protocol parsing on the vault side. The
+  seam exists in code today (behavior-preserving). Cleartext is the one auth mode
+  that can't hide the password from the socket-writing worker — forbid it by
+  policy and prefer SCRAM/md5.
 - **TLS-interception CA.** Interception (`egress = ... intercept`) generates a CA
   and signs leaf certs — a private-key operation that belongs on the vault side.
-  This composes with the still-open CA-sharing gap noted in
-  [`architecture.md`](../architecture.md#known-gaps--status); Tier 2 should land
-  after, or together with, that fix so the CA private key lives only in the
-  vault.
+  The CA-sharing gap this was sequenced behind is now **fixed** (the broker
+  persists and signs from its bind-mounted `/state/egress-ca`, which `up` reads);
+  Tier 2 should keep that CA private key on the vault side of the split, exposing
+  only a `SignLeaf(host) → cert` call to the worker.
 - **Process model.** Two processes in one container (a small supervisor, or the
   vault as PID 1 forking the worker) vs. the current single binary. Must remain
   compatible with the Tier 1 read-only, cap-dropped container and the
@@ -150,9 +213,25 @@ This is a real re-architecture, not a flag. Scoped honestly:
 
 ## Recommendation
 
-Ship Tiers 0 and 1 now (done). Treat Tier 2 as a scoped follow-up gated on a
-**SCRAM handshake-delegation spike** — if the password-bearing step can be
-cleanly delegated over the socketpair without the worker ever holding the
-password, the rest of the privsep split follows the established
-request/response shape. Sequence it after the interception-CA fix so the CA
-private key lands directly on the vault side.
+Tiers 0 and 1 are shipped. The **SCRAM handshake-delegation spike is done and the
+gate is passed** (section above): the password-bearing step delegates cleanly as
+one `Proof` RPC per exchange, proven in code and byte-identical to the current
+path. The interception-CA prerequisite is also fixed. Tier 2 is therefore
+**unblocked**.
+
+The remaining work is the process split itself, not further feasibility. Next
+concrete steps, in order:
+
+1. **Define the vault protocol** — the small typed message set: `SCRAMProof`,
+   `MD5Response`, HTTP `InjectAuth(request) → authorized-request`, `SignLeaf(host)
+   → cert`, and the redact-verify call. Each is a pure `(inputs) → result` shape
+   the spike validated for SCRAM.
+2. **Stand up the two-process model** — vault as PID 1 forking the worker (or a
+   small supervisor), a socketpair between them, compatible with the Tier 1
+   read-only, cap-dropped container and static-binary packaging.
+3. **Move custody behind the boundary** — the vault holds credentials, the CA
+   private key, and the redactor; the worker keeps the parsers and holds no
+   secret. The `scramAuthenticator` seam already in the code becomes the
+   worker-side RPC client with no state-machine changes.
+4. **Measure the added latency** — one socketpair round-trip per auth/injection
+   against the per-request budget, especially on the L4 splice path.

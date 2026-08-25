@@ -9,22 +9,74 @@ import (
 	"strings"
 )
 
+// scramAuthenticator performs the ONE step of a SCRAM exchange that needs the
+// real password: turning the server's PBKDF2 parameters (salt, iteration count)
+// and the public auth message into the client proof. The SCRAM state machine
+// below drives the exchange and parses the untrusted upstream bytes, but calls
+// this for the password-bearing arithmetic — so it never holds the password or
+// any reusable password-derived key (clientKey/storedKey stay inside Proof).
+//
+// This is the privilege-separation boundary for Tier 2 (see
+// docs/design/broker-privilege-separation.md). Today localSCRAMAuthenticator
+// closes over the password in-process; under privsep this same interface becomes
+// one RPC to the vault process over the socketpair, and nothing else in the state
+// machine changes. Inputs are a small salt, a bounded int, and an opaque message
+// the vault only HMACs (never parses); the output is a 32-byte proof.
+type scramAuthenticator interface {
+	Proof(salt []byte, iter int, authMessage string) ([]byte, error)
+}
+
+// localSCRAMAuthenticator holds the real password and computes the proof
+// in-process. It is the single-process stand-in for the vault-side authenticator.
+type localSCRAMAuthenticator struct{ password string }
+
+// Proof derives the SCRAM ClientProof. It is the only code that touches the
+// password. clientKey and storedKey are derived and consumed here and never
+// returned, so a caller (the byte-parsing worker, the likely compromise target)
+// receives only a proof bound to this one authMessage — useless for replay.
+func (l localSCRAMAuthenticator) Proof(salt []byte, iter int, authMessage string) ([]byte, error) {
+	// Defensive bound: never trust the caller's iteration count. The worker also
+	// bounds it before delegating (finalMessage), but a compromised worker could
+	// send an unbounded iter to spin PBKDF2 for minutes — a CPU DoS on the vault.
+	// Re-check here so the password-holding side is self-protecting.
+	if iter < 1 || iter > maxSCRAMIterations {
+		return nil, fmt.Errorf("scram: iteration count %d out of range", iter)
+	}
+	saltedPassword := pbkdf2SHA256([]byte(l.password), salt, iter)
+	clientKey := hmacSHA256(saltedPassword, []byte("Client Key"))
+	storedKey := sha256.Sum256(clientKey)
+	clientSig := hmacSHA256(storedKey[:], []byte(authMessage))
+	proof := make([]byte, len(clientKey))
+	for i := range clientKey {
+		proof[i] = clientKey[i] ^ clientSig[i]
+	}
+	return proof, nil
+}
+
 // scramClient drives a SCRAM-SHA-256 client exchange (RFC 5802 / 7677). It is
 // used by the L4 Postgres broker to authenticate to the real database with the
 // real password — the pod never performs SCRAM (it can't; it holds only a
-// handle).
+// handle). It routes the password-bearing step through a scramAuthenticator, so
+// the state machine itself never holds the password.
 type scramClient struct {
-	password    string
+	auth        scramAuthenticator
 	clientNonce string
 	firstBare   string // "n=,r=<clientNonce>"
 }
 
-// newSCRAM builds a client. Postgres always passes an empty username (the real
-// username travels in the startup packet, not in SCRAM); the RFC 7677 example
-// uses "user".
+// newSCRAM builds a client that authenticates in-process with password. Postgres
+// always passes an empty username (the real username travels in the startup
+// packet, not in SCRAM); the RFC 7677 example uses "user".
 func newSCRAM(username, password, clientNonce string) *scramClient {
+	return newSCRAMWithAuth(localSCRAMAuthenticator{password: password}, username, clientNonce)
+}
+
+// newSCRAMWithAuth builds a client whose proof step is delegated to auth. It is
+// the privsep-ready constructor: pass a vault-backed authenticator and the state
+// machine never sees the password.
+func newSCRAMWithAuth(auth scramAuthenticator, username, clientNonce string) *scramClient {
 	return &scramClient{
-		password:    password,
+		auth:        auth,
 		clientNonce: clientNonce,
 		firstBare:   "n=" + saslName(username) + ",r=" + clientNonce,
 	}
@@ -62,17 +114,14 @@ func (s *scramClient) finalMessage(serverFirst string) (string, error) {
 		return "", fmt.Errorf("scram: bad iteration count %q", attrs["i"])
 	}
 
-	saltedPassword := pbkdf2SHA256([]byte(s.password), salt, iter)
-	clientKey := hmacSHA256(saltedPassword, []byte("Client Key"))
-	storedKey := sha256.Sum256(clientKey)
-
 	finalNoProof := "c=biws,r=" + combinedNonce
 	authMessage := s.firstBare + "," + serverFirst + "," + finalNoProof
-	clientSig := hmacSHA256(storedKey[:], []byte(authMessage))
-
-	proof := make([]byte, len(clientKey))
-	for i := range clientKey {
-		proof[i] = clientKey[i] ^ clientSig[i]
+	// The password boundary: everything above is parsing of untrusted server bytes
+	// and assembling public material; the proof is the only password-dependent
+	// step, so delegate it. Under Tier 2 this call crosses to the vault process.
+	proof, err := s.auth.Proof(salt, iter, authMessage)
+	if err != nil {
+		return "", err
 	}
 	return finalNoProof + ",p=" + base64.StdEncoding.EncodeToString(proof), nil
 }

@@ -363,8 +363,10 @@ short; close items, don't let them rot.
   invariant) and Tier 1 (run the broker container `--cap-drop=all`,
   `no-new-privileges`, read-only rootfs) have shipped; Tier 2 — an OpenSSH-style
   split of custody from parsing — is scoped in
-  [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md)
-  and not yet implemented.
+  [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md).
+  Its gating **SCRAM handshake-delegation spike is done** (the delegation seam is
+  in `l4/scram.go`, behavior-identical), so Tier 2 is unblocked; the process split
+  itself is not yet implemented.
 - **Single-broker blast radius (by design).** One shared broker per host holds
   every pod's vault and audit chain, so a full vault compromise reaches all
   co-located pods. This is a deliberate MVP trade-off (one surface to harden, one
