@@ -15,11 +15,12 @@ const paths: [string, string, string][] = [
 
 // Environment variables read by the CLI and daemon. Grounded in the source:
 // root.go (PODDLE_HOST), up/command.go (PODDLE_BROKER_ADDR), anthropic.go
-// (PODDLE_ANTHROPIC_BASE_URL), autoscale_serve.go (PODDLE_AUTOSCALE_INTERVAL).
+// (PODDLE_ANTHROPIC_BASE_URL), openai.go (PODDLE_OPENAI_BASE_URL), autoscale_serve.go (PODDLE_AUTOSCALE_INTERVAL).
 const envs: { name: string; def: string; desc: string }[] = [
   { name: 'PODDLE_HOST', def: 'local podman', desc: 'Target a remote host as ssh://user@host - the same commands run against it. Empty means local Podman.' },
   { name: 'PODDLE_BROKER_ADDR', def: 'host.containers.internal', desc: 'The routable address a remote pod dials to reach the broker (e.g. this machine’s LAN IP). Local pods use the default.' },
   { name: 'PODDLE_ANTHROPIC_BASE_URL', def: 'https://api.anthropic.com', desc: 'Point the Anthropic provider at a compatible proxy or gateway instead of the public API.' },
+  { name: 'PODDLE_OPENAI_BASE_URL', def: 'https://api.openai.com/v1', desc: 'Point the OpenAI provider at a compatible proxy or gateway instead of the public API.' },
   { name: 'PODDLE_AUTOSCALE_INTERVAL', def: '15s', desc: 'How often the daemon’s autoscaler samples memory pressure (a Go duration like 5s or 1m).' },
 ];
 ---
