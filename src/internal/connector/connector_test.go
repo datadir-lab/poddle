@@ -231,6 +231,39 @@ func TestCredential_PostgresAssemblesDSN(t *testing.T) {
 	}
 }
 
+func TestBuiltin_MCP_IsBearerGatewayKind(t *testing.T) {
+	def, err := LoadDefinition(t.TempDir(), "mcp")
+	if err != nil {
+		t.Fatalf("mcp builtin should exist: %v", err)
+	}
+	if def.Mode != "bearer" {
+		t.Errorf("mcp Mode = %q, want bearer", def.Mode)
+	}
+	if def.Transport != "mcp" {
+		t.Errorf("mcp Transport = %q, want mcp (up routes on it)", def.Transport)
+	}
+	// Credential must be a bearer HTTP-gateway credential (NOT L4): token as-is,
+	// BaseURL = the connection's full endpoint (up strips it to origin later).
+	s := NewStore(t.TempDir())
+	conn, err := s.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "PAT-XYZ", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred, err := Credential(conn, def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cred.Mode != broker.ModeSubscription {
+		t.Errorf("cred.Mode = %v, want ModeSubscription (bearer)", cred.Mode)
+	}
+	if cred.Secret != "PAT-XYZ" {
+		t.Errorf("cred.Secret = %q, want the raw token", cred.Secret)
+	}
+	if cred.BaseURL != "https://mcp.linear.app/mcp" {
+		t.Errorf("cred.BaseURL = %q, want the full endpoint (up strips to origin)", cred.BaseURL)
+	}
+}
+
 func TestStore_CRUD(t *testing.T) {
 	s := NewStore(t.TempDir())
 	conn, err := s.Create("my-forgejo", "forgejo", "http://forge", "me", "TOK", "")
