@@ -63,9 +63,15 @@ var upCases = []upCase{
 		// (see codexProviderFlags in the codex harness) instead. --skip-git-repo-check
 		// because the pod workdir may not be a git repo. The prompt is irrelevant — the
 		// mock always replies with codexMarker.
-		inPod: `codex exec --skip-git-repo-check 'reply'`,
-		want:  codexMarker,
-		mock:  mockOpenAIUp,
+		inPod: `codex exec --skip-git-repo-check ` +
+			`-c 'model_provider="poddle"' ` +
+			`-c 'model_providers.poddle.name="poddle"' ` +
+			`-c model_providers.poddle.base_url="\"$PODDLE_CODEX_BASE_URL\"" ` +
+			`-c 'model_providers.poddle.env_key="OPENAI_API_KEY"' ` +
+			`-c 'model_providers.poddle.wire_api="responses"' ` +
+			`'reply'`,
+		want: codexMarker,
+		mock: mockOpenAIUp,
 	},
 	{
 		name:        "aider",
