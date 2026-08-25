@@ -613,7 +613,11 @@ func applyMCPConnector(b podBroker, h harness.Harness, conn connector.Connection
 	if err != nil {
 		return "", err
 	}
-	u, err := url.Parse(cred.BaseURL)
+	base := cred.BaseURL
+	if !strings.Contains(base, "://") {
+		base = "https://" + base
+	}
+	u, err := url.Parse(base)
 	if err != nil {
 		return "", fmt.Errorf("mcp connection %q url: %w", conn.Name, err)
 	}
