@@ -1,0 +1,188 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// editMarker is the content the agent is driven to write into the file — a
+// distinctive token so the assertion proves the agent actually applied the edit.
+const editMarker = "PODDLE_EDIT_OK"
+
+// editFile is the file the agent is driven to create in the pod workspace.
+const editFile = "poddle_edit.txt"
+
+// startEditMock starts a scripted OpenAI chat-completions mock on 0.0.0.0 (so the
+// broker container reaches it at host.containers.internal). It records every
+// request's Authorization header (for the secretless assertion) and serves
+// `editReply` on the FIRST POST and `followReply` on every subsequent POST — the
+// shape most CLI agents need: one edit turn, then follow-up/commit-message turns
+// that must not re-trigger an edit. Both are returned as plain-JSON chat.completion
+// objects (agents here run with streaming off).
+func startEditMock(t *testing.T, auths *[]string, mu *sync.Mutex, editReply, followReply string) *httptest.Server {
+	t.Helper()
+	var calls int
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		calls++
+		first := calls == 1
+		mu.Unlock()
+		content := followReply
+		if first {
+			content = editReply
+		}
+		writeChatCompletion(w, content)
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// writeChatCompletion writes a minimal OpenAI chat.completion JSON with the given
+// assistant content. json.Marshal handles escaping the SEARCH/REPLACE payload.
+func writeChatCompletion(w http.ResponseWriter, content string) {
+	resp := map[string]any{
+		"id": "chatcmpl-mock", "object": "chat.completion", "created": 1, "model": "gpt-4o",
+		"choices": []any{map[string]any{
+			"index": 0, "finish_reason": "stop",
+			"message": map[string]any{"role": "assistant", "content": content},
+		}},
+		"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// mockURLFor returns the host.containers.internal URL the broker container uses to
+// reach a mock bound on 0.0.0.0 (its 127.0.0.1 is its own loopback).
+func mockURLFor(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("mock addr: %v", err)
+	}
+	return "http://host.containers.internal:" + port
+}
+
+// writeOpenAIIdentity writes a sentinel openai identity under cfg (XDG_CONFIG_HOME)
+// so the broker holds `sentinel` and the pod only ever gets a handle.
+func writeOpenAIIdentity(t *testing.T, cfg, sentinel string) {
+	t.Helper()
+	idDir := filepath.Join(cfg, "poddle", "identities", "work")
+	if err := os.MkdirAll(idDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(idDir, "meta.toml"), "name = \"work\"\nprovider = \"openai\"\n")
+	writeFile(t, filepath.Join(idDir, "openai-token"), sentinel)
+}
+
+// assertFileInPod fails unless some file named editFile in the pod contains the
+// edit marker. `find` sidesteps the agent's working-directory ambiguity.
+func assertFileInPod(t *testing.T, pod string) {
+	t.Helper()
+	out, err := exec.Command("podman", "exec", pod, "sh", "-c",
+		`cat "$(find / -name `+editFile+` 2>/dev/null | head -1)" 2>/dev/null`).CombinedOutput()
+	if err != nil {
+		t.Fatalf("read %s from pod: %v\n%s", editFile, err, out)
+	}
+	if !strings.Contains(string(out), editMarker) {
+		t.Fatalf("%s in pod did not contain %q (agent did not apply the edit); got:\n%s", editFile, editMarker, out)
+	}
+}
+
+// assertSecretless fails if the upstream ever saw the handle, or never saw the
+// real (sentinel) secret — the broker must have swapped handle→secret on the wire.
+func assertSecretless(t *testing.T, auths []string, sentinel string, mu *sync.Mutex) {
+	t.Helper()
+	mu.Lock()
+	defer mu.Unlock()
+	sawSecret := false
+	for _, a := range auths {
+		if strings.Contains(a, "poddle_") {
+			t.Errorf("the handle leaked to the upstream: %q", a)
+		}
+		if a == "Bearer "+sentinel {
+			sawSecret = true
+		}
+	}
+	if !sawSecret {
+		t.Errorf("upstream never saw the sentinel secret; got %v", auths)
+	}
+}
+
+// aiderEditReply is the turn-1 assistant content that drives aider to CREATE
+// editFile with editMarker: filename alone on its own line, a bare ``` fence, and
+// an EMPTY SEARCH section (aider's new-file signal). Captured verbatim from the
+// aider edit spike (aider 0.86.2, gpt-4o → diff edit format).
+const aiderEditReply = "I'll create " + editFile + " with the requested content.\n\n" +
+	editFile + "\n```\n<<<<<<< SEARCH\n=======\n" + editMarker + "\n>>>>>>> REPLACE\n```\n"
+
+// TestE2E_Edit_Aider proves aider does REAL work through the broker: a fresh
+// secretless pod installs aider, which — driven by a scripted mock upstream —
+// applies a SEARCH/REPLACE edit that creates a file, all while the pod holds only
+// a handle and the upstream sees only the real (sentinel) key.
+func TestE2E_Edit_Aider(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-EDIT-AIDER"
+	var mu sync.Mutex
+	var auths []string
+	mock := startEditMock(t, &auths, &mu, aiderEditReply, "Done. Created "+editFile+".")
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeOpenAIIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_OPENAI_BASE_URL="+mockURL)
+
+	pod := "poddle-edit-aider"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// Bring the pod up (installs aider via the harness Provisions) and keep it.
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "aider",
+		"--image", "docker.io/library/python:3.12")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Run aider headless in the workspace to create the file (through the broker).
+	// `poddle run` wraps the command in `sh -c`.
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && aider --message 'create "+editFile+" containing "+editMarker+"' "+
+			"--yes-always --no-stream --no-pretty --no-check-update --no-analytics --model gpt-4o")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("aider run failed: %v\n%s", err, out)
+	}
+
+	assertFileInPod(t, pod)
+	assertSecretless(t, auths, sentinel, &mu)
+}

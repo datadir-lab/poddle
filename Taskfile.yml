@@ -140,6 +140,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_Intercept ./tests/e2e/...
 
+  e2e-edit:
+    desc: Agent edit e2e (needs podman) — each coding agent applies a real file edit through the broker, secretlessly
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_Edit ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
