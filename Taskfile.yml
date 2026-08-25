@@ -152,6 +152,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_HarnessConfig ./tests/e2e/...
 
+  e2e-mcp:
+    desc: Brokered MCP e2e (needs podman) — codex reaches a remote MCP server secretlessly through the broker
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_MCP ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
