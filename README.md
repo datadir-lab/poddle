@@ -156,11 +156,16 @@ New HTTP services are a few lines of declarative TOML, no code.
 
 Each pod-side agent reads its own native config. Drop yours at
 `~/.config/poddle/harness/<harness>/` — e.g. `codex/config.toml` with a
-`[mcp_servers]` block, or `opencode/opencode.json` with an `mcp` block — and
-poddle seeds it into the pod on `up` and persists it across `move`, without ever
-overwriting it. Poddle's broker wiring rides a separate side channel (codex via
-`-c` overrides, opencode via a dedicated config layer), so your full native
-config — settings, plugins, MCP servers — stays yours.
+`[mcp_servers]` block, `opencode/opencode.json` with an `mcp` block, or
+`pi/mcp.json` (plus `extensions/`) — and poddle seeds it into the pod on `up`
+and persists it across `move`, without ever overwriting it. Poddle's broker
+wiring rides a separate side channel (codex via `-c` overrides, opencode via a
+dedicated config layer), so your full native config — settings, plugins, MCP
+servers — stays yours. claude-code is a little different: poddle merges its
+onboarding flag into `~/.claude.json` instead of overwriting it, so your
+user-scope `mcpServers` survive a `poddle task`. aider needs no host seed at
+all — its config is a project file (`.aider.conf.yml`) checked into the repo,
+and `/workspace` already persists.
 
 A *local* stdio MCP server runs in the pod; one that fetches at launch needs its
 registry allowed (codex and opencode permit npm by default). A *remote* MCP
