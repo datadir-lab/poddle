@@ -303,6 +303,11 @@ func TestE2E_Edit_Codex(t *testing.T) {
 	// autonomously in the (isolated) pod.
 	runCmd := exec.Command(bin, "run", pod,
 		"cd /workspace && codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "+
+			`-c 'model_provider="poddle"' `+
+			`-c 'model_providers.poddle.name="poddle"' `+
+			`-c model_providers.poddle.base_url="\"$PODDLE_CODEX_BASE_URL\"" `+
+			`-c 'model_providers.poddle.env_key="OPENAI_API_KEY"' `+
+			`-c 'model_providers.poddle.wire_api="responses"' `+
 			"'create a file "+editFile+" containing "+editMarker+"'")
 	runCmd.Env = env
 	if out, err := runCmd.CombinedOutput(); err != nil {

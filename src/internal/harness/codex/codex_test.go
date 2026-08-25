@@ -31,7 +31,7 @@ func TestEnv_HandleAndConfigVars(t *testing.T) {
 		t.Errorf("OPENAI_API_KEY = %q, want the handle", env["OPENAI_API_KEY"])
 	}
 	// Codex ignores OPENAI_BASE_URL; the broker URL travels via PODDLE_CODEX_BASE_URL
-	// (which the Provisions config-writer reads), and must carry /v1.
+	// (which the -c provider flags read at run time), and must carry /v1.
 	if env["PODDLE_CODEX_BASE_URL"] != "http://10.0.0.5:9000/v1" {
 		t.Errorf("PODDLE_CODEX_BASE_URL = %q, want broker + /v1", env["PODDLE_CODEX_BASE_URL"])
 	}
@@ -40,19 +40,27 @@ func TestEnv_HandleAndConfigVars(t *testing.T) {
 	}
 }
 
-func TestProvisions_InstallsCodexAndWritesConfig(t *testing.T) {
+func TestProvisions_InstallsCodexNoConfigTomlWrite(t *testing.T) {
 	got := strings.Join(New().Provisions(), "\n")
 	if !strings.Contains(got, "@openai/codex") {
 		t.Errorf("provisions missing the codex npm install: %q", got)
 	}
-	// Writes a config.toml redirecting Codex to the broker via a custom provider.
+	// The provider now rides -c flags; codex must NOT write the user's config.toml.
+	if strings.Contains(got, "config.toml") {
+		t.Errorf("codex must no longer write config.toml (it is user-owned now):\n%s", got)
+	}
+}
+
+func TestTaskCommand_InjectsProviderViaC(t *testing.T) {
+	cmd := New().TaskCommand("do a thing", 5)
 	for _, want := range []string{
-		"$CODEX_HOME", "$PODDLE_CODEX_BASE_URL",
-		"model_provider", "model_providers.poddle", `wire_api = "responses"`,
-		`env_key = "OPENAI_API_KEY"`,
+		`-c 'model_provider="poddle"'`,
+		"model_providers.poddle.base_url=", "$PODDLE_CODEX_BASE_URL",
+		`model_providers.poddle.env_key="OPENAI_API_KEY"`,
+		`model_providers.poddle.wire_api="responses"`,
 	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("provisions missing %q in the config-writer:\n%s", want, got)
+		if !strings.Contains(cmd, want) {
+			t.Errorf("TaskCommand missing %q:\n%s", want, cmd)
 		}
 	}
 }

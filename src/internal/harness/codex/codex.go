@@ -1,9 +1,10 @@
 // Package codex implements the harness.Harness for OpenAI's Codex CLI in a pod.
 // Codex 0.149.1 ignores OPENAI_BASE_URL, so the harness redirects it to the broker
-// with a $CODEX_HOME/config.toml custom provider (written in Provisions) and
-// presents a handle via OPENAI_API_KEY (which Codex sends as Authorization:
-// Bearer) — so the real OpenAI secret never enters the pod. Verified against real
-// Codex 0.149.1 in the Task 1 spike.
+// via model_providers `-c` overrides passed on every `codex exec` invocation (see
+// codexProviderFlags) and presents a handle via OPENAI_API_KEY (which Codex sends
+// as Authorization: Bearer) — so the real OpenAI secret never enters the pod, and
+// codex never writes (or clobbers) the user's own $CODEX_HOME/config.toml.
+// Verified against real Codex 0.149.1 in the Task 1 spike.
 package codex
 
 import "strings"
@@ -14,24 +15,22 @@ func New() *Harness { return &Harness{} }
 
 func (h *Harness) Name() string { return "codex" }
 
-// Provisions installs the Codex CLI (npm — the same node image as claude-code)
-// and writes the config.toml that redirects Codex to the broker. The config-writer
-// reads CODEX_HOME + PODDLE_CODEX_BASE_URL, which Env() sets on the container, so
-// they are available to this Setup step (podman exec inherits the container env).
+// Provisions installs the Codex CLI (npm — the same node image as claude-code).
+// The broker provider is no longer written to config.toml here — it rides -c
+// overrides (codexProviderFlags) on every `codex exec` instead, so codex never
+// touches the user's own $CODEX_HOME/config.toml (e.g. their [mcp_servers]).
 func (h *Harness) Provisions() []string {
-	return []string{
-		"npm install -g @openai/codex",
-		`mkdir -p "$CODEX_HOME" && printf 'model_provider = "poddle"\n\n[model_providers.poddle]\nname = "poddle"\nbase_url = "%s"\nenv_key = "OPENAI_API_KEY"\nwire_api = "responses"\n' "$PODDLE_CODEX_BASE_URL" > "$CODEX_HOME/config.toml"`,
-	}
+	return []string{"npm install -g @openai/codex"}
 }
 
 func (h *Harness) Supports(vendor string) bool { return vendor == "openai" }
 
 // Env points Codex at the broker. OPENAI_API_KEY carries the handle (sent as
 // Bearer); PODDLE_CODEX_BASE_URL carries the broker's /v1 base (read by the
-// Provisions config-writer, since Codex ignores OPENAI_BASE_URL); CODEX_HOME fixes
-// the config + state location (matches StateDirs). BaseURL rides /v1 in the
-// request path — the credential's upstream has no path, so no /v1/v1.
+// codexProviderFlags -c overrides on `codex exec`, since Codex ignores
+// OPENAI_BASE_URL); CODEX_HOME fixes the config + state location (matches
+// StateDirs). BaseURL rides /v1 in the request path — the credential's upstream
+// has no path, so no /v1/v1.
 func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 	return map[string]string{
 		"OPENAI_API_KEY":        handle,
@@ -50,10 +49,20 @@ func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 // allows a non-git workdir.
 const execFlags = "--dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
 
+// codexProviderFlags inject the broker provider via -c overrides so codex never
+// writes (or clobbers) the user's ~/.codex/config.toml. String values are quoted
+// TOML; base_url expands $PODDLE_CODEX_BASE_URL (set by Env) at run time in the
+// pod shell. Verified against a real codex arg parse.
+const codexProviderFlags = `-c 'model_provider="poddle"' ` +
+	`-c 'model_providers.poddle.name="poddle"' ` +
+	`-c model_providers.poddle.base_url="\"$PODDLE_CODEX_BASE_URL\"" ` +
+	`-c 'model_providers.poddle.env_key="OPENAI_API_KEY"' ` +
+	`-c 'model_providers.poddle.wire_api="responses"'`
+
 // TaskCommand runs Codex headless (one-shot) to completion. Codex bounds its own
 // turns; maxTurns is advisory here (documented; a flag mapping can follow).
 func (h *Harness) TaskCommand(prompt string, _ int) string {
-	return "codex exec " + execFlags + " " + shellSingleQuote(prompt)
+	return "codex exec " + execFlags + " " + codexProviderFlags + " " + shellSingleQuote(prompt)
 }
 
 func shellSingleQuote(s string) string {
@@ -73,7 +82,7 @@ func (h *Harness) ResumeCommand(mode string) string {
 	if mode == "interactive" {
 		return "codex resume --last"
 	}
-	return "codex exec resume --last " + execFlags + " " + shellSingleQuote(resumeNudge)
+	return "codex exec resume --last " + execFlags + " " + codexProviderFlags + " " + shellSingleQuote(resumeNudge)
 }
 
 // EgressHosts is what Codex needs to install and run: the npm registry and
