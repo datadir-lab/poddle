@@ -44,3 +44,10 @@ func TestBuildRegistries_IncludeOpenAIAndCodex(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildRegistries_IncludeAider(t *testing.T) {
+	_, harnesses := buildRegistries()
+	if _, ok := harnesses.Get("aider"); !ok {
+		t.Error("aider harness not registered")
+	}
+}

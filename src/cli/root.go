@@ -24,6 +24,7 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/engine"
 	"github.com/datadir-lab/poddle/src/internal/exec"
 	"github.com/datadir-lab/poddle/src/internal/harness"
+	aiderharness "github.com/datadir-lab/poddle/src/internal/harness/aider"
 	"github.com/datadir-lab/poddle/src/internal/harness/claudecode"
 	codexharness "github.com/datadir-lab/poddle/src/internal/harness/codex"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
@@ -52,6 +53,7 @@ func buildRegistries() (idn.Registry, harness.Registry) {
 		}, harness.Registry{
 			"claude-code": claudecode.New(),
 			"codex":       codexharness.New(),
+			"aider":       aiderharness.New(),
 		}
 }
 
