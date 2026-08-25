@@ -66,6 +66,21 @@ var upCases = []upCase{
 		want:  codexMarker,
 		mock:  mockOpenAIUp,
 	},
+	{
+		name:        "aider",
+		provider:    "openai", // reuses the openai provider
+		harness:     "aider",
+		image:       "docker.io/library/python:3.12", // full image: python 3.12 + git (aider needs 3.10-3.12, not 3.13)
+		tokenFile:   "openai-token",
+		upstreamEnv: "PODDLE_OPENAI_BASE_URL",
+		podTokenEnv: "OPENAI_API_KEY",
+		// aider is installed by the harness Provisions (pip); Env sets OPENAI_API_BASE to
+		// the broker, so this one-shot routes pod->broker->mock. The prompt is irrelevant
+		// (mock always replies aiderMarker).
+		inPod: `aider --message 'reply' --yes-always --no-stream --no-pretty --no-check-update --no-analytics --model gpt-4o`,
+		want:  aiderMarker,
+		mock:  mockOpenAIChatUp,
+	},
 }
 
 // selectUpCases returns the cases named in want (comma-separated), or all when
@@ -173,6 +188,34 @@ func mockOpenAIUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Serve
 		if fl != nil {
 			fl.Flush()
 		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// aiderMarker is the assistant text the mock returns — distinctive so the success
+// check can't be satisfied by aider echoing the prompt.
+const aiderMarker = "PODDLEAIDEROK"
+
+// mockOpenAIChatUp records the Authorization header and returns a minimal plain-JSON
+// OpenAI chat.completions response (aider runs with --no-stream, so JSON not SSE).
+// Binds 0.0.0.0 so the broker container reaches it at host.containers.internal.
+func mockOpenAIChatUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-mock","object":"chat.completion","created":1,"model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"` + aiderMarker + `"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`))
 	}))
 	ln, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
