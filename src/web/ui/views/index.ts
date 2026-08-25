@@ -9,6 +9,7 @@ export * from "./DecisionBadge";
 export * from "./IntegrityBadge";
 export * from "./IntegrityPanel";
 export * from "./Icon";
+export * from "./ThemeToggle";
 export * from "./PoddleMark";
 export * from "./EgressChart";
 export * from "./PostureBar";

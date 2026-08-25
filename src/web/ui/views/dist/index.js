@@ -420,7 +420,26 @@ var A = {
 		x2: "16.65",
 		y2: "16.65"
 	})] }),
-	theme: () => /* @__PURE__ */ O("path", { d: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" })
+	theme: () => /* @__PURE__ */ O("path", { d: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" }),
+	users: () => /* @__PURE__ */ O(e, { children: [
+		/* @__PURE__ */ O("path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }),
+		/* @__PURE__ */ O("circle", {
+			cx: "9",
+			cy: "7",
+			r: "4"
+		}),
+		/* @__PURE__ */ O("path", { d: "M22 21v-2a4 4 0 0 0-3-3.87" }),
+		/* @__PURE__ */ O("path", { d: "M16 3.13a4 4 0 0 1 0 7.75" })
+	] }),
+	key: () => /* @__PURE__ */ O(e, { children: [
+		/* @__PURE__ */ O("circle", {
+			cx: "7.5",
+			cy: "15.5",
+			r: "5.5"
+		}),
+		/* @__PURE__ */ O("path", { d: "m21 2-9.6 9.6" }),
+		/* @__PURE__ */ O("path", { d: "m15.5 7.5 3 3L22 7l-3-3" })
+	] })
 };
 function j({ name: e, size: t = 16 }) {
 	let n = A[e];
@@ -567,6 +586,52 @@ function I({ verify: e, checkedAt: t, recheck: n, count: r }) {
 	});
 }
 //#endregion
+//#region views/ThemeToggle.tsx
+function ee() {
+	let [e, t] = a(() => typeof document < "u" && document.documentElement.getAttribute("data-theme") || "light"), n = (e) => {
+		document.documentElement.setAttribute("data-theme", e);
+		try {
+			localStorage.setItem("poddle-theme", e);
+		} catch {}
+		t(e);
+	}, r = e === "dark";
+	return /* @__PURE__ */ O("button", {
+		class: "theme-toggle",
+		type: "button",
+		"aria-pressed": r,
+		title: r ? "Light theme" : "Dark theme",
+		"aria-label": r ? "Switch to light theme" : "Switch to dark theme",
+		onClick: () => n(r ? "light" : "dark"),
+		children: r ? /* @__PURE__ */ O("svg", {
+			width: "16",
+			height: "16",
+			viewBox: "0 0 24 24",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "2",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: [/* @__PURE__ */ O("circle", {
+				cx: "12",
+				cy: "12",
+				r: "4"
+			}), /* @__PURE__ */ O("path", { d: "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" })]
+		}) : /* @__PURE__ */ O("svg", {
+			width: "16",
+			height: "16",
+			viewBox: "0 0 24 24",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "2",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: /* @__PURE__ */ O("path", { d: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" })
+		})
+	});
+}
+//#endregion
 //#region views/PoddleMark.tsx
 function L({ size: e = 30 }) {
 	return /* @__PURE__ */ O("svg", {
@@ -598,7 +663,7 @@ function L({ size: e = 30 }) {
 }
 //#endregion
 //#region views/EgressChart.tsx
-function R({ events: e }) {
+function te({ events: e }) {
 	let [t, n] = a(null), i = r(() => E(e, 14), [e]);
 	if (i.length === 0) return /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -721,7 +786,7 @@ function R({ events: e }) {
 }
 //#endregion
 //#region views/PostureBar.tsx
-function ee({ counts: e }) {
+function R({ counts: e }) {
 	let t = S.reduce((t, n) => t + (e[n.key] || 0), 0);
 	if (t === 0) return /* @__PURE__ */ O("div", {
 		class: "chart-empty",
@@ -811,7 +876,7 @@ function z({ pods: e }) {
 }
 //#endregion
 //#region views/MixBar.tsx
-function B({ d: e }) {
+function ne({ d: e }) {
 	let t = [
 		["allow", e.allow],
 		["redact", e.redact],
@@ -831,7 +896,7 @@ function B({ d: e }) {
 }
 //#endregion
 //#region views/Skeletons.tsx
-function te() {
+function B() {
 	return /* @__PURE__ */ O("div", {
 		class: "cards",
 		"aria-hidden": "true",
@@ -859,7 +924,7 @@ function V({ rows: e = 6 }) {
 }
 //#endregion
 //#region views/LiveDot.tsx
-function ne({ status: e }) {
+function H({ status: e }) {
 	let t = e === "live" ? "Live" : e === "down" ? "Reconnecting" : "Connecting";
 	return /* @__PURE__ */ O("span", {
 		class: "live live--" + e,
@@ -873,12 +938,12 @@ function ne({ status: e }) {
 }
 //#endregion
 //#region views/Fact.tsx
-function H({ label: e, children: t }) {
+function U({ label: e, children: t }) {
 	return /* @__PURE__ */ O("div", { children: [/* @__PURE__ */ O("dt", { children: e }), /* @__PURE__ */ O("dd", { children: t })] });
 }
 //#endregion
 //#region views/csv.ts
-function re(e, t) {
+function W(e, t) {
 	let n = t?.multiHost ? [
 		"seq",
 		"time",
@@ -906,13 +971,13 @@ function re(e, t) {
 	}, i = e.map((e) => n.map((t) => r(e[t])).join(","));
 	return [n.join(","), ...i].join("\n");
 }
-function ie(e, t, n) {
-	let r = new Blob([re(t, n)], { type: "text/csv;charset=utf-8" }), i = URL.createObjectURL(r), a = document.createElement("a");
+function G(e, t, n) {
+	let r = new Blob([W(t, n)], { type: "text/csv;charset=utf-8" }), i = URL.createObjectURL(r), a = document.createElement("a");
 	a.href = i, a.download = e, document.body.appendChild(a), a.click(), a.remove(), setTimeout(() => URL.revokeObjectURL(i), 0);
 }
 //#endregion
 //#region views/AuditLogTable.tsx
-var ae = [
+var re = [
 	{
 		value: "",
 		label: "All"
@@ -943,7 +1008,7 @@ var ae = [
 		tone: "monitor"
 	}
 ];
-function oe({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
+function ie({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) {
 	let [u, d] = a(t || i || ""), [f, p] = a(""), [m, h] = a("");
 	n(() => {
 		t ? d(t) : i && d(i);
@@ -965,7 +1030,7 @@ function oe({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 		};
 		for (let t of g) t.decision && t.decision in e && e[t.decision]++;
 		return e;
-	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = ae.map((e) => ({
+	}, [g]), x = r(() => f ? g.filter((e) => e.decision === f) : g, [g, f]), S = re.map((e) => ({
 		...e,
 		badge: y[e.value] ?? 0
 	})), C = e.some((e) => e.source), w = /* @__PURE__ */ O("div", {
@@ -995,7 +1060,7 @@ function oe({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 				class: "btn btn--ghost btn--sm",
 				disabled: !x.length,
 				onClick: () => {
-					ie("poddle-audit.csv", x, { multiHost: C }), l?.(x);
+					G("poddle-audit.csv", x, { multiHost: C }), l?.(x);
 				},
 				children: "Export CSV"
 			}),
@@ -1084,7 +1149,7 @@ function oe({ events: e, initialPod: t, initialQ: i, loading: o, onExport: l }) 
 }
 //#endregion
 //#region views/PodFleetTable.tsx
-function se({ pods: e, hist: t, onPod: n, emptyState: r }) {
+function ae({ pods: e, hist: t, onPod: n, emptyState: r }) {
 	return /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", { children: [/* @__PURE__ */ O("thead", { children: /* @__PURE__ */ O("tr", { children: [
@@ -1183,7 +1248,7 @@ function se({ pods: e, hist: t, onPod: n, emptyState: r }) {
 }
 //#endregion
 //#region views/activity.ts
-var U = [
+var K = [
 	{
 		key: "model",
 		label: "Model API",
@@ -1238,15 +1303,15 @@ var U = [
 		]
 	}
 ];
-function W(e) {
-	for (let t of U) if (l(e, t.patterns)) return t.key;
+function oe(e) {
+	for (let t of K) if (l(e, t.patterns)) return t.key;
 	return "other";
 }
-function G(e) {
-	let t = (e) => e === "other" ? "Other" : U.find((t) => t.key === e)?.label ?? "Other", n = /* @__PURE__ */ new Map();
+function se(e) {
+	let t = (e) => e === "other" ? "Other" : K.find((t) => t.key === e)?.label ?? "Other", n = /* @__PURE__ */ new Map();
 	for (let r of e) {
 		if (r.kind !== "request" || !r.upstream) continue;
-		let e = W(r.upstream), i = n.get(e) ?? {
+		let e = oe(r.upstream), i = n.get(e) ?? {
 			key: e,
 			label: t(e),
 			total: 0,
@@ -1273,7 +1338,7 @@ function G(e) {
 		block: e.block
 	})).sort((e, t) => e.key === "other" ? 1 : t.key === "other" ? -1 : t.total - e.total);
 }
-function K(e, t) {
+function q(e, t) {
 	let n = /* @__PURE__ */ new Set(), r = /* @__PURE__ */ new Map();
 	for (let t of e) if (!(t.kind !== "request" || !t.upstream) && (t.decision === "allow" || t.decision === "redact") && (n.add(t.upstream), t.method && t.method.toUpperCase() !== "CONNECT")) {
 		let e = r.get(t.upstream) ?? /* @__PURE__ */ new Set();
@@ -1291,8 +1356,8 @@ function K(e, t) {
 }
 //#endregion
 //#region views/ActivityProfile.tsx
-function q({ podName: e, events: t, onSuggestPolicy: n }) {
-	let i = r(() => G(t), [t]), a = r(() => i.filter((e) => e.deny + e.block > 0), [i]), o = r(() => i.some((e) => e.allow + e.redact > 0), [i]);
+function ce({ podName: e, events: t, onSuggestPolicy: n }) {
+	let i = r(() => se(t), [t]), a = r(() => i.filter((e) => e.deny + e.block > 0), [i]), o = r(() => i.some((e) => e.allow + e.redact > 0), [i]);
 	return i.length === 0 ? /* @__PURE__ */ O("section", {
 		class: "activity",
 		children: [/* @__PURE__ */ O("h2", {
@@ -1315,7 +1380,7 @@ function q({ podName: e, events: t, onSuggestPolicy: n }) {
 					class: "btn",
 					disabled: !o,
 					title: o ? void 0 : "No allowed egress yet — nothing to base a least-privilege policy on",
-					onClick: () => n(K(t, e + "-policy")),
+					onClick: () => n(q(t, e + "-policy")),
 					children: "Create policy from this pod"
 				})]
 			}),
@@ -1361,7 +1426,7 @@ function q({ podName: e, events: t, onSuggestPolicy: n }) {
 }
 //#endregion
 //#region views/PodDetailPanel.tsx
-function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBack: s, policyHref: c, onPolicyClick: l, controls: u, onSuggestPolicy: d }) {
+function le({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBack: s, policyHref: c, onPolicyClick: l, controls: u, onSuggestPolicy: d }) {
 	return /* @__PURE__ */ O("div", { children: [
 		/* @__PURE__ */ O("div", {
 			class: "detail-head",
@@ -1392,21 +1457,21 @@ function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 		n && /* @__PURE__ */ O("dl", {
 			class: "facts",
 			children: [
-				/* @__PURE__ */ O(H, {
+				/* @__PURE__ */ O(U, {
 					label: "size",
 					children: /* @__PURE__ */ O("span", {
 						class: "c-mono",
 						children: _(n.size)
 					})
 				}),
-				/* @__PURE__ */ O(H, {
+				/* @__PURE__ */ O(U, {
 					label: "mode",
 					children: /* @__PURE__ */ O("span", {
 						class: "c-mono",
 						children: n.mode ? _(n.mode) : "—"
 					})
 				}),
-				/* @__PURE__ */ O(H, {
+				/* @__PURE__ */ O(U, {
 					label: "policy",
 					children: n.policy ? /* @__PURE__ */ O("a", {
 						class: "fact-link c-mono",
@@ -1418,7 +1483,7 @@ function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 						children: "none"
 					})
 				}),
-				/* @__PURE__ */ O(H, {
+				/* @__PURE__ */ O(U, {
 					label: "cpu",
 					children: /* @__PURE__ */ O("span", {
 						class: "perf-inline",
@@ -1428,7 +1493,7 @@ function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 						})]
 					})
 				}),
-				/* @__PURE__ */ O(H, {
+				/* @__PURE__ */ O(U, {
 					label: "memory",
 					children: /* @__PURE__ */ O("span", {
 						class: "perf-inline",
@@ -1444,7 +1509,7 @@ function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 			class: "section-title",
 			children: "Controls"
 		}), u] }),
-		d && /* @__PURE__ */ O(q, {
+		d && /* @__PURE__ */ O(ce, {
 			podName: t,
 			events: i.filter((e) => e.pod === t),
 			onSuggestPolicy: d
@@ -1453,7 +1518,7 @@ function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 			class: "section-title",
 			children: "Audit trail"
 		}),
-		/* @__PURE__ */ O(oe, {
+		/* @__PURE__ */ O(ie, {
 			events: i,
 			initialPod: t,
 			loading: a
@@ -1462,7 +1527,7 @@ function ce({ name: t, pod: n, hist: r, events: i, loading: a, backHref: o, onBa
 }
 //#endregion
 //#region views/OverviewCards.tsx
-function le({ stats: e }) {
+function ue({ stats: e }) {
 	return /* @__PURE__ */ O("div", {
 		class: "cards",
 		children: [
@@ -1493,7 +1558,7 @@ function le({ stats: e }) {
 }
 //#endregion
 //#region views/AttentionPanel.tsx
-function ue({ attention: t, onPod: n }) {
+function J({ attention: t, onPod: n }) {
 	return /* @__PURE__ */ O(e, { children: [/* @__PURE__ */ O("h2", {
 		class: "section-title",
 		children: "Attention"
@@ -1528,7 +1593,7 @@ function ue({ attention: t, onPod: n }) {
 }
 //#endregion
 //#region views/RedactionsTable.tsx
-function J({ redactions: t, onPod: n }) {
+function de({ redactions: t, onPod: n }) {
 	return /* @__PURE__ */ O(e, { children: [/* @__PURE__ */ O("h2", {
 		class: "section-title",
 		children: "Secrets redacted"
@@ -1570,7 +1635,7 @@ function J({ redactions: t, onPod: n }) {
 }
 //#endregion
 //#region views/PolicyList.tsx
-function de({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
+function Y({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, newHref: a, linkTo: o, defaultName: s }) {
 	return /* @__PURE__ */ O("div", {
 		class: "list",
 		children: [n ? [
@@ -1614,7 +1679,7 @@ function de({ policies: e, selectedName: t, loading: n, usage: r, hrefFor: i, ne
 }
 //#endregion
 //#region views/DestinationsTable.tsx
-function Y({ dests: e, loading: t, onSelect: n }) {
+function fe({ dests: e, loading: t, onSelect: n }) {
 	return t ? /* @__PURE__ */ O(V, { rows: 6 }) : /* @__PURE__ */ O("div", {
 		class: "table-wrap",
 		children: /* @__PURE__ */ O("table", { children: [/* @__PURE__ */ O("thead", { children: /* @__PURE__ */ O("tr", { children: [
@@ -1663,7 +1728,7 @@ function Y({ dests: e, loading: t, onSelect: n }) {
 					class: "num c-mono",
 					children: e.total
 				}),
-				/* @__PURE__ */ O("td", { children: /* @__PURE__ */ O(B, { d: e }) }),
+				/* @__PURE__ */ O("td", { children: /* @__PURE__ */ O(ne, { d: e }) }),
 				/* @__PURE__ */ O("td", {
 					class: "num c-mono",
 					title: [...e.pods].join(", "),
@@ -1682,7 +1747,7 @@ function Y({ dests: e, loading: t, onSelect: n }) {
 }
 //#endregion
 //#region views/PolicyEditor.tsx
-var fe = [
+var pe = [
 	{
 		value: "redact",
 		label: "Redact",
@@ -1698,27 +1763,27 @@ var fe = [
 		label: "Off",
 		tone: "faint"
 	}
-], pe = [{
+], me = [{
 	value: "enforce",
 	label: "Enforce"
 }, {
 	value: "monitor",
 	label: "Monitor",
 	tone: "monitor"
-}], me = [{
+}], he = [{
 	value: "tunnel",
 	label: "Tunnel"
 }, {
 	value: "intercept",
 	label: "Intercept",
 	tone: "monitor"
-}], he = ["169.254.169.254", "metadata.google.internal"];
-function ge(e) {
+}], ge = ["169.254.169.254", "metadata.google.internal"];
+function _e(e) {
 	let t = [], n = e.allow_upstreams || [], r = e.deny_upstreams || [], i = e.methods || {}, a = n.length === 0;
 	if (a && e.egress !== "block" && t.push({
 		level: "warn",
 		msg: "No allowed destinations, so every host is reachable. Add destinations, or set egress to Block."
-	}), he.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
+	}), ge.some((e) => !l(e, r) && (a || l(e, n))) && t.push({
 		level: "warn",
 		msg: "Cloud metadata endpoints are reachable — a common credential-theft target.",
 		fix: "block-metadata"
@@ -1735,33 +1800,33 @@ function ge(e) {
 		msg: "Secret scanning is off — outbound secrets are sent as-is, not redacted."
 	}), t;
 }
-function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
-	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), [L, R] = a(t.intercept_hosts || []), [ee, z] = a(""), [B, te] = a(""), [V, ne] = a("GET");
+function X({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: u, templates: m, isSaved: h, isDefault: g, onSetDefault: _, onDuplicate: v }) {
+	let [y, b] = a(t.name), [x, S] = a(t.description || ""), [C, w] = a(() => p(t)), [T, E] = a(t.deny_upstreams || []), [D, k] = a(t.egress || "redact"), [A, M] = a(!!t.monitor), [F, I] = a(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), [ee, L] = a(t.intercept_hosts || []), [te, R] = a(""), [z, ne] = a(""), [B, V] = a("GET");
 	n(() => {
-		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), R(t.intercept_hosts || []), z("");
+		b(t.name), S(t.description || ""), w(p(t)), E(t.deny_upstreams || []), k(t.egress || "redact"), M(!!t.monitor), I(!!t.intercept || (t.intercept_hosts?.length ?? 0) > 0), L(t.intercept_hosts || []), R("");
 	}, [t]);
 	let H = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
 		...t
-	} : n)), re = (e, t) => w((n) => n.map((n, r) => r === e ? {
+	} : n)), U = (e, t) => w((n) => n.map((n, r) => r === e ? {
 		...n,
 		methods: n.methods.includes(t) ? n.methods.filter((e) => e !== t) : [...n.methods, t]
-	} : n)), ie = () => w((e) => [...e, {
+	} : n)), W = () => w((e) => [...e, {
 		host: "",
 		methods: [],
 		open: !1
-	}]), ae = (e) => w((t) => t.filter((t, n) => n !== e)), oe = (e, t) => E((n) => n.map((n, r) => r === e ? t : n)), se = () => E((e) => [...e, ""]), U = (e) => E((t) => t.filter((t, n) => n !== e)), W = (e, t) => R((n) => n.map((n, r) => r === e ? t : n)), G = () => R((e) => [...e, ""]), K = (e) => R((t) => t.filter((t, n) => n !== e)), q = h ?? !!t.name, ce = !q, le = !y && C.length === 0 && T.length === 0, ue = (e) => {
+	}]), G = (e) => w((t) => t.filter((t, n) => n !== e)), re = (e, t) => E((n) => n.map((n, r) => r === e ? t : n)), ie = () => E((e) => [...e, ""]), ae = (e) => E((t) => t.filter((t, n) => n !== e)), K = (e, t) => L((n) => n.map((n, r) => r === e ? t : n)), oe = () => L((e) => [...e, ""]), se = (e) => L((t) => t.filter((t, n) => n !== e)), q = h ?? !!t.name, ce = !q, le = !y && C.length === 0 && T.length === 0, ue = (e) => {
 		b(e.id), w(p({
 			name: e.id,
 			...e.policy
-		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept || (e.policy.intercept_hosts?.length ?? 0) > 0), R(e.policy.intercept_hosts || []), z("");
+		})), E(e.policy.deny_upstreams || []), k(e.policy.egress || "redact"), M(!!e.policy.monitor), I(!!e.policy.intercept || (e.policy.intercept_hosts?.length ?? 0) > 0), L(e.policy.intercept_hosts || []), R("");
 	}, J = () => {
 		let e = C.map((e) => e.host.trim()).filter((e) => e && e !== "*"), t = T.map((e) => e.trim()).filter(Boolean), n = {};
 		for (let e of C) {
 			let t = e.host.trim();
 			t && e.methods.length && (n[t] = e.methods);
 		}
-		let r = L.map((e) => e.trim()).filter(Boolean);
+		let r = ee.map((e) => e.trim()).filter(Boolean);
 		return {
 			name: y.trim(),
 			description: x.trim() || void 0,
@@ -1773,17 +1838,17 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 			intercept: F && r.length === 0 ? !0 : void 0,
 			intercept_hosts: F && r.length ? r : void 0
 		};
-	}, de = r(() => ge(J()), [
+	}, de = r(() => _e(J()), [
 		C,
 		T,
 		D
-	]), Y = r(() => B.trim() ? d(J(), B.trim(), V) : null, [
+	]), Y = r(() => z.trim() ? d(J(), z.trim(), B) : null, [
+		z,
 		B,
-		V,
 		C,
 		T,
 		D
-	]), _e = () => E((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...he])]), X = s.length > 0, Z = r(() => X ? i.filter((e) => e.pod && s.includes(e.pod)) : i, [
+	]), fe = () => E((e) => [.../* @__PURE__ */ new Set([...e.map((e) => e.trim()).filter(Boolean), ...ge])]), X = s.length > 0, Z = r(() => X ? i.filter((e) => e.pod && s.includes(e.pod)) : i, [
 		i,
 		s,
 		X
@@ -1838,7 +1903,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 					class: "narrow",
 					children: [/* @__PURE__ */ O("label", { children: "Egress mode" }), /* @__PURE__ */ O(N, {
 						value: D,
-						options: fe,
+						options: pe,
 						onChange: k,
 						ariaLabel: "egress mode"
 					})]
@@ -1863,7 +1928,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 			})] }),
 			/* @__PURE__ */ O(N, {
 				value: A ? "monitor" : "enforce",
-				options: pe,
+				options: me,
 				onChange: (e) => M(e === "monitor"),
 				ariaLabel: "enforcement mode"
 			}),
@@ -1873,7 +1938,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 			})] }),
 			/* @__PURE__ */ O(N, {
 				value: F ? "intercept" : "tunnel",
-				options: me,
+				options: he,
 				onChange: (e) => I(e === "intercept"),
 				ariaLabel: "https egress mode"
 			}),
@@ -1885,7 +1950,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 						style: "margin-top:.4rem",
 						children: "Intercept these hosts (blank = all HTTPS) · \".example.com\" matches any subdomain"
 					}),
-					L.map((e, t) => /* @__PURE__ */ O("div", {
+					ee.map((e, t) => /* @__PURE__ */ O("div", {
 						class: "rule",
 						children: /* @__PURE__ */ O("div", {
 							class: "rule__row",
@@ -1894,12 +1959,12 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 								value: e,
 								placeholder: "api.internal.com",
 								"aria-label": "Intercepted host",
-								onInput: (e) => W(t, e.target.value)
+								onInput: (e) => K(t, e.target.value)
 							}), /* @__PURE__ */ O("button", {
 								type: "button",
 								class: "rule__rm",
 								"aria-label": "Remove intercepted host",
-								onClick: () => K(t),
+								onClick: () => se(t),
 								children: "×"
 							})]
 						})
@@ -1907,7 +1972,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 					/* @__PURE__ */ O("button", {
 						type: "button",
 						class: "addrow",
-						onClick: G,
+						onClick: oe,
 						children: "＋ Add intercepted host"
 					})
 				]
@@ -1932,7 +1997,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 						e.fix === "block-metadata" && /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "advisory__fix",
-							onClick: _e,
+							onClick: fe,
 							children: "Block them"
 						})
 					]
@@ -1977,7 +2042,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 									type: "button",
 									class: "rule__rm",
 									"aria-label": "Remove destination",
-									onClick: () => ae(t),
+									onClick: () => G(t),
 									children: "×"
 								})
 							]
@@ -1992,7 +2057,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 									type: "button",
 									class: "mchip" + (e.methods.includes(n) ? " on" : ""),
 									"aria-pressed": e.methods.includes(n),
-									onClick: () => re(t, n),
+									onClick: () => U(t, n),
 									children: n
 								}, n)),
 								/* @__PURE__ */ O("button", {
@@ -2016,7 +2081,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 					/* @__PURE__ */ O("button", {
 						type: "button",
 						class: "addrow",
-						onClick: ie,
+						onClick: W,
 						children: "＋ Add destination"
 					})
 				]
@@ -2036,19 +2101,19 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 							value: e,
 							placeholder: "metadata.google.internal",
 							"aria-label": "Blocked host",
-							onInput: (e) => oe(t, e.target.value)
+							onInput: (e) => re(t, e.target.value)
 						}), /* @__PURE__ */ O("button", {
 							type: "button",
 							class: "rule__rm",
 							"aria-label": "Remove blocked host",
-							onClick: () => U(t),
+							onClick: () => ae(t),
 							children: "×"
 						})]
 					})
 				}, t)), /* @__PURE__ */ O("button", {
 					type: "button",
 					class: "addrow",
-					onClick: se,
+					onClick: ie,
 					children: "＋ Add blocked host"
 				})]
 			}),
@@ -2151,7 +2216,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 								...J(),
 								monitor: void 0
 							});
-							e.ok ? M(!1) : z(e.error || "Save failed");
+							e.ok ? M(!1) : R(e.error || "Save failed");
 						},
 						children: "Enforce now"
 					})
@@ -2168,17 +2233,17 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 						class: "probe__row",
 						children: [/* @__PURE__ */ O("input", {
 							class: "probe__host",
-							value: B,
+							value: z,
 							placeholder: "host, e.g. api.github.com",
 							"aria-label": "Test request host",
-							onInput: (e) => te(e.target.value)
+							onInput: (e) => ne(e.target.value)
 						}), /* @__PURE__ */ O(N, {
-							value: V,
+							value: B,
 							options: o.map((e) => ({
 								value: e,
 								label: e
 							})),
-							onChange: ne,
+							onChange: V,
 							ariaLabel: "test request method"
 						})]
 					}),
@@ -2192,9 +2257,9 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 					})
 				]
 			}),
-			ee && /* @__PURE__ */ O("div", {
+			te && /* @__PURE__ */ O("div", {
 				class: "err",
-				children: ee
+				children: te
 			}),
 			/* @__PURE__ */ O("div", {
 				class: "actions",
@@ -2203,11 +2268,11 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 						class: "btn btn--primary",
 						onClick: async () => {
 							if (!y.trim()) {
-								z("Name is required.");
+								R("Name is required.");
 								return;
 							}
 							let e = await c(J());
-							e.ok || z(e.error || "Save failed");
+							e.ok || R(e.error || "Save failed");
 						},
 						children: q && y.trim() && y.trim() !== t.name ? "Rename & save" : "Save"
 					}),
@@ -2252,7 +2317,7 @@ function _e({ policy: t, events: i, scopePods: s, onSave: c, onDelete: l, hint: 
 }
 //#endregion
 //#region views/PodControls.tsx
-function X({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
+function Z({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 	let [s, c] = a(null), [l, u] = a(!1), [d, f] = a(null), p = async (e) => {
 		u(!0);
 		let t = await r(e);
@@ -2349,7 +2414,7 @@ function X({ pod: t, policies: n, onBind: r, onRevoke: i, onRebound: o }) {
 }
 //#endregion
 //#region views/CommandPalette.tsx
-function Z({ open: e, onClose: t, commands: r }) {
+function Q({ open: e, onClose: t, commands: r }) {
 	let [o, s] = a(""), [c, l] = a(0), u = i(null);
 	n(() => {
 		if (!e) return;
@@ -2428,7 +2493,7 @@ function Z({ open: e, onClose: t, commands: r }) {
 }
 //#endregion
 //#region views/ToastHost.tsx
-function Q({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
+function $({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	return e.length === 0 ? null : /* @__PURE__ */ O("div", {
 		class: "toasts",
 		role: "region",
@@ -2479,4 +2544,4 @@ function Q({ toasts: e, onDismiss: t, href: n, linkTo: r }) {
 	});
 }
 //#endregion
-export { q as ActivityProfile, ue as AttentionPanel, oe as AuditLogTable, U as CATEGORIES, Z as CommandPalette, S as DECISIONS, P as DecisionBadge, Y as DestinationsTable, R as EgressChart, H as Fact, z as FleetLoad, o as HTTP_METHODS, A as ICONS, j as Icon, F as IntegrityBadge, I as IntegrityPanel, ne as LiveDot, B as MixBar, le as OverviewCards, X as PodControls, ce as PodDetailPanel, se as PodFleetTable, L as PoddleMark, _e as PolicyEditor, de as PolicyList, ee as PostureBar, c as RANGE_MS, J as RedactionsTable, N as SegmentedControl, te as SkelCards, V as SkelTable, k as Sparkline, M as StatCard, s as TIME_RANGES, Q as ToastHost, b as absTime, E as bucketEvents, _ as cap1, G as categorize, W as classify, d as decide, C as decisionCounts, w as destinations, ie as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, T as rowKey, m as secretsFrom, K as suggestPolicy, h as summarise, x as threshTone, re as toCsv, p as toRows };
+export { ce as ActivityProfile, J as AttentionPanel, ie as AuditLogTable, K as CATEGORIES, Q as CommandPalette, S as DECISIONS, P as DecisionBadge, fe as DestinationsTable, te as EgressChart, U as Fact, z as FleetLoad, o as HTTP_METHODS, A as ICONS, j as Icon, F as IntegrityBadge, I as IntegrityPanel, H as LiveDot, ne as MixBar, ue as OverviewCards, Z as PodControls, le as PodDetailPanel, ae as PodFleetTable, L as PoddleMark, X as PolicyEditor, Y as PolicyList, R as PostureBar, c as RANGE_MS, de as RedactionsTable, N as SegmentedControl, B as SkelCards, V as SkelTable, k as Sparkline, M as StatCard, s as TIME_RANGES, ee as ThemeToggle, $ as ToastHost, b as absTime, E as bucketEvents, _ as cap1, se as categorize, oe as classify, d as decide, C as decisionCounts, w as destinations, G as downloadCsv, f as dryRun, g as group, v as humanKind, l as matchHost, u as methodsFor, y as relTime, T as rowKey, m as secretsFrom, q as suggestPolicy, h as summarise, x as threshTone, W as toCsv, p as toRows };

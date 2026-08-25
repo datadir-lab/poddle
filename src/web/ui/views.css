@@ -539,3 +539,122 @@ tr.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -
 .activity__n { text-align: right; color: var(--faint); font-size: 0.85rem; }
 .activity__note { color: var(--faint); font-size: 0.82rem; margin-top: 0.5rem; }
 @media (max-width: 720px) { .activity__cat { grid-template-columns: 1fr auto; } .activity__hosts, .activity__methods { display: none; } }
+
+/* ============================================================
+   App shell — the fixed left rail beside a scrolling content column,
+   shared by every poddle surface (OSS dashboard + cloud console) so
+   the chrome, nav, topbar, and theme toggle stay identical. Each app
+   supplies its own tokens (:root) and dark-theme overrides and composes
+   the brand, nav items, footer, and topbar actions; this lays out the
+   frame through those vars. --maxw-app is set per app.
+   ============================================================ */
+.icon { flex: none; display: inline-block; vertical-align: middle; }
+
+.app { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns 0.2s ease; }
+
+.sidebar {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  padding: 1.1rem 0.85rem 0.9rem;
+  border-right: 1px solid var(--border); background: var(--surface);
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; padding: 0.3rem 0.6rem 0.95rem; }
+.brand__name { font-family: var(--font-serif); font-size: 1.45rem; line-height: 1; color: var(--ink); letter-spacing: -0.01em; transform: translateY(-2px); }
+.pmark { display: block; transition: transform 0.12s ease; }
+.brand:hover .pmark { transform: translateY(-1px); }
+
+.nav { display: flex; flex-direction: column; gap: 0.15rem; }
+.nav__i {
+  display: flex; align-items: center; gap: 0.7rem; position: relative;
+  font: 600 0.9rem/1 var(--font-sans); color: var(--muted); text-decoration: none;
+  padding: 0.6rem 0.7rem; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.nav__i:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.nav__i.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.nav__i.on::before {
+  content: ""; position: absolute; left: -0.85rem; top: 0.5rem; bottom: 0.5rem;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--accent);
+}
+.nav__i .icon { color: currentColor; }
+
+.sidebar__foot {
+  margin-top: auto; display: flex; flex-direction: row; align-items: center;
+  justify-content: space-between; gap: 0.6rem;
+  padding: 0.85rem 0.55rem 0.15rem; border-top: 1px solid var(--border);
+}
+
+.theme-toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--faint); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+
+.content { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.8rem 1.5rem 0.8rem 1.15rem;
+  border-bottom: 1px solid var(--border); background: var(--bone);
+  position: sticky; top: 0; z-index: 5;
+}
+.rail-toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.rail-toggle:hover { color: var(--ink); border-color: var(--faint); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.topbar__head { min-width: 0; }
+.topbar__title { font-family: var(--font-serif); font-size: 1.3rem; font-weight: 400; line-height: 1.15; letter-spacing: -0.01em; color: var(--ink); margin: 0; }
+.topbar__sub { margin: 0.08rem 0 0; font-size: 0.82rem; color: var(--faint); }
+.topbar__actions { margin-left: auto; display: flex; align-items: center; gap: 0.85rem; flex: none; }
+
+main { width: 100%; max-width: var(--maxw-app); margin-inline: auto; padding: 1.5rem 1.75rem 3rem; }
+
+/* collapsed rail (desktop only; below 881px the rail is a drawer) */
+@media (min-width: 881px) {
+  .app--collapsed { grid-template-columns: 68px minmax(0, 1fr); }
+  .app--collapsed .sidebar { padding-inline: 0.5rem; }
+  .app--collapsed .brand { justify-content: center; gap: 0; padding: 0.3rem 0 0.95rem; }
+  .app--collapsed .brand__name { display: none; }
+  .app--collapsed .nav__i { justify-content: center; gap: 0; padding: 0.6rem 0; }
+  .app--collapsed .nav__i span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .app--collapsed .nav__i.on::before { display: none; }
+  .app--collapsed .sidebar__foot { flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.85rem 0 0.15rem; }
+}
+
+/* ≤880px: the rail becomes an off-canvas LEFT drawer, opened from the topbar
+   hamburger. It keeps the full vertical sidebar — brand, labelled nav, footer:
+   a proper sidebar, not a strip — sliding in from the left over a scrim. The
+   app sets .app--nav-open while it is open. */
+@media (max-width: 880px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .rail-toggle { display: inline-flex; }
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; height: 100dvh;
+    width: min(84vw, 292px); z-index: 40;
+    transform: translateX(-100%); transition: transform 0.24s ease;
+    box-shadow: 0 0 44px rgba(0, 0, 0, 0.22);
+  }
+  .app--nav-open .sidebar { transform: translateX(0); }
+}
+
+/* scrim behind the open drawer — a full-bleed button that closes it on tap.
+   Off on desktop; transparent and inert until the drawer opens on mobile. */
+.scrim {
+  position: fixed; inset: 0; z-index: 35; border: 0; padding: 0; cursor: pointer;
+  background: color-mix(in srgb, #000 46%, transparent);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+}
+@media (max-width: 880px) { .app--nav-open .scrim { opacity: 1; pointer-events: auto; } }
+@media (min-width: 881px) { .scrim { display: none; } }
+
+@media (max-width: 720px) {
+  .topbar { padding-inline: 1rem; }
+  main { padding-inline: 1rem; }
+}
+@media (max-width: 560px) { .topbar__sub { display: none; } }
