@@ -58,3 +58,10 @@ func TestBuildRegistries_IncludePi(t *testing.T) {
 		t.Error("pi harness not registered")
 	}
 }
+
+func TestBuildRegistries_IncludeOpencode(t *testing.T) {
+	_, harnesses := buildRegistries()
+	if _, ok := harnesses.Get("opencode"); !ok {
+		t.Error("opencode harness not registered")
+	}
+}
