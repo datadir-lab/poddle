@@ -88,3 +88,25 @@ func TestEnv(t *testing.T) {
 		t.Errorf("env = %v, want %v", env, want)
 	}
 }
+
+func TestTaskCommand_MergesOnboardingNotClobber(t *testing.T) {
+	cmd := New().TaskCommand("do a thing", 5)
+	if strings.Contains(cmd, "> $HOME/.claude.json") {
+		t.Errorf("TaskCommand must NOT overwrite ~/.claude.json (clobbers user MCP):\n%s", cmd)
+	}
+	for _, want := range []string{"node -e", "hasCompletedOnboarding", "readFileSync", "writeFileSync"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("TaskCommand onboarding must be a node merge (missing %q):\n%s", want, cmd)
+		}
+	}
+}
+
+func TestResumeCommand_HeadlessMergesOnboarding(t *testing.T) {
+	cmd := New().ResumeCommand("headless")
+	if strings.Contains(cmd, "> $HOME/.claude.json") {
+		t.Errorf("headless resume must NOT overwrite ~/.claude.json:\n%s", cmd)
+	}
+	if !strings.Contains(cmd, "node -e") || !strings.Contains(cmd, "hasCompletedOnboarding") {
+		t.Errorf("headless resume onboarding must be a node merge:\n%s", cmd)
+	}
+}

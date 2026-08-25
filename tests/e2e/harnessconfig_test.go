@@ -92,3 +92,64 @@ func TestE2E_HarnessConfig_NotClobbered(t *testing.T) {
 		})
 	}
 }
+
+// TestE2E_HarnessConfig_ClaudeOnboardingMerge proves claude-code's onboarding write
+// MERGES into ~/.claude.json (preserving a user's mcpServers/settings) rather than
+// overwriting it. No LLM mock: it seeds a marker config, runs the exact merge the
+// harness runs, and asserts the marker survives.
+func TestE2E_HarnessConfig_ClaudeOnboardingMerge(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const marker = "PODDLE_CLAUDE_MARKER"
+	const sentinel = "SENTINEL-CLAUDE-CFG"
+	cfg := t.TempDir()
+	writeAnthropicIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
+
+	pod := "poddle-cfg-claude"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "claude-code", "--image", "docker.io/library/node:22")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// A user's ~/.claude.json with an MCP marker, as if they configured it.
+	seed := exec.Command(bin, "run", pod,
+		`printf '%s' '{"mcpServers":{"demo":{"command":"echo"}},"marker":"`+marker+`"}' > $HOME/.claude.json`)
+	seed.Env = env
+	if out, err := seed.CombinedOutput(); err != nil {
+		t.Fatalf("seed ~/.claude.json failed: %v\n%s", err, out)
+	}
+
+	// Run the exact onboarding merge the harness runs on a task/resume.
+	merge := exec.Command(bin, "run", pod,
+		`node -e 'const f=process.env.HOME+"/.claude.json",fs=require("fs");let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){};c.hasCompletedOnboarding=true;fs.writeFileSync(f,JSON.stringify(c))'`)
+	merge.Env = env
+	if out, err := merge.CombinedOutput(); err != nil {
+		t.Fatalf("onboarding merge failed: %v\n%s", err, out)
+	}
+
+	out, err := exec.Command("podman", "exec", pod, "cat", "/root/.claude.json").CombinedOutput()
+	if err != nil {
+		t.Fatalf("cat ~/.claude.json: %v\n%s", err, out)
+	}
+	got := string(out)
+	if !strings.Contains(got, marker) {
+		t.Fatalf("onboarding write clobbered the user's ~/.claude.json (marker %q gone):\n%s", marker, got)
+	}
+	if !strings.Contains(got, "hasCompletedOnboarding") {
+		t.Fatalf("onboarding flag not set:\n%s", got)
+	}
+}
