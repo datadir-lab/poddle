@@ -186,3 +186,127 @@ func TestE2E_Edit_Aider(t *testing.T) {
 	assertFileInPod(t, pod)
 	assertSecretless(t, auths, sentinel, &mu)
 }
+
+// sseEvent formats one Responses-API SSE event (used by the codex edit mock).
+func sseEvent(event string, data map[string]any) string {
+	b, _ := json.Marshal(data)
+	return "event: " + event + "\ndata: " + string(b) + "\n\n"
+}
+
+// codexEditSSE builds codex's two-turn Responses-API conversation (captured from
+// the codex edit spike): turn 1 is a `custom_tool_call` named `exec` whose freeform
+// JS input calls tools.exec_command with a POSIX shell command that creates the
+// file; turn 2 completes with a plain assistant message so codex stops. Returns the
+// turn-1 and turn-2 SSE payloads.
+func codexEditSSE() (turn1, turn2 string) {
+	// POSIX command (the pod is Linux); the spike's PowerShell Set-Content is
+	// host-specific. echo adds a trailing newline — the assertion uses Contains.
+	js := `const r = await tools.exec_command({cmd: "echo ` + editMarker + ` > ` + editFile + `"});` + "\n" + `text(JSON.stringify(r));`
+	tool := map[string]any{
+		"id": "ctc_1", "type": "custom_tool_call", "status": "completed",
+		"call_id": "call_poddle_edit_1", "name": "exec", "input": js,
+	}
+	turn1 = sseEvent("response.output_item.done", map[string]any{"type": "response.output_item.done", "output_index": 0, "item": tool}) +
+		sseEvent("response.completed", map[string]any{"type": "response.completed", "response": map[string]any{
+			"id": "resp_1", "object": "response", "status": "completed", "output": []any{tool},
+			"usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+		}})
+	msg := map[string]any{
+		"id": "msg_2", "type": "message", "role": "assistant", "status": "completed",
+		"content": []any{map[string]any{"type": "output_text", "text": "poddle-edit-done", "annotations": []any{}}},
+	}
+	turn2 = sseEvent("response.output_item.done", map[string]any{"type": "response.output_item.done", "output_index": 0, "item": msg}) +
+		sseEvent("response.completed", map[string]any{"type": "response.completed", "response": map[string]any{
+			"id": "resp_2", "object": "response", "status": "completed", "output": []any{msg},
+			"usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+		}})
+	return turn1, turn2
+}
+
+// startCodexEditMock serves codex's Responses-API SSE: the exec tool-call on the
+// first POST, the completion on later POSTs (a pure request counter suffices — the
+// mock never parses codex's tool-result). Records auth headers; binds 0.0.0.0.
+func startCodexEditMock(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	turn1, turn2 := codexEditSSE()
+	var calls int
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		calls++
+		body := turn2
+		if calls == 1 {
+			body = turn1
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestE2E_Edit_Codex proves codex does REAL work through the broker: a scripted
+// Responses-API mock drives codex to run a shell command (via its `exec` custom
+// tool) that creates a file — while the pod holds only a handle and the upstream
+// sees only the real (sentinel) key. Exercises the codex harness's autonomy flags
+// (--dangerously-bypass-approvals-and-sandbox) end to end.
+func TestE2E_Edit_Codex(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-EDIT-CODEX"
+	var mu sync.Mutex
+	var auths []string
+	mock := startCodexEditMock(t, &auths, &mu)
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeOpenAIIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_OPENAI_BASE_URL="+mockURL)
+
+	pod := "poddle-edit-codex"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// Bring the pod up (installs codex + writes its config.toml via Provisions).
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "codex",
+		"--image", "docker.io/library/node:22")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Run codex headless in the workspace to create the file (through the broker).
+	// The bypass/skip flags mirror the codex harness TaskCommand so it runs
+	// autonomously in the (isolated) pod.
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "+
+			"'create a file "+editFile+" containing "+editMarker+"'")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("codex run failed: %v\n%s", err, out)
+	}
+
+	assertFileInPod(t, pod)
+	assertSecretless(t, auths, sentinel, &mu)
+}
