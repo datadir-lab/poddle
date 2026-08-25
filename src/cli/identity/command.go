@@ -46,7 +46,7 @@ func addCmd(store *idn.Store, reg idn.Registry) *cobra.Command {
 			return p.Authenticate(id)
 		},
 	}
-	cmd.Flags().StringVar(&provider, "provider", "anthropic", "auth provider (anthropic)")
+	cmd.Flags().StringVar(&provider, "provider", "anthropic", "auth provider (anthropic|openai)")
 	return cmd
 }
 

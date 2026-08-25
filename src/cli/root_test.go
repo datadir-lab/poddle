@@ -30,3 +30,17 @@ func TestRootCmd_RegistersSubcommands(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildRegistries_IncludeOpenAIAndCodex(t *testing.T) {
+	reg, harnesses := buildRegistries()
+	for _, p := range []string{"anthropic", "openai"} {
+		if _, ok := reg.Get(p); !ok {
+			t.Errorf("provider %q not registered", p)
+		}
+	}
+	for _, h := range []string{"claude-code", "codex"} {
+		if _, ok := harnesses.Get(h); !ok {
+			t.Errorf("harness %q not registered", h)
+		}
+	}
+}

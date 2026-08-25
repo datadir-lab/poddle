@@ -93,6 +93,7 @@ poddle task "fix the failing parser test and open a PR"
 # 1. Add a login for your agent (token via stdin, never argv). Re-auth is
 #    prompted when stale; the real token stays on your machine.
 poddle identity add work --provider anthropic
+# or: poddle identity add work --provider openai  # with OPENAI_API_KEY
 
 # 2. Broker a service or two (git host, CI, registry, database).
 echo "$GITHUB_PAT" | poddle connect add gh  --connector github
@@ -147,7 +148,7 @@ control/data-plane split, governance, and TLS interception — with diagrams, se
 | **CI** | woodpecker, drone, argocd, jenkins |
 | **Registries** | npm, pypi, docker |
 | **Databases** | postgres, redis |
-| **LLM** | anthropic (claude-code) |
+| **LLM** | anthropic (claude-code), openai (codex) |
 
 New HTTP services are a few lines of declarative TOML, no code.
 
