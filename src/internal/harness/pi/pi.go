@@ -79,3 +79,6 @@ func (h *Harness) EgressHosts() []string {
 // poddle-owned (rewritten each up by Provisions to pin the broker provider); a user's
 // mcp.json / extensions/ live alongside it and are the seed/persist target.
 func (h *Harness) ConfigDir() string { return "/root/.pi" }
+
+// MCPWiring is nil: pi has no MCP auto-wiring implemented here yet.
+func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }

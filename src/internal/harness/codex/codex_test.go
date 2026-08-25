@@ -128,3 +128,15 @@ func TestConfigDir(t *testing.T) {
 		t.Errorf("ConfigDir = %q, want /root/.codex", got)
 	}
 }
+
+func TestMCPWiring_CodexMcpAdd(t *testing.T) {
+	got := New().MCPWiring("linear", "http://10.0.0.5:9000/mcp", "PODDLE_MCP_LINEAR")
+	if len(got) != 1 {
+		t.Fatalf("want one Setup command, got %v", got)
+	}
+	for _, want := range []string{"codex mcp add", "'linear'", "--url 'http://10.0.0.5:9000/mcp'", "--bearer-token-env-var 'PODDLE_MCP_LINEAR'"} {
+		if !strings.Contains(got[0], want) {
+			t.Errorf("MCPWiring missing %q: %q", want, got[0])
+		}
+	}
+}

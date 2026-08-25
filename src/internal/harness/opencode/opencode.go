@@ -101,3 +101,7 @@ func (h *Harness) EgressHosts() []string {
 // Seeded from the user's host config and persisted as a named volume so
 // customizations survive `move`.
 func (h *Harness) ConfigDir() string { return "/root/.config/opencode" }
+
+// MCPWiring is nil: opencode's own non-clobbering MCP-registration channel is
+// not yet wired here. Follow-up.
+func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }

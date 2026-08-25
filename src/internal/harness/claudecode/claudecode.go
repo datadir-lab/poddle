@@ -99,3 +99,7 @@ func (h *Harness) ResumeCommand(mode string) string {
 // home-level ~/.claude.json itself (so it never needs a merge in the first
 // place) is a rollout follow-up.
 func (h *Harness) ConfigDir() string { return "" }
+
+// MCPWiring is nil: claude-code's own non-clobbering MCP-registration channel
+// (`claude mcp add`) is not yet wired here. Follow-up.
+func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }
