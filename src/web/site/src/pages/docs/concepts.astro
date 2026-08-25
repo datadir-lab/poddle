@@ -16,7 +16,7 @@ import Callout from '../../components/Callout.astro';
       <dt>Provider</dt>
       <dd>The auth vendor behind an identity (e.g. Anthropic). A provider knows how to authenticate a login and materialize it into a pod's mounts and environment.</dd>
       <dt>Harness</dt>
-      <dd>The coding-agent runtime that runs inside the pod, chosen with <code>--harness</code> (supported: <code>claude-code</code>, <code>codex</code>; default <code>claude-code</code>).</dd>
+      <dd>The coding-agent runtime that runs inside the pod, chosen with <code>--harness</code> (supported: <code>claude-code</code>, <code>codex</code>, <code>aider</code>; default <code>claude-code</code>).</dd>
       <dt>Pod</dt>
       <dd>An isolated, disposable Podman-backed environment created by <code>poddle up</code> (or per <code>poddle task</code>) and removed by <code>poddle down</code>. Sized <code>weak</code> (2 vCPU / 4 GB) or <code>strong</code> (8 vCPU / 16 GB); resize it live with <code>poddle resize</code>, or re-home a session onto a fresh shell with <code>poddle move</code>.</dd>
       <dt>Broker</dt>
