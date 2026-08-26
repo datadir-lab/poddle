@@ -265,7 +265,7 @@ var mcpCases = []mcpCase{
 // (MCPWiring), and the broker swaps the pod's handle for the real (sentinel)
 // bearer token on the wire — the mock MCP server never sees the handle. Each
 // row's model turn is driven by its own scripted, provider-shaped mock
-// (mockOpenAIUp / mockAnthropicUpOn / mockOpenAIChatUp) under its own
+// (mockOpenAIUp / mockAnthropicUpOn / mockOpenAIStreamUp) under its own
 // sentinel, distinct from mcpSentinel, so the MCP assertion can't be
 // satisfied by the model token. The model turn itself may or may not
 // complete cleanly against so minimal a script — a non-zero `poddle up` exit
