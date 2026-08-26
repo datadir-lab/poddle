@@ -44,6 +44,11 @@ type Credential struct {
 	TokenEndpoint string
 	ClientID      string
 	ClientSecret  string
+
+	// WriteBackKey names the connection this credential was loaded from, so a
+	// rotated OAuth refresh token can be written back to the host's connection
+	// store. It is a plain identifier, not a secret.
+	WriteBackKey string
 }
 
 // Handle is the pod-facing capability. The pod only ever sees Value; it is
