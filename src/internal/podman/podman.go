@@ -6,6 +6,7 @@ package podman
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -205,6 +206,14 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		"-v", cfg.RunDir+":/run/poddle",
 		"-v", cfg.StateDir+":/state",
 	)
+	// Forward the opt-in fresh-audit gate config from the host env so an operator
+	// enables "no fresh audit -> no egress" for a cloud-connected broker without
+	// rebuilding the image. Unset -> the gate stays off (default).
+	for _, k := range []string{"PODDLE_REQUIRE_FRESH_AUDIT", "PODDLE_MAX_AUDIT_STALENESS"} {
+		if v := os.Getenv(k); v != "" {
+			args = append(args, "-e", k+"="+v)
+		}
+	}
 	if cfg.CoverDir != "" {
 		// Capture the containerized broker's own coverage: mount the host covdata
 		// dir and point GOCOVERDIR at it. A read-only rootfs is fine — this is a
