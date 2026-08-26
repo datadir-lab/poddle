@@ -104,9 +104,13 @@ func (h *Harness) ConfigDir() string { return "" }
 // (its native command — merges into ~/.claude.json without clobbering, applies to
 // every claude invocation). The handle rides the env var via ${...}, which Claude
 // interpolates at runtime, so it never lands on disk. Runs after Provisions installs
-// claude. --transport http selects the remote (Streamable HTTP) transport.
+// claude. --transport http selects the remote (Streamable HTTP) transport. --scope
+// user registers at the user scope rather than the (cwd-keyed) local default:
+// Setup runs MCPWiring from a different cwd than the task's `cd /workspace && claude
+// -p`, so a local-scope registration would be invisible to the task — verified by
+// spike, --scope user fixes it (full handshake).
 func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string {
-	return []string{"claude mcp add " + shellSingleQuote(name) +
+	return []string{"claude mcp add " + shellSingleQuote(name) + " --scope user" +
 		" --transport http " + shellSingleQuote(agentURL) +
 		" --header " + shellSingleQuote("Authorization: Bearer ${"+handleEnv+"}")}
 }

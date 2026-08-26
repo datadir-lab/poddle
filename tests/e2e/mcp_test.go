@@ -129,6 +129,36 @@ func mockMCPServer(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Serv
 	return srv
 }
 
+// mockOpenAIStreamUp is a minimal SSE-streaming chat-completions mock (opencode
+// always sends stream:true; a flat-JSON mock makes its SDK loop forever). Records
+// auth; binds 0.0.0.0 so the broker container reaches it via host.containers.internal.
+func mockOpenAIStreamUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, piChunk(map[string]any{"role": "assistant", "content": ""}, nil))
+		fmt.Fprint(w, piChunk(map[string]any{"content": "works"}, nil))
+		fmt.Fprint(w, piChunk(map[string]any{}, "stop"))
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // mcpSentinel is the bearer token the mock MCP server expects. It is the SAME
 // value in every mcpCase row below — the connections/mcpsrv connection
 // (connector=mcp, base_url=<mock>/mcp, mcp-token=mcpSentinel) is written
@@ -213,7 +243,11 @@ var mcpCases = []mcpCase{
 		image:         "docker.io/library/node:22",
 		writeIdentity: writeOpenAIIdentity,
 		upstreamEnv:   "PODDLE_OPENAI_BASE_URL",
-		modelMock:     mockOpenAIChatUp,
+		// mockOpenAIStreamUp, not mockOpenAIChatUp: opencode always sends
+		// stream:true, and mockOpenAIChatUp's flat non-streaming JSON (built for
+		// aider --no-stream) makes opencode's SDK loop forever waiting on an SSE
+		// response — the MCP handshake itself is unaffected either way.
+		modelMock: mockOpenAIStreamUp,
 		// opencode's verified headless invocation (edit_test.go): -m selects the
 		// poddle/poddle-model provider Provisions wrote into the OPENCODE_CONFIG
 		// layer; --auto auto-approves tool permissions so a trivial prompt never
