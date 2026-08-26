@@ -199,11 +199,32 @@ const opencodeMcpExample = `{
         </tbody>
       </table>
     </div>
-    <Callout type="note" title="Bearer token today, OAuth is a follow-up">
+    <p class="doc-p">
+      MCP servers protected by OAuth 2.1 work too - just omit <code>--token</code> and let poddle probe
+      the URL:
+    </p>
+    <div class="term">
+      <div class="term__bar"><span class="term__glyph">&gt;_</span><span class="term__title">zsh</span></div>
+      <pre class="term__body"><code><span class="cmt"># no --token: poddle probes the URL, sees a 401, and opens your browser</span>
+<span class="cmd">poddle connect add search --connector mcp --url https://mcp.example.com/mcp</span>
+<span class="ok">added search (OAuth)</span></code></pre>
+    </div>
+    <p class="doc-p">
+      On a <code>401</code>, poddle discovers the server's authorization server metadata and, if the
+      server supports Dynamic Client Registration, registers a client on the spot. Servers without DCR
+      need a pre-registered client: pass <code>--client-id</code> (and <code>--client-secret</code> for a
+      confidential client). Either way, consent happens in your browser on the host - the pod never sees
+      it. The broker holds the access and refresh tokens in its vault and refreshes the access token
+      automatically as it nears expiry; the pod only ever holds a revocable handle, exactly as with a
+      bearer-token connection. If a grant is revoked or a refresh token expires, <code>poddle connect
+      reauth &lt;name&gt;</code> re-runs browser consent and replaces the stored tokens.
+    </p>
+    <Callout type="warn" title="Refresh-token rotation is in-memory for v1">
       <p>
-        Brokered MCP currently covers servers that authenticate with a static bearer token / API key
-        (the <code>--token</code> a <a href="/docs/connectors">connector</a> seals). MCP servers that
-        require an OAuth 2.1 browser-consent flow are a follow-up.
+        The broker's refreshed token lives in memory for the daemon's lifetime; it isn't written back to
+        disk. If a provider <strong>rotates</strong> its refresh token on use <em>and</em> <code>poddled</code>
+        restarts before the next refresh, the on-disk refresh token is stale and the next refresh attempt
+        fails closed. Run <code>poddle connect reauth &lt;name&gt;</code> to recover.
       </p>
     </Callout>
     <Callout type="warn" title="Explicit policies don't auto-add the MCP host">
