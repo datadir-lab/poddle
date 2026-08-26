@@ -204,7 +204,7 @@ var mcpCases = []mcpCase{
 		// servers eagerly like Codex, or lazily on first tool use, is exactly what
 		// this row proves or disproves.
 		inPod: "cd /workspace && export IS_SANDBOX=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1; " +
-			`echo '{"hasCompletedOnboarding":true,"theme":"dark"}' > $HOME/.claude.json; ` +
+			`node -e 'const f=process.env.HOME+"/.claude.json",fs=require("fs");let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){};c.hasCompletedOnboarding=true;fs.writeFileSync(f,JSON.stringify(c))'; ` +
 			`claude -p "say hi and stop" --output-format json --max-turns 1 --dangerously-skip-permissions </dev/null`,
 	},
 	{
