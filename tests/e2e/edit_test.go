@@ -96,6 +96,16 @@ func writeOpenAIIdentity(t *testing.T, cfg, sentinel string) {
 	writeFile(t, filepath.Join(idDir, "openai-token"), sentinel)
 }
 
+func writeGoogleIdentity(t *testing.T, cfg, sentinel string) {
+	t.Helper()
+	idDir := filepath.Join(cfg, "poddle", "identities", "work")
+	if err := os.MkdirAll(idDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(idDir, "meta.toml"), "name = \"work\"\nprovider = \"google\"\n")
+	writeFile(t, filepath.Join(idDir, "google-token"), sentinel)
+}
+
 // assertFileInPod fails unless some file named editFile in the pod contains the
 // edit marker. `find` sidesteps the agent's working-directory ambiguity.
 func assertFileInPod(t *testing.T, pod string) {

@@ -105,10 +105,22 @@ func TestConfigDirAndStateDirs(t *testing.T) {
 	}
 }
 
-// MCPWiring is a deferred follow-up for gemini (unlike aider it is not a permanent
-// gap), so it returns nil for now.
-func TestMCPWiring_NilForNow(t *testing.T) {
-	if got := New().MCPWiring("srv", "http://x/mcp", "PODDLE_MCP_SRV"); got != nil {
-		t.Errorf("MCPWiring should be nil (deferred), got %v", got)
+// MCPWiring merges a brokered MCP server into ~/.gemini/settings.json: an httpUrl
+// (Streamable HTTP) endpoint with the handle riding the Authorization header via
+// ${env}, which gemini-cli expands at load so it never lands on disk.
+func TestMCPWiring_MergesBrokeredServer(t *testing.T) {
+	got := New().MCPWiring("srv", "http://10.0.0.5:9000/mcp", "PODDLE_MCP_SRV")
+	if len(got) == 0 {
+		t.Fatal("MCPWiring should wire a brokered server (non-nil Setup)")
+	}
+	cmd := strings.Join(got, "\n")
+	for _, want := range []string{"settings.json", "mcpServers", "httpUrl", "http://10.0.0.5:9000/mcp", "Bearer ${PODDLE_MCP_SRV}", "readFileSync"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("MCPWiring missing %q: %q", want, cmd)
+		}
+	}
+	// The handle must ride an env-var reference, never a literal value on disk.
+	if strings.Contains(cmd, "poddle_") {
+		t.Errorf("MCPWiring must not embed a literal handle: %q", cmd)
 	}
 }

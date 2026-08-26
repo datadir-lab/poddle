@@ -272,10 +272,25 @@ var mcpCases = []mcpCase{
 		modelMock: mockOpenAIStreamUp,
 		inPod:     "cd /workspace && pi --provider poddle --model poddle-model -p 'say hi and stop'",
 	},
+	{
+		name:          "gemini",
+		harness:       "gemini",
+		image:         "docker.io/library/node:22",
+		writeIdentity: writeGoogleIdentity,
+		upstreamEnv:   "PODDLE_GOOGLE_BASE_URL",
+		// gemini's own model leg (streamGenerateContent SSE) — reuse mockGeminiUp
+		// from secretless_up_test.go. MCPWiring merged the mcpsrv httpUrl server into
+		// ~/.gemini/settings.json as a Setup step (the handle rides the Authorization
+		// header via ${env}, expanded at load). gemini-cli discovers MCP eagerly at
+		// startup (spike-verified), before the first model turn, so the handshake
+		// reaches the broker even if the model turn itself fails.
+		modelMock: mockGeminiUp,
+		inPod:     "cd /workspace && gemini -p 'say hi and stop' --output-format json --yolo </dev/null",
+	},
 }
 
 // TestE2E_MCP_Brokered proves each agent poddle drives (codex, claude-code,
-// opencode, pi) reaches a remote MCP server through the broker secretlessly:
+// opencode, pi, gemini) reaches a remote MCP server through the broker secretlessly:
 // `poddle up` wires a connector-mcp connection into the agent's own config
 // (MCPWiring), and the broker swaps the pod's handle for the real (sentinel)
 // bearer token on the wire — the mock MCP server never sees the handle. Each
