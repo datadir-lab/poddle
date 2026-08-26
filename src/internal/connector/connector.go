@@ -136,7 +136,12 @@ func Credential(conn Connection, def Definition, oauth *OAuthMaterial) (broker.C
 		baseURL = def.BaseURL
 	}
 
-	if oauth != nil {
+	// L4 datastores (l4-redis, l4-postgres, …) are never OAuth-capable: they
+	// authenticate with a DSN user:password the L4 broker splices onto the
+	// upstream connection, not a bearer token over HTTP. Guard here too (not
+	// just at the up/command.go call sites) so a stray oauth.json on an L4
+	// connection can never hijack the credential and drop the real DSN.
+	if oauth != nil && !strings.HasPrefix(def.Transport, "l4-") {
 		return broker.Credential{
 			Mode:          broker.ModeOAuthBearer,
 			Vendor:        conn.Connector,

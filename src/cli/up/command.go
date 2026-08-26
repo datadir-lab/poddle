@@ -427,23 +427,16 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 			if err != nil {
 				return fail(err)
 			}
-			// OAuth material (if any) takes priority over the connection's static
-			// token — see connector.Credential. Most connections have no
-			// oauth.json (ok=false, no error): they keep using the static token.
-			oauthMat, ok, err := a.Connections.LoadOAuth(cn)
-			if err != nil {
-				return fail(fmt.Errorf("connection %q oauth: %w", cn, err))
-			}
-			var oauth *connector.OAuthMaterial
-			if ok {
-				oauth = &oauthMat
-			}
+			// OAuth material is loaded (below) only for the mcp/http cases — an L4
+			// datastore connection never has an oauth.json and must never see one:
+			// applyRedisDatastore/applyPostgresDatastore always pass nil to
+			// connector.Credential, which builds the real DSN credential.
 			switch def.Transport {
 			case "l4-redis":
 				if redisPodAddr, err = podL4Addr(redisPodAddr, brokerIP, b.RedisAddr); err != nil {
 					return fail(err)
 				}
-				if err := applyRedisDatastore(b, conn, def, o.name, redisPodAddr, oauth, &spec); err != nil {
+				if err := applyRedisDatastore(b, conn, def, o.name, redisPodAddr, &spec); err != nil {
 					return fail(err)
 				}
 				if _, p, err := net.SplitHostPort(redisPodAddr); err == nil {
@@ -453,13 +446,17 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 				if pgPodAddr, err = podL4Addr(pgPodAddr, brokerIP, b.PostgresAddr); err != nil {
 					return fail(err)
 				}
-				if err := applyPostgresDatastore(b, conn, def, o.name, pgPodAddr, oauth, &spec); err != nil {
+				if err := applyPostgresDatastore(b, conn, def, o.name, pgPodAddr, &spec); err != nil {
 					return fail(err)
 				}
 				if _, p, err := net.SplitHostPort(pgPodAddr); err == nil {
 					ports[brokerendpoint.Postgres] = p
 				}
 			case "mcp":
+				oauth, err := loadConnectorOAuth(a.Connections, cn)
+				if err != nil {
+					return fail(err)
+				}
 				host, err := applyMCPConnector(b, h, conn, def, o.name, "http://"+podBrokerAddr, oauth, &spec)
 				if err != nil {
 					return fail(err)
@@ -468,6 +465,10 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 					egressHosts = append(egressHosts, host)
 				}
 			default:
+				oauth, err := loadConnectorOAuth(a.Connections, cn)
+				if err != nil {
+					return fail(err)
+				}
 				if err := applyConnector(b, conn, def, o.name, podBrokerAddr, oauth, &spec); err != nil {
 					return fail(err)
 				}
@@ -609,6 +610,23 @@ func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Ha
 	return apiHost, nil
 }
 
+// loadConnectorOAuth loads persisted OAuth material for connection cn, if any
+// — see connector.Credential, where it takes priority over the connection's
+// static token. Most connections have no oauth.json (ok=false, no error):
+// they keep using the static token. Callers are exactly the mcp and default
+// (HTTP) connector cases; L4 datastore connections never call this — see
+// applyRedisDatastore/applyPostgresDatastore, which always pass nil.
+func loadConnectorOAuth(store *connector.Store, cn string) (*connector.OAuthMaterial, error) {
+	oauthMat, ok, err := store.LoadOAuth(cn)
+	if err != nil {
+		return nil, fmt.Errorf("connection %q oauth: %w", cn, err)
+	}
+	if !ok {
+		return nil, nil
+	}
+	return &oauthMat, nil
+}
+
 // applyConnector issues a pod-scoped handle for a connection's service token at
 // poddled and folds the connector's pod wiring (env + setup) into the spec.
 // Connector setup (e.g. git url.insteadOf) is PREPENDED so it runs before the
@@ -683,9 +701,11 @@ func mcpEnvVar(name string) string {
 
 // applyRedisDatastore issues a handle for a Redis connection at poddled and
 // points the pod at the broker's L4 Redis address with the handle as its
-// password. The real DSN (user+password) stays in the broker.
-func applyRedisDatastore(b podBroker, conn connector.Connection, def connector.Definition, podName, redisPodAddr string, oauth *connector.OAuthMaterial, spec *sandbox.Spec) error {
-	cred, err := connector.Credential(conn, def, oauth)
+// password. The real DSN (user+password) stays in the broker. L4 datastores
+// are never OAuth-capable, so this always passes nil to Credential — an
+// oauth.json must never be able to hijack a datastore DSN.
+func applyRedisDatastore(b podBroker, conn connector.Connection, def connector.Definition, podName, redisPodAddr string, spec *sandbox.Spec) error {
+	cred, err := connector.Credential(conn, def, nil)
 	if err != nil {
 		return err
 	}
@@ -710,9 +730,10 @@ func applyRedisDatastore(b podBroker, conn connector.Connection, def connector.D
 // applyPostgresDatastore issues a handle for a Postgres connection at poddled and
 // points the pod at the broker's L4 Postgres address with the handle as its
 // password (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE). The real DSN stays in
-// the broker.
-func applyPostgresDatastore(b podBroker, conn connector.Connection, def connector.Definition, podName, pgPodAddr string, oauth *connector.OAuthMaterial, spec *sandbox.Spec) error {
-	cred, err := connector.Credential(conn, def, oauth)
+// the broker. L4 datastores are never OAuth-capable, so this always passes nil
+// to Credential — an oauth.json must never be able to hijack a datastore DSN.
+func applyPostgresDatastore(b podBroker, conn connector.Connection, def connector.Definition, podName, pgPodAddr string, spec *sandbox.Spec) error {
+	cred, err := connector.Credential(conn, def, nil)
 	if err != nil {
 		return err
 	}

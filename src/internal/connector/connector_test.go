@@ -232,6 +232,31 @@ func TestCredential_PostgresAssemblesDSN(t *testing.T) {
 	}
 }
 
+// TestCredential_L4IgnoresOAuthMaterial guards against a landmine where
+// oauth.json (once Task 5 starts writing it) could silently hijack an L4
+// datastore credential and drop the real user:password DSN. Even with
+// non-nil OAuthMaterial passed in, an l4-postgres connection must still
+// return the DSN credential, never a ModeOAuthBearer one.
+func TestCredential_L4IgnoresOAuthMaterial(t *testing.T) {
+	s := NewStore(t.TempDir())
+	def, _ := LoadDefinition("", "postgres")
+	conn, err := s.Create("db", "postgres", "postgres://10.0.0.9:5432/shop", "appuser", "PGPASS", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oauth := &OAuthMaterial{AccessToken: "should-never-be-used", RefreshToken: "rt"}
+	cred, err := Credential(conn, def, oauth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cred.Mode == broker.ModeOAuthBearer {
+		t.Fatalf("l4-postgres credential took the OAuth branch: %+v", cred)
+	}
+	if cred.BaseURL != "postgres://appuser:PGPASS@10.0.0.9:5432/shop" {
+		t.Errorf("postgres DSN = %q, want the real user:password DSN preserved", cred.BaseURL)
+	}
+}
+
 func TestBuiltin_MCP_IsBearerGatewayKind(t *testing.T) {
 	def, err := LoadDefinition(t.TempDir(), "mcp")
 	if err != nil {
