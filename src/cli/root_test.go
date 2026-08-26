@@ -69,7 +69,7 @@ func TestBuildRegistries_IncludeOpencode(t *testing.T) {
 // TestBuildRegistries_MCPWiringMatrix pins the brokered-MCP support status of every
 // registered harness in one place. codex, claude-code, opencode, and pi are wired —
 // MCPWiring returns a Setup command carrying the broker MCP URL (pi via the
-// pi-mcp-adapter extension its Provisions install). aider has NO way to consume MCP
+// pi-mcp-adapter extension installed in its Provisions). aider has NO way to consume MCP
 // (verified 2026-08-26: aider has no --mcp-server in any released version, only an
 // open unmerged proposal, and no MCP-client architecture), so its MCPWiring is
 // deliberately nil. Asserting the whole matrix here makes the support explicit and

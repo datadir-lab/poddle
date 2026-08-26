@@ -28,6 +28,10 @@ func (h *Harness) Provisions() []string {
 	return []string{
 		"npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
 		`mkdir -p "$PI_CODING_AGENT_DIR" && printf '{"providers":{"poddle":{"baseUrl":"%s","api":"openai-completions","apiKey":"$OPENAI_API_KEY","authHeader":true,"models":[{"id":"poddle-model","name":"Poddle","reasoning":false,"input":["text"],"contextWindow":32000,"maxTokens":4096,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0}}]}}}' "$PODDLE_PI_BASE_URL" > "$PI_CODING_AGENT_DIR/models.json"`,
+		// pi has no built-in MCP; the third-party pi-mcp-adapter extension adds it.
+		// NOTE: unlike the base install above, "pi install" has no --ignore-scripts
+		// equivalent, so this runs the package's npm scripts — an intentional,
+		// opted-in third-party trust-surface expansion for brokered MCP.
 		"pi install npm:pi-mcp-adapter",
 	}
 }

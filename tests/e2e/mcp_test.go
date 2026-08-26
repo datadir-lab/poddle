@@ -264,7 +264,7 @@ var mcpCases = []mcpCase{
 		writeIdentity: writeOpenAIIdentity,
 		upstreamEnv:   "PODDLE_OPENAI_BASE_URL",
 		// pi always sends stream:true, so it needs the SSE model mock (same reason
-		// as opencode). pi has no built-in MCP: Provisions install the pi-mcp-adapter
+		// as opencode). pi has no built-in MCP: Provisions installs the pi-mcp-adapter
 		// extension and MCPWiring merges the mcpsrv remote entry into
 		// $PI_CODING_AGENT_DIR/mcp.json as a Setup step, before this runs. The adapter
 		// connects (initialize + tools-list) eagerly at startup, before the first
