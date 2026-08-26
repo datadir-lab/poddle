@@ -107,6 +107,20 @@ jobs:
       # bin/poddle (deps: build), installs chromium, and runs the Playwright specs.
       - name: task e2e-ui
         run: task e2e-ui
+      # The audit screenshot is a deterministic render (seeded data, frozen clock,
+      # pinned chromium), so verify freshness by re-rendering and diffing rather than
+      # by change-coupling — an invisible dashboard change re-renders identically and
+      # passes, while a real visual change whose screenshot wasn't refreshed fails.
+      - name: Re-render the dashboard screenshot
+        run: node tests/screenshot.mjs
+        working-directory: src/web/dashboard
+      - name: Fail if the committed dashboard screenshot is stale
+        run: |
+          if ! git diff --quiet -- '*dashboard-audit.png'; then
+            echo "::error::dashboard-audit.png is stale for the current dashboard — run 'task assets' and commit it."
+            git --no-pager diff --stat -- '*dashboard-audit.png'
+            exit 1
+          fi
 
   commitlint:
     name: Commit messages (Conventional Commits)
