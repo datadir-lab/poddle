@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -296,6 +298,8 @@ func TestGateway_RefreshFailureIsFailClosed401(t *testing.T) {
 	g.refresh = func(context.Context, Credential) (Credential, error) {
 		return Credential{}, errors.New("refresh failed")
 	}
+	aud := &recAuditor{}
+	g.SetAuditor(aud)
 	gw := serve(t, g)
 	resp := doResp(t, gw, handle, http.MethodPost, "/mcp") // helper returning *http.Response
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -303,6 +307,24 @@ func TestGateway_RefreshFailureIsFailClosed401(t *testing.T) {
 	}
 	if resp.Header.Get("WWW-Authenticate") != "" {
 		t.Error("fail-closed 401 must NOT carry WWW-Authenticate (don't trigger the agent's own OAuth)")
+	}
+	// §4: this path must be audited, secret-free, so operators see a signal that
+	// the credential needs `connect reauth`.
+	recs := aud.all()
+	if len(recs) != 1 {
+		t.Fatalf("expected exactly one audit record for the refresh-failure 401, got %d: %+v", len(recs), recs)
+	}
+	rec := recs[0]
+	if rec.Decision != "deny" || rec.Status != http.StatusUnauthorized {
+		t.Errorf("audit record = %+v, want Decision=deny Status=401", rec)
+	}
+	for _, secret := range []string{"stale", "dead"} {
+		if strings.Contains(rec.Detail, secret) {
+			t.Errorf("audit detail leaked a secret: %+v", rec)
+		}
+	}
+	if strings.Contains(rec.Detail, handle) {
+		t.Errorf("audit detail leaked the handle: %+v", rec)
 	}
 }
 
@@ -350,6 +372,57 @@ func TestGateway_RevokedHandle401(t *testing.T) {
 
 	if code := do(t, gw, handle.Value, http.MethodGet, "/x", nil); code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", code)
+	}
+}
+
+// TestGateway_ConcurrentRefreshCollapsesToOne proves the §5 invariant: N
+// requests racing on one stale OAuth credential must trigger exactly one
+// token refresh. refreshIfStale/credLock (gateway.go:256-290) serialize
+// refreshes per credID and re-read the credential under the lock so
+// 2nd..Nth callers see the freshened token and skip their own refresh.
+func TestGateway_ConcurrentRefreshCollapsesToOne(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused"}
+	g, handle := gatewayWith(t, cred)
+
+	var n int64
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		atomic.AddInt64(&n, 1)
+		c.Secret = "fresh"
+		c.ExpiresAt = time.Now().Add(time.Hour) // future: under-lock re-read sees this as fresh
+		return c, nil
+	}
+	gw := serve(t, g)
+
+	const concurrency = 20
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, gw.URL+"/mcp", nil)
+			if err != nil {
+				t.Errorf("new request: %v", err)
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+handle)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Errorf("do: %v", err)
+				return
+			}
+			_, _ = io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("status = %d, want 200", resp.StatusCode)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&n); got != 1 {
+		t.Errorf("refresh called %d times, want exactly 1", got)
 	}
 }
 

@@ -71,6 +71,28 @@ func TestRefresh_FailurePropagates(t *testing.T) {
 	}
 }
 
+// TestRefresh_CarriesForwardNonRotatingToken covers oauth.go:132-133: a
+// non-rotating provider's token response omits refresh_token, and Refresh
+// must carry the caller's old refresh token forward rather than clearing it
+// — load-bearing for the v1 "non-rotating providers are unaffected" story.
+func TestRefresh_CarriesForwardNonRotatingToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"access_token": "at2", "expires_in": 3600})
+	}))
+	defer srv.Close()
+
+	tok, err := Refresh(context.Background(), http.DefaultClient, srv.URL, "rt-old", "", "")
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if tok.AccessToken != "at2" {
+		t.Errorf("AccessToken = %q, want at2", tok.AccessToken)
+	}
+	if tok.RefreshToken != "rt-old" {
+		t.Errorf("RefreshToken = %q, want rt-old (carried forward, provider omitted it)", tok.RefreshToken)
+	}
+}
+
 func TestDiscover_ChainAndErrNoOAuth(t *testing.T) {
 	var as *httptest.Server
 	as = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

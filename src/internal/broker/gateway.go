@@ -188,13 +188,6 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid or revoked handle", http.StatusUnauthorized)
 		return
 	}
-	// Refresh a stale OAuth access token before injecting it. On refresh failure
-	// fail closed (bare 401) rather than forwarding an expired credential.
-	cred, err = g.refreshIfStale(r.Context(), handle, credID, cred)
-	if err != nil {
-		http.Error(w, "poddle: MCP upstream authorization failed", http.StatusUnauthorized)
-		return
-	}
 	up, err := url.Parse(cred.BaseURL)
 	if err != nil {
 		http.Error(w, "bad upstream", http.StatusBadGateway)
@@ -205,7 +198,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Policy: the pod's governance policy may forbid this destination/method.
 	// Match on the hostname (port-agnostic). In monitor mode a would-be denial is
-	// let through and recorded (below) instead of blocked.
+	// let through and recorded (below) instead of blocked. Runs BEFORE the OAuth
+	// refresh below so a request the policy will 403 never triggers a token
+	// refresh (wasteful, and for a rotating provider needlessly rotates the
+	// refresh token).
 	var monitored string
 	if g.policy != nil {
 		if allow, reason := g.policy.Check(handle, up.Hostname(), method); !allow {
@@ -217,6 +213,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// Refresh a stale OAuth access token before injecting it. On refresh failure
+	// fail closed (bare 401 — no WWW-Authenticate, so this can't be mistaken for
+	// an OAuth challenge) rather than forwarding an expired credential. Audited
+	// (secret-free) so operators see a signal that the credential needs
+	// `connect reauth`.
+	cred, err = g.refreshIfStale(r.Context(), handle, credID, cred)
+	if err != nil {
+		g.audit(handle, up.Host, method, path, "deny", "oauth refresh failed — needs reauth", http.StatusUnauthorized)
+		http.Error(w, "poddle: MCP upstream authorization failed", http.StatusUnauthorized)
+		return
 	}
 
 	// Egress redaction: scrub secrets from textual bodies (LLM/API JSON). Git
