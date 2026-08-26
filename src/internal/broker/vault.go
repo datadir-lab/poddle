@@ -32,12 +32,13 @@ type vaultEntry struct {
 	expiresAt     time.Time
 	tokenEndpoint string
 	clientID      string
-	clientSecret  string
+	clientSecret  *memguard.Enclave // nil for non-OAuth or when the client is public (no secret)
 }
 
-// Vault holds credentials in memory, scoped by tenant. Secrets are sealed in
-// memguard enclaves — never held as a plain map value, written to disk, or
-// handed to a pod. See Get for the one unavoidable plaintext boundary.
+// Vault holds credentials in memory, scoped by tenant. Every secret field
+// (access token, refresh token, OAuth client secret) is sealed in a memguard
+// enclave — never held as a plain map value, written to disk, or handed to a
+// pod. See Get for the one unavoidable plaintext boundary.
 type Vault struct {
 	mu    sync.RWMutex
 	creds map[string]vaultEntry // key = tenant "/" credID
@@ -51,20 +52,23 @@ func NewVault() *Vault {
 func vaultKey(tenant, credID string) string { return tenant + "/" + credID }
 
 // sealEntry builds a vaultEntry from c, sealing c.Secret and (when non-empty)
-// c.RefreshToken into memguard enclaves and copying across the non-secret OAuth
-// metadata. Used by both Store and Replace so the sealing logic lives in one
-// place.
+// c.RefreshToken and c.ClientSecret into memguard enclaves and copying across
+// the non-secret OAuth metadata. Used by both Store and Replace so the
+// sealing logic lives in one place.
 func sealEntry(c Credential) vaultEntry {
 	e := vaultEntry{
 		mode: c.Mode, vendor: c.Vendor, baseURL: c.BaseURL,
 		expiresAt: c.ExpiresAt, tokenEndpoint: c.TokenEndpoint,
-		clientID: c.ClientID, clientSecret: c.ClientSecret,
+		clientID: c.ClientID,
 	}
 	if c.Secret != "" {
 		e.secret = memguard.NewEnclave([]byte(c.Secret))
 	}
 	if c.RefreshToken != "" {
 		e.refresh = memguard.NewEnclave([]byte(c.RefreshToken))
+	}
+	if c.ClientSecret != "" {
+		e.clientSecret = memguard.NewEnclave([]byte(c.ClientSecret))
 	}
 	return e
 }
@@ -113,7 +117,7 @@ func (v *Vault) Get(tenant, credID string) (Credential, error) {
 	c := Credential{
 		Mode: e.mode, Vendor: e.vendor, BaseURL: e.baseURL,
 		ExpiresAt: e.expiresAt, TokenEndpoint: e.tokenEndpoint,
-		ClientID: e.clientID, ClientSecret: e.clientSecret,
+		ClientID: e.clientID,
 	}
 	if e.secret != nil {
 		lb, err := e.secret.Open()
@@ -129,6 +133,14 @@ func (v *Vault) Get(tenant, credID string) (Credential, error) {
 			return Credential{}, err
 		}
 		c.RefreshToken = string(lb.Bytes()) // string(...) copies out before we destroy the buffer
+		lb.Destroy()
+	}
+	if e.clientSecret != nil {
+		lb, err := e.clientSecret.Open()
+		if err != nil {
+			return Credential{}, err
+		}
+		c.ClientSecret = string(lb.Bytes()) // string(...) copies out before we destroy the buffer
 		lb.Destroy()
 	}
 	return c, nil
