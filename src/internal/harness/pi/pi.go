@@ -28,6 +28,7 @@ func (h *Harness) Provisions() []string {
 	return []string{
 		"npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
 		`mkdir -p "$PI_CODING_AGENT_DIR" && printf '{"providers":{"poddle":{"baseUrl":"%s","api":"openai-completions","apiKey":"$OPENAI_API_KEY","authHeader":true,"models":[{"id":"poddle-model","name":"Poddle","reasoning":false,"input":["text"],"contextWindow":32000,"maxTokens":4096,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0}}]}}}' "$PODDLE_PI_BASE_URL" > "$PI_CODING_AGENT_DIR/models.json"`,
+		"pi install npm:pi-mcp-adapter",
 	}
 }
 
@@ -45,6 +46,7 @@ func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 		"PI_CODING_AGENT_DIR": "/root/.pi",
 		"PODDLE_PI_BASE_URL":  strings.TrimRight(brokerAddr, "/") + "/v1",
 		"PI_OFFLINE":          "1",
+		"PI_MCP_CONFIG_MODE":  "exclusive",
 	}
 }
 
@@ -80,5 +82,14 @@ func (h *Harness) EgressHosts() []string {
 // mcp.json / extensions/ live alongside it and are the seed/persist target.
 func (h *Harness) ConfigDir() string { return "/root/.pi" }
 
-// MCPWiring is nil: pi has no MCP auto-wiring implemented here yet.
-func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }
+// MCPWiring registers a brokered MCP server with pi via the pi-mcp-adapter
+// extension (installed in Provisions): it merges a remote entry into
+// $PI_CODING_AGENT_DIR/mcp.json. `bearerTokenEnv` makes the adapter read the handle
+// from the env var at connect time, so it never lands on disk. A node merge (node is
+// present for pi) preserves any existing mcpServers. Runs after Provisions installs pi
+// + the adapter. Verified against pi 0.84.3 + pi-mcp-adapter 2.28.0.
+func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string {
+	entry := `{"url":"` + agentURL + `","auth":"bearer","bearerTokenEnv":"` + handleEnv + `"}`
+	js := `const f=process.env.PI_CODING_AGENT_DIR+"/mcp.json",fs=require("fs");let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){};(c.mcpServers=c.mcpServers||{})["` + name + `"]=` + entry + `;fs.writeFileSync(f,JSON.stringify(c))`
+	return []string{"node -e " + shellSingleQuote(js)}
+}

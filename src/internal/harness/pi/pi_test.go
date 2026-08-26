@@ -41,6 +41,10 @@ func TestEnv_HandleAndConfigVars(t *testing.T) {
 	if env["PI_OFFLINE"] != "1" {
 		t.Errorf("PI_OFFLINE = %q, want 1", env["PI_OFFLINE"])
 	}
+	// The pi-mcp-adapter must read only poddle's mcp.json, not stray ~/.config/mcp etc.
+	if env["PI_MCP_CONFIG_MODE"] != "exclusive" {
+		t.Errorf("PI_MCP_CONFIG_MODE = %q, want exclusive", env["PI_MCP_CONFIG_MODE"])
+	}
 }
 
 func TestProvisions_InstallsPiAndWritesConfig(t *testing.T) {
@@ -59,6 +63,10 @@ func TestProvisions_InstallsPiAndWritesConfig(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("provisions missing %q in the config-writer:\n%s", want, got)
 		}
+	}
+	// Installs the pi-mcp-adapter extension so MCPWiring's mcp.json is honored.
+	if !strings.Contains(got, "pi install npm:pi-mcp-adapter") {
+		t.Errorf("provisions missing the pi-mcp-adapter install: %q", got)
 	}
 }
 
@@ -103,5 +111,19 @@ func TestEgressHosts(t *testing.T) {
 func TestConfigDir(t *testing.T) {
 	if got := New().ConfigDir(); got != "/root/.pi" {
 		t.Errorf("ConfigDir = %q, want /root/.pi", got)
+	}
+}
+
+func TestMCPWiring_PiAdapterEntry(t *testing.T) {
+	got := New().MCPWiring("linear", "http://10.0.0.5:9000/mcp", "PODDLE_MCP_LINEAR")
+	if len(got) != 1 {
+		t.Fatalf("want one Setup command, got %v", got)
+	}
+	// mcpServers is referenced as a bare JS property (c.mcpServers), not a quoted
+	// JSON key, in the merge one-liner — see MCPWiring's spike-verified js.
+	for _, want := range []string{"node -e", "PI_CODING_AGENT_DIR", "mcp.json", "mcpServers", "http://10.0.0.5:9000/mcp", `"auth":"bearer"`, `"bearerTokenEnv":"PODDLE_MCP_LINEAR"`, "linear"} {
+		if !strings.Contains(got[0], want) {
+			t.Errorf("MCPWiring missing %q: %q", want, got[0])
+		}
 	}
 }
