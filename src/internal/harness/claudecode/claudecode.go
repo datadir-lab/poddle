@@ -100,6 +100,17 @@ func (h *Harness) ResumeCommand(mode string) string {
 // place) is a rollout follow-up.
 func (h *Harness) ConfigDir() string { return "" }
 
-// MCPWiring is nil: claude-code's own non-clobbering MCP-registration channel
-// (`claude mcp add`) is not yet wired here. Follow-up.
-func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }
+// MCPWiring registers a brokered MCP server with Claude Code via `claude mcp add`
+// (its native command — merges into ~/.claude.json without clobbering, applies to
+// every claude invocation). The handle rides the env var via ${...}, which Claude
+// interpolates at runtime, so it never lands on disk. Runs after Provisions installs
+// claude. --transport http selects the remote (Streamable HTTP) transport. --scope
+// user registers at the user scope rather than the (cwd-keyed) local default:
+// Setup runs MCPWiring from a different cwd than the task's `cd /workspace && claude
+// -p`, so a local-scope registration would be invisible to the task — verified by
+// spike, --scope user fixes it (full handshake).
+func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string {
+	return []string{"claude mcp add " + shellSingleQuote(name) + " --scope user" +
+		" --transport http " + shellSingleQuote(agentURL) +
+		" --header " + shellSingleQuote("Authorization: Bearer ${"+handleEnv+"}")}
+}

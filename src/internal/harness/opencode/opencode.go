@@ -102,6 +102,16 @@ func (h *Harness) EgressHosts() []string {
 // customizations survive `move`.
 func (h *Harness) ConfigDir() string { return "/root/.config/opencode" }
 
-// MCPWiring is nil: opencode's own non-clobbering MCP-registration channel is
-// not yet wired here. Follow-up.
-func (h *Harness) MCPWiring(_, _, _ string) []string { return nil }
+// MCPWiring registers a brokered MCP server with opencode by merging a remote MCP
+// entry into poddle's own OPENCODE_CONFIG layer (never the user's config). The
+// Authorization header uses opencode's {env:VAR} interpolation, so the handle stays
+// off disk. A node one-liner merges (node is installed for opencode); runs after
+// Provisions writes the base layer. oauth:false forces header auth (no OAuth probe).
+func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string {
+	entry := `{"type":"remote","url":"` + agentURL + `","enabled":true,"oauth":false,` +
+		`"headers":{"Authorization":"Bearer {env:` + handleEnv + `}"}}`
+	js := `const f=process.env.OPENCODE_CONFIG,fs=require("fs");` +
+		`const c=JSON.parse(fs.readFileSync(f,"utf8"));(c.mcp=c.mcp||{})[` +
+		`"` + name + `"]=` + entry + `;fs.writeFileSync(f,JSON.stringify(c))`
+	return []string{"node -e " + shellSingleQuote(js)}
+}

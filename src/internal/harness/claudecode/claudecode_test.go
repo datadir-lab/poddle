@@ -110,3 +110,15 @@ func TestResumeCommand_HeadlessMergesOnboarding(t *testing.T) {
 		t.Errorf("headless resume onboarding must be a node merge:\n%s", cmd)
 	}
 }
+
+func TestMCPWiring_ClaudeMcpAdd(t *testing.T) {
+	got := New().MCPWiring("linear", "http://10.0.0.5:9000/mcp", "PODDLE_MCP_LINEAR")
+	if len(got) != 1 {
+		t.Fatalf("want one Setup command, got %v", got)
+	}
+	for _, want := range []string{"claude mcp add", "--scope user", "--transport http", "'linear'", "http://10.0.0.5:9000/mcp", "Authorization: Bearer ${PODDLE_MCP_LINEAR}"} {
+		if !strings.Contains(got[0], want) {
+			t.Errorf("MCPWiring missing %q: %q", want, got[0])
+		}
+	}
+}
