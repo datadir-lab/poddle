@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"time"
 )
 
 // OpenBrowser is the default browser opener used by AuthCodeFlow's callers.
@@ -83,8 +84,11 @@ func AuthCodeFlow(ctx context.Context, m Metadata, clientID, scope string, open 
 		}
 	})
 
-	srv := &http.Server{Handler: mux}
-	go srv.Serve(ln)
+	// ReadHeaderTimeout bounds a client that opens the callback connection but
+	// dawdles on the request headers (gosec G112); the whole flow is also
+	// bounded by ctx below.
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = srv.Serve(ln) }() // always returns ErrServerClosed on the defer Close
 	defer srv.Close()
 
 	if err := open(authURL); err != nil {

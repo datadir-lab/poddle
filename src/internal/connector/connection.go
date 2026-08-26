@@ -127,6 +127,7 @@ func (s *Store) Remove(name string) error {
 // (0600) beside its meta.toml.
 func (s *Store) SaveOAuth(name string, m OAuthMaterial) error {
 	conn := Connection{Name: name, dir: filepath.Join(s.base, name)}
+	//nolint:gosec // G117: sealing OAuth tokens to the host's 0600 oauth.json is the design; the secretless invariant keeps them off the pod, not off the host connection store.
 	b, err := json.Marshal(m)
 	if err != nil {
 		return err

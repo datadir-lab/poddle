@@ -293,15 +293,14 @@ func TestBuiltin_MCP_IsBearerGatewayKind(t *testing.T) {
 func TestCredential_OAuthMaterialBuildsOAuthBearer(t *testing.T) {
 	base := t.TempDir()
 	s := NewStore(base)
-	conn, err := s.Create("gh", "mcp", "https://api.example.com/mcp", "", "", "local")
-	if err != nil {
+	if _, err := s.Create("gh", "mcp", "https://api.example.com/mcp", "", "", "local"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SaveOAuth("gh", OAuthMaterial{AccessToken: "at", RefreshToken: "rt",
 		TokenEndpoint: "https://as/token", ClientID: "cid", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	conn, _ = s.Get("gh")
+	conn, _ := s.Get("gh")
 	def, _ := LoadDefinition(base, "mcp")
 	m, ok, err := s.LoadOAuth("gh")
 	if err != nil {
