@@ -1,7 +1,9 @@
 package broker
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -77,6 +79,26 @@ func do(t *testing.T, gw *httptest.Server, handleVal, method, target string, bod
 	_, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	return resp.StatusCode
+}
+
+// doResp sends a request through the gateway (handle in Authorization if
+// non-empty) and returns the raw *http.Response so callers can assert on
+// headers/status; the body is closed on test cleanup.
+func doResp(t *testing.T, gw *httptest.Server, handleVal, method, target string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, gw.URL+target, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if handleVal != "" {
+		req.Header.Set("Authorization", "Bearer "+handleVal)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
 }
 
 func TestGateway_SubscriptionInjectsBearer(t *testing.T) {
@@ -243,6 +265,44 @@ func TestGateway_OAuthBearerInjectsAccessToken(t *testing.T) {
 	}
 	if rec.auth != "Bearer access-tok" {
 		t.Errorf("upstream Authorization = %q, want Bearer access-tok", rec.auth)
+	}
+}
+
+func TestGateway_RefreshesStaleOAuthToken(t *testing.T) {
+	up, rec := upstreamRecording(t)
+	// expired access token + a refresh func that mints a fresh one.
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused"}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		c.Secret = "fresh"
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+	gw := serve(t, g)
+	if code := do(t, gw, handle, http.MethodPost, "/mcp", nil); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if rec.auth != "Bearer fresh" {
+		t.Errorf("upstream saw %q, want Bearer fresh (refreshed)", rec.auth)
+	}
+}
+
+func TestGateway_RefreshFailureIsFailClosed401(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "dead",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(context.Context, Credential) (Credential, error) {
+		return Credential{}, errors.New("refresh failed")
+	}
+	gw := serve(t, g)
+	resp := doResp(t, gw, handle, http.MethodPost, "/mcp") // helper returning *http.Response
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", resp.StatusCode)
+	}
+	if resp.Header.Get("WWW-Authenticate") != "" {
+		t.Error("fail-closed 401 must NOT carry WWW-Authenticate (don't trigger the agent's own OAuth)")
 	}
 }
 

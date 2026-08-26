@@ -24,7 +24,7 @@ func TestHandles_IssueResolve(t *testing.T) {
 	if !strings.HasPrefix(handle.Value, "poddle_") {
 		t.Errorf("handle value = %q", handle.Value)
 	}
-	got, err := h.Resolve(handle.Value)
+	_, got, err := h.Resolve(handle.Value)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -39,14 +39,14 @@ func TestHandles_RevokedNotFound(t *testing.T) {
 	handle, _ := h.IssueHandle("local", id, "mybox", 0)
 
 	h.Revoke(handle.Value)
-	if _, err := h.Resolve(handle.Value); !errors.Is(err, ErrNotFound) {
+	if _, _, err := h.Resolve(handle.Value); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoked handle should be ErrNotFound, got %v", err)
 	}
 }
 
 func TestHandles_UnknownNotFound(t *testing.T) {
 	_, h := setup()
-	if _, err := h.Resolve("poddle_nope"); !errors.Is(err, ErrNotFound) {
+	if _, _, err := h.Resolve("poddle_nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown handle should be ErrNotFound, got %v", err)
 	}
 }
@@ -57,7 +57,7 @@ func TestHandles_CredGone(t *testing.T) {
 	handle, _ := h.IssueHandle("tenant-a", id, "box", 0)
 
 	v.Delete("tenant-a", id) // underlying cred gone → handle resolves to nothing
-	if _, err := h.Resolve(handle.Value); !errors.Is(err, ErrNotFound) {
+	if _, _, err := h.Resolve(handle.Value); !errors.Is(err, ErrNotFound) {
 		t.Errorf("resolve after cred deleted should be ErrNotFound, got %v", err)
 	}
 }
@@ -69,7 +69,7 @@ func TestHandles_ResolvesBeforeExpiry(t *testing.T) {
 	id, _ := v.Store("local", Credential{Secret: "s"})
 	handle, _ := h.IssueHandle("local", id, "box", time.Hour)
 
-	if _, err := h.Resolve(handle.Value); err != nil {
+	if _, _, err := h.Resolve(handle.Value); err != nil {
 		t.Fatalf("resolve before expiry: %v", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestHandles_ExpiredResolve(t *testing.T) {
 	handle, _ := h.IssueHandle("local", id, "box", time.Hour)
 
 	now = now.Add(2 * time.Hour) // advance past expiry
-	if _, err := h.Resolve(handle.Value); !errors.Is(err, ErrExpired) {
+	if _, _, err := h.Resolve(handle.Value); !errors.Is(err, ErrExpired) {
 		t.Errorf("expired resolve should be ErrExpired, got %v", err)
 	}
 }
@@ -95,12 +95,12 @@ func TestHandles_ExpiredLazyDeleted(t *testing.T) {
 	handle, _ := h.IssueHandle("local", id, "box", time.Hour)
 
 	now = now.Add(2 * time.Hour)
-	_, _ = h.Resolve(handle.Value) // triggers lazy delete
+	_, _, _ = h.Resolve(handle.Value) // triggers lazy delete
 
 	if len(h.byValue) != 0 {
 		t.Errorf("expired handle should be removed, byValue has %d entries", len(h.byValue))
 	}
-	if _, err := h.Resolve(handle.Value); !errors.Is(err, ErrNotFound) {
+	if _, _, err := h.Resolve(handle.Value); !errors.Is(err, ErrNotFound) {
 		t.Errorf("after lazy delete want ErrNotFound, got %v", err)
 	}
 }
