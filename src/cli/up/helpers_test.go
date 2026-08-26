@@ -24,6 +24,21 @@ func TestStateVolName(t *testing.T) {
 	}
 }
 
+func TestRepoEgressHost(t *testing.T) {
+	tests := []struct{ repo, want string }{
+		{"https://github.com/octocat/Hello-World.git", "github.com"},
+		{"http://git.internal:8080/team/app.git", "git.internal"},
+		{"git@github.com:octocat/Hello-World.git", ""}, // scp-style SSH — not an HTTP forward-proxy egress
+		{"ssh://git@host/repo.git", ""},                // ssh scheme — not http(s)
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := repoEgressHost(tt.repo); got != tt.want {
+			t.Errorf("repoEgressHost(%q) = %q, want %q", tt.repo, got, tt.want)
+		}
+	}
+}
+
 func TestPodL4Addr(t *testing.T) {
 	const brokerIP = "10.0.0.9" // the broker's IP on the pod's lock network
 

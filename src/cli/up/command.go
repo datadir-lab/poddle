@@ -49,6 +49,18 @@ func dedupeHosts(hosts []string) []string {
 	return out
 }
 
+// repoEgressHost returns the host an http(s) `repo` clone egresses to through
+// the forward proxy, so a default-deny pod can be allowed to reach it. It returns
+// "" for an SSH/scp-style repo (git@host:path) or anything unparseable — those
+// don't egress via the HTTP forward proxy, so there is nothing to allow here.
+func repoEgressHost(repo string) string {
+	u, err := url.Parse(repo)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return u.Hostname()
+}
+
 // injectEgressCA gives an intercepted pod the egress CA in its trust store, so
 // the broker can terminate TLS on its HTTPS egress. It mounts the CA cert
 // read-only and points the common toolchains (node, python, curl, git) at it via
@@ -457,6 +469,17 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 				if u, err := url.Parse(cb); err == nil && u.Hostname() != "" {
 					egressHosts = append(egressHosts, u.Hostname())
 				}
+			}
+		}
+		// A public repo clone (repo= with no git connector) egresses to its own
+		// host through the forward proxy. When the pod is otherwise contained by a
+		// derived default-deny policy, allow that host too so the clone isn't
+		// blocked. Guarded on len(egressHosts) > 0 so a repo-only pod (nothing else
+		// to contain) keeps open egress rather than being newly locked to just the
+		// repo host — which would break its harness install.
+		if len(egressHosts) > 0 && tpl.Repo != "" && !o.skipClone {
+			if host := repoEgressHost(tpl.Repo); host != "" {
+				egressHosts = append(egressHosts, host)
 			}
 		}
 		// Bind the pod's governance policy so the daemon enforces it on every
