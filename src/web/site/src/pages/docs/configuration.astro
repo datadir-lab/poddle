@@ -191,7 +191,8 @@ const opencodeMcpExample = `{
           <tr><td>codex</td><td data-label="Info">Wired today - <code>codex mcp add</code> registers the brokered server with a bearer-token env var.</td></tr>
           <tr><td>claude-code</td><td data-label="Info">Wired today - <code>claude mcp add</code> registers the brokered server, scoped to the user.</td></tr>
           <tr><td>opencode</td><td data-label="Info">Wired today - the brokered server is merged into the <code>OPENCODE_CONFIG</code> layer.</td></tr>
-          <tr><td>pi, aider</td><td data-label="Info">Not supported - neither has an MCP client upstream (pi omits MCP by design; aider's is an open, unmerged proposal). Nothing for poddle to wire until they ship one.</td></tr>
+          <tr><td>pi</td><td data-label="Info">Wired today - pi has no built-in MCP, so poddle installs the third-party <code>pi-mcp-adapter</code> extension and registers the brokered server in <code>mcp.json</code>.</td></tr>
+          <tr><td>aider</td><td data-label="Info">Not supported - aider has no MCP client (no <code>--mcp-server</code> in any release; MCP is an open, unmerged proposal). Nothing for poddle to wire.</td></tr>
         </tbody>
       </table>
     </div>

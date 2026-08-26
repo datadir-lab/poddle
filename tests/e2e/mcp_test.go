@@ -257,10 +257,25 @@ var mcpCases = []mcpCase{
 		// on first tool use, is exactly what this row proves or disproves.
 		inPod: "cd /workspace && opencode run 'say hi and stop' -m poddle/poddle-model --format json --auto",
 	},
+	{
+		name:          "pi",
+		harness:       "pi",
+		image:         "docker.io/library/node:22",
+		writeIdentity: writeOpenAIIdentity,
+		upstreamEnv:   "PODDLE_OPENAI_BASE_URL",
+		// pi always sends stream:true, so it needs the SSE model mock (same reason
+		// as opencode). pi has no built-in MCP: Provisions installs the pi-mcp-adapter
+		// extension and MCPWiring merges the mcpsrv remote entry into
+		// $PI_CODING_AGENT_DIR/mcp.json as a Setup step, before this runs. The adapter
+		// connects (initialize + tools-list) eagerly at startup, before the first
+		// model turn, so the MCP handshake is provable even if the model turn fails.
+		modelMock: mockOpenAIStreamUp,
+		inPod:     "cd /workspace && pi --provider poddle --model poddle-model -p 'say hi and stop'",
+	},
 }
 
 // TestE2E_MCP_Brokered proves each agent poddle drives (codex, claude-code,
-// opencode) reaches a remote MCP server through the broker secretlessly:
+// opencode, pi) reaches a remote MCP server through the broker secretlessly:
 // `poddle up` wires a connector-mcp connection into the agent's own config
 // (MCPWiring), and the broker swaps the pod's handle for the real (sentinel)
 // bearer token on the wire — the mock MCP server never sees the handle. Each
