@@ -173,9 +173,9 @@ server can be brokered too: `echo $MCP_TOKEN | poddle connect add search
 --connector mcp --url https://mcp.example.com/mcp` seals the token in the
 broker vault; add the connector to a pod and poddle registers the server with
 the agent through a revocable handle — the real token never enters the pod,
-and `poddle down` revokes it. Wired for **codex, claude-code, and opencode**
-today (pi and aider have no MCP client upstream, so there's nothing to wire);
-bearer-token / API-key servers only (OAuth 2.1 is a follow-up). See [Configuration](https://poddle.dev/docs/configuration#brokered-mcp)
+and `poddle down` revokes it. Wired for **codex, claude-code, opencode, and pi**
+today (pi via the bundled `pi-mcp-adapter` extension; aider has no MCP client, so
+there's nothing to wire); bearer-token / API-key servers only (OAuth 2.1 is a follow-up). See [Configuration](https://poddle.dev/docs/configuration#brokered-mcp)
 for the full walkthrough, including the egress note for explicit policies.
 
 ## Secret-safety
