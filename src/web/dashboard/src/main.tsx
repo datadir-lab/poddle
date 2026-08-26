@@ -579,6 +579,17 @@ function App() {
   // desktop widths the same button collapses the rail to an icon strip instead.
   const [navOpen, setNavOpen] = useState(false);
   const onMobile = () => typeof matchMedia !== "undefined" && matchMedia("(max-width: 880px)").matches;
+  // Track the viewport reactively so the rail toggle's accessible name reflects
+  // what a click actually does — collapse/expand the desktop rail, or open/close
+  // the mobile drawer — instead of a single ambiguous "Toggle sidebar".
+  const [mobile, setMobile] = useState(onMobile);
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const mq = matchMedia("(max-width: 880px)");
+    const sync = () => setMobile(mq.matches);
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const toggleRail = () => {
     if (onMobile()) { setNavOpen((o) => !o); return; }
     setCollapsed((c) => {
@@ -632,7 +643,9 @@ function App() {
       <button class="scrim" type="button" aria-label="Close navigation" tabIndex={navOpen ? 0 : -1} onClick={() => setNavOpen(false)} />
       <div class="content">
         <header class="topbar">
-          <button class="rail-toggle" type="button" aria-label="Toggle sidebar" aria-expanded={navOpen}
+          <button class="rail-toggle" type="button"
+            aria-label={mobile ? (navOpen ? "Close navigation" : "Open navigation") : (collapsed ? "Expand sidebar" : "Collapse sidebar")}
+            aria-expanded={mobile ? navOpen : !collapsed}
             onClick={toggleRail}>
             <Icon name="panel" size={18} />
           </button>

@@ -88,6 +88,26 @@ jobs:
           test -f dist/index.html
           grep -q "leak out of" dist/index.html
 
+  dashboard-e2e:
+    name: Dashboard UI e2e (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
+      # Drives the real `poddle dashboard` binary in headless chromium — no podman,
+      # so it belongs in PR CI (unlike the podman e2e suites). task e2e-ui builds
+      # bin/poddle (deps: build), installs chromium, and runs the Playwright specs.
+      - name: task e2e-ui
+        run: task e2e-ui
+
   commitlint:
     name: Commit messages (Conventional Commits)
     if: github.event_name == 'pull_request'
