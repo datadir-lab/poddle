@@ -49,15 +49,18 @@ func (h *Harness) Supports(vendor string) bool { return vendor == "google" }
 //     appends /v1beta/models/... itself, and that path rides through to upstream.
 //   - GEMINI_CLI_TRUST_WORKSPACE=true is REQUIRED, else gemini-cli refuses to run
 //     in the pod workdir ("not a trusted directory") and --yolo is downgraded.
-//   - GEMINI_MODEL sets the default model; GEMINI_SANDBOX=false because the pod is
-//     already the sandbox.
+//   - GEMINI_SANDBOX=false because the pod is already the sandbox.
+//
+// The model is deliberately NOT pinned here: gemini-cli falls back to its own
+// default, and leaving GEMINI_MODEL unset means a user's template `[env]
+// GEMINI_MODEL = "gemini-2.5-pro"` survives (harness Env is layered over template
+// env, so a value set here would clobber the user's choice).
 func (h *Harness) Env(brokerAddr, handle string) map[string]string {
 	return map[string]string{
 		"GEMINI_API_KEY":                handle,
 		"GEMINI_API_KEY_AUTH_MECHANISM": "bearer",
 		"GOOGLE_GEMINI_BASE_URL":        strings.TrimRight(brokerAddr, "/"),
 		"GEMINI_CLI_TRUST_WORKSPACE":    "true",
-		"GEMINI_MODEL":                  "gemini-2.5-flash",
 		"GEMINI_SANDBOX":                "false",
 	}
 }

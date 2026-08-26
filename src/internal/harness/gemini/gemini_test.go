@@ -44,8 +44,11 @@ func TestEnv_SecretlessBrokerWiring(t *testing.T) {
 	if env["GEMINI_SANDBOX"] != "false" {
 		t.Errorf("GEMINI_SANDBOX = %q, want false", env["GEMINI_SANDBOX"])
 	}
-	if env["GEMINI_MODEL"] == "" {
-		t.Error("GEMINI_MODEL should carry a default model")
+	// The model must NOT be pinned here — harness Env is layered over template env,
+	// so setting it would clobber a user's `[env] GEMINI_MODEL` override. gemini-cli
+	// falls back to its own default when unset.
+	if _, ok := env["GEMINI_MODEL"]; ok {
+		t.Errorf("GEMINI_MODEL must be left unset so a user template can override it; got %q", env["GEMINI_MODEL"])
 	}
 }
 

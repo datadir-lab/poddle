@@ -266,7 +266,9 @@ func mockGeminiUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Serve
 	t.Helper()
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		*auths = append(*auths, r.Header.Get("X-Goog-Api-Key"), r.Header.Get("Authorization"))
+		// Record both auth headers AND the raw query: the secretless assertion's
+		// poddle_ leak check then also catches a handle that ever rode ?key=.
+		*auths = append(*auths, r.Header.Get("X-Goog-Api-Key"), r.Header.Get("Authorization"), r.URL.RawQuery)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)

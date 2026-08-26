@@ -147,6 +147,12 @@ func TestGateway_GoogleAPIKeyInjectsXGoogApiKey(t *testing.T) {
 	if strings.Contains(rec.googkey, handle) || strings.Contains(rec.auth, handle) {
 		t.Errorf("handle leaked to upstream: auth=%q goog=%q", rec.auth, rec.googkey)
 	}
+	// Defense-in-depth: the handle must never ride the query string either (Google's
+	// legacy ?key= form). applyAuth only rewrites headers, so this guards against a
+	// future client putting the secret in the URL.
+	if strings.Contains(rec.query, handle) {
+		t.Errorf("handle leaked to upstream via query string: %q", rec.query)
+	}
 }
 
 func TestGateway_EndpointWithSecretInjectsBearer(t *testing.T) {
