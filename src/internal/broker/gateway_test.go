@@ -234,6 +234,18 @@ func TestGateway_PreservesMethodPathQueryBody(t *testing.T) {
 	}
 }
 
+func TestGateway_OAuthBearerInjectsAccessToken(t *testing.T) {
+	up, rec := upstreamRecording(t)
+	g, handle := gatewayWith(t, Credential{Mode: ModeOAuthBearer, Vendor: "mcp", Secret: "access-tok", BaseURL: up.URL})
+	gw := serve(t, g)
+	if code := do(t, gw, handle, http.MethodPost, "/mcp", nil); code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", code)
+	}
+	if rec.auth != "Bearer access-tok" {
+		t.Errorf("upstream Authorization = %q, want Bearer access-tok", rec.auth)
+	}
+}
+
 func TestGateway_InvalidHandle401(t *testing.T) {
 	up, rec := upstreamRecording(t)
 	g, _ := gatewayWith(t, Credential{Mode: ModeSubscription, Secret: "x", BaseURL: up.URL})

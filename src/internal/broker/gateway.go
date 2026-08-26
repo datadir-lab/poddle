@@ -220,6 +220,8 @@ func applyAuth(h http.Header, cred Credential) {
 		h.Set("X-Goog-Api-Key", cred.Secret)
 	case ModeSubscription:
 		h.Set("Authorization", "Bearer "+cred.Secret)
+	case ModeOAuthBearer:
+		h.Set("Authorization", "Bearer "+cred.Secret)
 	case ModeBasic:
 		// Secret is "user:token".
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(cred.Secret)))

@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/awnumar/memguard"
 )
@@ -17,14 +19,20 @@ var ErrNotFound = errors.New("broker: not found")
 // it to the same 401 as ErrNotFound; it stays distinct for logging.
 var ErrExpired = errors.New("broker: handle expired")
 
-// vaultEntry holds a credential's non-secret fields plus its secret sealed in a
-// memguard Enclave (encrypted + page-locked in memory). secret is nil when the
-// credential has no secret (e.g. an open local endpoint).
+// vaultEntry holds a credential's non-secret fields plus its secret(s) sealed in
+// memguard Enclaves (encrypted + page-locked in memory). secret is nil when the
+// credential has no secret (e.g. an open local endpoint); refresh is nil for
+// non-OAuth credentials.
 type vaultEntry struct {
-	mode    Mode
-	vendor  string
-	baseURL string
-	secret  *memguard.Enclave
+	mode          Mode
+	vendor        string
+	baseURL       string
+	secret        *memguard.Enclave
+	refresh       *memguard.Enclave // nil for non-OAuth
+	expiresAt     time.Time
+	tokenEndpoint string
+	clientID      string
+	clientSecret  string
 }
 
 // Vault holds credentials in memory, scoped by tenant. Secrets are sealed in
@@ -42,23 +50,53 @@ func NewVault() *Vault {
 
 func vaultKey(tenant, credID string) string { return tenant + "/" + credID }
 
+// sealEntry builds a vaultEntry from c, sealing c.Secret and (when non-empty)
+// c.RefreshToken into memguard enclaves and copying across the non-secret OAuth
+// metadata. Used by both Store and Replace so the sealing logic lives in one
+// place.
+func sealEntry(c Credential) vaultEntry {
+	e := vaultEntry{
+		mode: c.Mode, vendor: c.Vendor, baseURL: c.BaseURL,
+		expiresAt: c.ExpiresAt, tokenEndpoint: c.TokenEndpoint,
+		clientID: c.ClientID, clientSecret: c.ClientSecret,
+	}
+	if c.Secret != "" {
+		e.secret = memguard.NewEnclave([]byte(c.Secret))
+	}
+	if c.RefreshToken != "" {
+		e.refresh = memguard.NewEnclave([]byte(c.RefreshToken))
+	}
+	return e
+}
+
 // Store saves a credential for a tenant and returns a generated credID. The
-// secret is sealed into an enclave; the []byte copy taken here is wiped by
-// memguard once sealed. (The caller's original string persists until GC — an
-// unavoidable boundary, same as Get.)
+// secret (and, for OAuth, the refresh token) is sealed into an enclave; the
+// []byte copy taken here is wiped by memguard once sealed. (The caller's
+// original string persists until GC — an unavoidable boundary, same as Get.)
 func (v *Vault) Store(tenant string, c Credential) (string, error) {
 	id, err := randID()
 	if err != nil {
 		return "", err
 	}
-	e := vaultEntry{mode: c.Mode, vendor: c.Vendor, baseURL: c.BaseURL}
-	if c.Secret != "" {
-		e.secret = memguard.NewEnclave([]byte(c.Secret))
-	}
+	e := sealEntry(c)
 	v.mu.Lock()
 	v.creds[vaultKey(tenant, id)] = e
 	v.mu.Unlock()
 	return id, nil
+}
+
+// Replace swaps the sealed material for an existing credID in place, so a
+// handle bound to that credID keeps resolving — used to store a refreshed
+// OAuth token. It errors if credID is not present for tenant.
+func (v *Vault) Replace(tenant, credID string, c Credential) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	key := vaultKey(tenant, credID)
+	if _, ok := v.creds[key]; !ok {
+		return fmt.Errorf("vault: unknown credential %q", credID)
+	}
+	v.creds[key] = sealEntry(c)
+	return nil
 }
 
 // Get returns the credential for (tenant, credID); cross-tenant access fails
@@ -72,13 +110,25 @@ func (v *Vault) Get(tenant, credID string) (Credential, error) {
 	if !ok {
 		return Credential{}, ErrNotFound
 	}
-	c := Credential{Mode: e.mode, Vendor: e.vendor, BaseURL: e.baseURL}
+	c := Credential{
+		Mode: e.mode, Vendor: e.vendor, BaseURL: e.baseURL,
+		ExpiresAt: e.expiresAt, TokenEndpoint: e.tokenEndpoint,
+		ClientID: e.clientID, ClientSecret: e.clientSecret,
+	}
 	if e.secret != nil {
 		lb, err := e.secret.Open()
 		if err != nil {
 			return Credential{}, err
 		}
 		c.Secret = string(lb.Bytes()) // string(...) copies out before we destroy the buffer
+		lb.Destroy()
+	}
+	if e.refresh != nil {
+		lb, err := e.refresh.Open()
+		if err != nil {
+			return Credential{}, err
+		}
+		c.RefreshToken = string(lb.Bytes()) // string(...) copies out before we destroy the buffer
 		lb.Destroy()
 	}
 	return c, nil
