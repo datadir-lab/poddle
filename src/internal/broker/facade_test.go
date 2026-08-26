@@ -56,6 +56,27 @@ func TestBroker_AddrEmptyUntilServe(t *testing.T) {
 	}
 }
 
+// TestBroker_StoreClearsNeedsReauthFlag covers §T3: once a connection is
+// flagged needs-reauth (a prior refresh failed), the host resolving it by
+// re-storing a fresh credential for the same WriteBackKey clears the flag.
+func TestBroker_StoreClearsNeedsReauthFlag(t *testing.T) {
+	b := NewBroker()
+	// White-box: flag "gh" directly, standing in for a prior failed refresh
+	// (TestGateway_FlagsNeedsReauthOnFailure covers how the flag gets set).
+	b.server.gw.reauthMu.Lock()
+	b.server.gw.needsReauth["gh"] = true
+	b.server.gw.reauthMu.Unlock()
+
+	if _, err := b.Store(Credential{Mode: ModeOAuthBearer, WriteBackKey: "gh", Secret: "x", RefreshToken: "y"}); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	for _, k := range b.NeedsReauth() {
+		if k == "gh" {
+			t.Errorf("NeedsReauth() = %v, want it to no longer contain %q after Store", b.NeedsReauth(), "gh")
+		}
+	}
+}
+
 func TestBroker_ServeRoundTripStop(t *testing.T) {
 	up, rec := upstreamRecording(t)
 	b := NewBroker()

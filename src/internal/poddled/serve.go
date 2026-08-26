@@ -43,6 +43,13 @@ func EgressCADir() string {
 	return filepath.Join(filepath.Dir(AuditDBPath()), "egress-ca")
 }
 
+// OAuthMirrorDir is where the broker durably mirrors each connection's
+// rotated OAuth refresh token (one <connName>.json per connection), under the
+// state home, so a rotation survives a poddled restart.
+func OAuthMirrorDir() string {
+	return filepath.Join(stateHome(), "oauth-mirror")
+}
+
 // SocketPath is the control-socket path. PODDLE_SOCKET overrides it outright (so
 // a caller can isolate poddled's socket without repointing XDG_RUNTIME_DIR,
 // which rootless podman also relies on); otherwise it lives under
@@ -77,7 +84,9 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 		return fmt.Errorf("open audit log: %w", err)
 	}
 
-	d := New(broker.NewBroker(), store)
+	br := broker.NewBroker()
+	br.EnableOAuthWriteBack(OAuthMirrorDir())
+	d := New(br, store)
 	// A containerized broker sets PODDLE_LOOPBACK_HOST=host.containers.internal so
 	// a pod's loopback upstream (a local Postgres/Redis, or a local HTTP service)
 	// reaches the host, not the broker container's own empty loopback. Unset on a

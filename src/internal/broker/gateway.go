@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,6 +100,16 @@ type Gateway struct {
 	refresh  func(context.Context, Credential) (Credential, error)
 	refMu    sync.Mutex
 	refLocks map[string]*sync.Mutex
+
+	// persister durably mirrors a connection's rotated OAuth refresh token to
+	// disk (nil = no write-back; wired via SetOAuthPersister/Broker.EnableOAuthWriteBack).
+	// reauthMu guards needsReauth, the set of WriteBackKeys whose most recent
+	// refresh attempt failed — surfaced via NeedsReauth() so operators know which
+	// connections need `connect reauth`, and cleared once the host re-stores a
+	// fresh credential for that key (Broker.Store).
+	persister   OAuthPersister
+	reauthMu    sync.Mutex
+	needsReauth map[string]bool
 }
 
 // NewGateway returns a gateway backed by the handle registry, redacting egress
@@ -106,9 +118,10 @@ type Gateway struct {
 // the new access/refresh token and expiry (all other fields preserved).
 func NewGateway(h *Handles) *Gateway {
 	g := &Gateway{
-		handles:  h,
-		redactor: NewRedactor("redact"),
-		refLocks: map[string]*sync.Mutex{},
+		handles:     h,
+		redactor:    NewRedactor("redact"),
+		refLocks:    map[string]*sync.Mutex{},
+		needsReauth: map[string]bool{},
 	}
 	g.refresh = func(ctx context.Context, cred Credential) (Credential, error) {
 		tok, err := oauth.Refresh(ctx, http.DefaultClient, cred.TokenEndpoint, cred.RefreshToken, cred.ClientID, cred.ClientSecret)
@@ -140,6 +153,36 @@ func (g *Gateway) SetPolicyChecker(pc PolicyChecker) { g.policy = pc }
 // 127.0.0.1) dial loopbackHost instead — the host route from a containerized
 // broker (host.containers.internal). Empty (the default) disables the rewrite.
 func (g *Gateway) SetLoopbackHost(h string) { g.loopbackHost = h }
+
+// SetOAuthPersister wires the sink that durably mirrors a connection's
+// rotated OAuth refresh token to disk, so it survives a poddled restart. Nil
+// (the default) disables write-back — a refresh still rotates the in-memory
+// credential, it just isn't mirrored.
+func (g *Gateway) SetOAuthPersister(p OAuthPersister) { g.persister = p }
+
+// NeedsReauth returns the WriteBackKeys of connections whose most recent
+// OAuth refresh attempt failed, sorted for stable output. A key clears once
+// the host re-stores a fresh credential for it (Broker.Store).
+func (g *Gateway) NeedsReauth() []string {
+	g.reauthMu.Lock()
+	defer g.reauthMu.Unlock()
+	keys := make([]string, 0, len(g.needsReauth))
+	for k, flagged := range g.needsReauth {
+		if flagged {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// clearReauth clears the needs-reauth flag for key, if any is set. Called
+// when the host re-stores a credential for key — a successful reauth.
+func (g *Gateway) clearReauth(key string) {
+	g.reauthMu.Lock()
+	defer g.reauthMu.Unlock()
+	delete(g.needsReauth, key)
+}
 
 // dialURL returns the URL the gateway should dial for upstream up: up itself,
 // or a copy with a loopback host rewritten to g.loopbackHost (scheme, port, and
@@ -261,6 +304,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // single token request. Returns the credential to inject, or an error (which the
 // caller maps to a fail-closed 401). Non-OAuth credentials, and OAuth ones with
 // no known expiry or still comfortably valid, are returned untouched.
+//
+// Two side effects ride along with a refresh, both keyed off cred.WriteBackKey
+// (empty means "not a write-back-eligible connection" — neither fires):
+//   - On refresh failure, the connection is flagged in needsReauth so operators
+//     (and `connect reauth`) see it needs attention.
+//   - On success, if the refresh token actually rotated, the new material is
+//     mirrored to disk via g.persister (best-effort — a persist failure is
+//     logged secret-free and does not fail the request; the in-memory vault
+//     already has the rotated credential either way).
 func (g *Gateway) refreshIfStale(ctx context.Context, handle, credID string, cred Credential) (Credential, error) {
 	if cred.Mode != ModeOAuthBearer || cred.ExpiresAt.IsZero() || time.Now().Add(refreshSkew).Before(cred.ExpiresAt) {
 		return cred, nil
@@ -276,10 +328,29 @@ func (g *Gateway) refreshIfStale(ctx context.Context, handle, credID string, cre
 	}
 	updated, err := g.refresh(ctx, cred)
 	if err != nil {
+		if cred.WriteBackKey != "" {
+			g.reauthMu.Lock()
+			g.needsReauth[cred.WriteBackKey] = true
+			g.reauthMu.Unlock()
+		}
 		return Credential{}, err
 	}
 	if err := g.handles.ReplaceCred(handle, updated); err != nil {
 		return Credential{}, err
+	}
+	if updated.RefreshToken != cred.RefreshToken && cred.WriteBackKey != "" && g.persister != nil {
+		m := connMirror{
+			AccessToken:   updated.Secret,
+			RefreshToken:  updated.RefreshToken,
+			TokenEndpoint: updated.TokenEndpoint,
+			ClientID:      updated.ClientID,
+			ClientSecret:  updated.ClientSecret,
+			ExpiresAt:     updated.ExpiresAt,
+			RotatedAt:     time.Now(),
+		}
+		if err := g.persister.Persist(cred.WriteBackKey, m); err != nil {
+			log.Printf("broker: oauth mirror persist failed for %q: %v", cred.WriteBackKey, err)
+		}
 	}
 	return updated, nil
 }

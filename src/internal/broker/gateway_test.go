@@ -290,6 +290,124 @@ func TestGateway_RefreshesStaleOAuthToken(t *testing.T) {
 	}
 }
 
+// persistCall records one Persist(connName, mirror) invocation.
+type persistCall struct {
+	conn string
+	m    connMirror
+}
+
+// fakePersister is an OAuthPersister test double that records every Persist
+// call instead of touching disk; safe for concurrent use.
+type fakePersister struct {
+	mu    sync.Mutex
+	calls []persistCall
+}
+
+func (p *fakePersister) Persist(connName string, m connMirror) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls = append(p.calls, persistCall{conn: connName, m: m})
+	return nil
+}
+
+func (p *fakePersister) all() []persistCall {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]persistCall(nil), p.calls...)
+}
+
+// TestGateway_PersistsOnRotation covers §T3: when a refresh actually rotates
+// the refresh token, the new material is mirrored via the wired persister,
+// keyed by the credential's WriteBackKey (the connection name).
+func TestGateway_PersistsOnRotation(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused",
+		WriteBackKey: "gh"}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		c.Secret = "fresh"
+		c.RefreshToken = "r2" // rotated
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+	fp := &fakePersister{}
+	g.SetOAuthPersister(fp)
+	gw := serve(t, g)
+
+	if code := do(t, gw, handle, http.MethodPost, "/mcp", nil); code != http.StatusOK {
+		t.Fatalf("status %d, want 200", code)
+	}
+	calls := fp.all()
+	if len(calls) != 1 {
+		t.Fatalf("persist called %d times, want 1: %+v", len(calls), calls)
+	}
+	if calls[0].conn != "gh" {
+		t.Errorf("Persist connName = %q, want %q", calls[0].conn, "gh")
+	}
+	if calls[0].m.RefreshToken != "r2" {
+		t.Errorf("persisted RefreshToken = %q, want %q (rotated)", calls[0].m.RefreshToken, "r2")
+	}
+}
+
+// TestGateway_NoPersistWithoutRotation covers §T3: a refresh that mints the
+// same refresh token (an access-token-only rotation, common for some
+// providers) must NOT trigger a write-back — nothing changed on disk.
+func TestGateway_NoPersistWithoutRotation(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused",
+		WriteBackKey: "gh"}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		c.Secret = "fresh"
+		c.ExpiresAt = time.Now().Add(time.Hour) // RefreshToken left as "r1" — unrotated
+		return c, nil
+	}
+	fp := &fakePersister{}
+	g.SetOAuthPersister(fp)
+	gw := serve(t, g)
+
+	if code := do(t, gw, handle, http.MethodPost, "/mcp", nil); code != http.StatusOK {
+		t.Fatalf("status %d, want 200", code)
+	}
+	if calls := fp.all(); len(calls) != 0 {
+		t.Errorf("persist called %d times, want 0 (no rotation): %+v", len(calls), calls)
+	}
+}
+
+// TestGateway_FlagsNeedsReauthOnFailure covers §T3: a refresh failure flags
+// the connection in NeedsReauth(), and the request still fails closed with the
+// bare 401 (unchanged from TestGateway_RefreshFailureIsFailClosed401).
+func TestGateway_FlagsNeedsReauthOnFailure(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "dead",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, WriteBackKey: "gh"}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(context.Context, Credential) (Credential, error) {
+		return Credential{}, errors.New("refresh failed")
+	}
+	gw := serve(t, g)
+
+	resp := doResp(t, gw, handle, http.MethodPost, "/mcp")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", resp.StatusCode)
+	}
+	if resp.Header.Get("WWW-Authenticate") != "" {
+		t.Error("fail-closed 401 must NOT carry WWW-Authenticate (don't trigger the agent's own OAuth)")
+	}
+	got := g.NeedsReauth()
+	found := false
+	for _, k := range got {
+		if k == "gh" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("NeedsReauth() = %v, want it to contain %q", got, "gh")
+	}
+}
+
 func TestGateway_RefreshFailureIsFailClosed401(t *testing.T) {
 	up, _ := upstreamRecording(t)
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "dead",
