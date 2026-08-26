@@ -65,3 +65,39 @@ func TestBuildRegistries_IncludeOpencode(t *testing.T) {
 		t.Error("opencode harness not registered")
 	}
 }
+
+// TestBuildRegistries_MCPWiringMatrix pins the brokered-MCP support status of every
+// registered harness in one place. codex, claude-code, and opencode have an MCP
+// client and are wired — MCPWiring returns a Setup command carrying the broker MCP
+// URL. pi and aider have NO upstream MCP client (verified 2026-08-26: pi's own docs
+// say it "intentionally does not include built-in MCP"; aider has no --mcp-server in
+// any released version, only an open unmerged proposal), so their MCPWiring is
+// deliberately nil. Asserting the whole matrix here makes the support explicit and
+// catches an accidental wiring (or a regression that drops one) for any harness.
+func TestBuildRegistries_MCPWiringMatrix(t *testing.T) {
+	_, harnesses := buildRegistries()
+	const agentURL = "http://10.0.0.5:9000/mcp"
+	for _, name := range []string{"codex", "claude-code", "opencode"} {
+		h, ok := harnesses.Get(name)
+		if !ok {
+			t.Fatalf("harness %q not registered", name)
+		}
+		got := h.MCPWiring("srv", agentURL, "PODDLE_MCP_SRV")
+		if len(got) == 0 {
+			t.Errorf("%s should wire brokered MCP (non-nil Setup)", name)
+			continue
+		}
+		if !strings.Contains(strings.Join(got, "\n"), agentURL) {
+			t.Errorf("%s MCPWiring should reference the broker MCP url %q: %v", name, agentURL, got)
+		}
+	}
+	for _, name := range []string{"pi", "aider"} {
+		h, ok := harnesses.Get(name)
+		if !ok {
+			t.Fatalf("harness %q not registered", name)
+		}
+		if got := h.MCPWiring("srv", agentURL, "PODDLE_MCP_SRV"); got != nil {
+			t.Errorf("%s has no upstream MCP client — MCPWiring must be nil, got %v", name, got)
+		}
+	}
+}
