@@ -92,7 +92,7 @@ func TestApplyRedisDatastore(t *testing.T) {
 	def := connector.Definition{Transport: "l4-redis"}
 
 	var spec sandbox.Spec
-	if err := applyRedisDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:16379", &spec); err != nil {
+	if err := applyRedisDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:16379", nil, &spec); err != nil {
 		t.Fatalf("applyRedisDatastore: %v", err)
 	}
 
@@ -124,7 +124,7 @@ func TestApplyPostgresDatastore(t *testing.T) {
 	def := connector.Definition{Transport: "l4-postgres"}
 
 	var spec sandbox.Spec
-	if err := applyPostgresDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:15432", &spec); err != nil {
+	if err := applyPostgresDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:15432", nil, &spec); err != nil {
 		t.Fatalf("applyPostgresDatastore: %v", err)
 	}
 
@@ -151,7 +151,7 @@ func TestApplyPostgresDatastore_NoUserNoDatabase(t *testing.T) {
 	def := connector.Definition{Transport: "l4-postgres"}
 
 	var spec sandbox.Spec
-	if err := applyPostgresDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:15432", &spec); err != nil {
+	if err := applyPostgresDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:15432", nil, &spec); err != nil {
 		t.Fatalf("applyPostgresDatastore: %v", err)
 	}
 	if _, ok := spec.Env["PGUSER"]; ok {
@@ -169,7 +169,7 @@ func TestApplyRedisDatastore_MissingTokenErrors(t *testing.T) {
 	def := connector.Definition{Transport: "l4-redis"}
 
 	var spec sandbox.Spec
-	if err := applyRedisDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:16379", &spec); err == nil {
+	if err := applyRedisDatastore(stubBroker{}, conn, def, "mypod", "10.0.0.1:16379", nil, &spec); err == nil {
 		t.Error("expected an error when the connection token is missing")
 	}
 }

@@ -125,18 +125,36 @@ func brokerMode(m string) broker.Mode {
 	}
 }
 
-// Credential builds the broker credential for a connection using its definition.
-// For basic auth the secret is "user:token"; otherwise it's the token.
-func Credential(conn Connection, def Definition) (broker.Credential, error) {
+// Credential builds the broker credential for a connection using its
+// definition. For basic auth the secret is "user:token"; otherwise it's the
+// token. When oauth is non-nil (the connection has persisted OAuth material —
+// see Store.LoadOAuth), it returns a ModeOAuthBearer credential built from
+// that material instead of reading the static token file.
+func Credential(conn Connection, def Definition, oauth *OAuthMaterial) (broker.Credential, error) {
+	baseURL := conn.BaseURL // a connection's URL overrides the definition default
+	if baseURL == "" {
+		baseURL = def.BaseURL
+	}
+
+	if oauth != nil {
+		return broker.Credential{
+			Mode:          broker.ModeOAuthBearer,
+			Vendor:        conn.Connector,
+			Secret:        oauth.AccessToken,
+			BaseURL:       baseURL,
+			RefreshToken:  oauth.RefreshToken,
+			ExpiresAt:     oauth.ExpiresAt,
+			TokenEndpoint: oauth.TokenEndpoint,
+			ClientID:      oauth.ClientID,
+			ClientSecret:  oauth.ClientSecret,
+		}, nil
+	}
+
 	b, err := os.ReadFile(conn.tokenPath())
 	if err != nil {
 		return broker.Credential{}, fmt.Errorf("read %s token: %w", conn.Connector, err)
 	}
 	token := strings.TrimSpace(string(b))
-	baseURL := conn.BaseURL // a connection's URL overrides the definition default
-	if baseURL == "" {
-		baseURL = def.BaseURL
-	}
 
 	// L4 datastores: the credential carries a DSN with the real user:password so
 	// the L4 broker can authenticate to the upstream. The pod never sees it.

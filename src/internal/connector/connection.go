@@ -1,8 +1,10 @@
 package connector
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -19,6 +21,25 @@ type Connection struct {
 }
 
 func (c Connection) tokenPath() string { return filepath.Join(c.dir, c.Connector+"-token") }
+
+// oauthPath is where a connection's OAuth material (if any) is sealed,
+// alongside its meta.toml.
+func (c Connection) oauthPath() string { return filepath.Join(c.dir, "oauth.json") }
+
+// OAuthMaterial is the OAuth 2.1 token set for a connection that authenticates
+// via an OAuth flow (e.g. a remote MCP server) instead of a static bearer
+// token. The gateway uses RefreshToken/TokenEndpoint/ClientID(+Secret) to
+// refresh AccessToken before ExpiresAt.
+type OAuthMaterial struct {
+	AccessToken   string `json:"access"`
+	RefreshToken  string `json:"refresh"`
+	TokenEndpoint string `json:"token_endpoint"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	Scope         string `json:"scope"`
+
+	ExpiresAt time.Time `json:"expires_at"`
+}
 
 type connMeta struct {
 	Connector string `toml:"connector"`
@@ -100,4 +121,34 @@ func (s *Store) List() ([]Connection, error) {
 // Remove deletes a connection and its token.
 func (s *Store) Remove(name string) error {
 	return os.RemoveAll(filepath.Join(s.base, name))
+}
+
+// SaveOAuth persists a connection's OAuth material as a sealed oauth.json
+// (0600) beside its meta.toml.
+func (s *Store) SaveOAuth(name string, m OAuthMaterial) error {
+	conn := Connection{Name: name, dir: filepath.Join(s.base, name)}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(conn.oauthPath(), b, 0o600)
+}
+
+// LoadOAuth loads a connection's OAuth material. ok is false (with a nil
+// error) when the connection has no oauth.json — i.e. it authenticates with a
+// static token instead.
+func (s *Store) LoadOAuth(name string) (OAuthMaterial, bool, error) {
+	conn := Connection{Name: name, dir: filepath.Join(s.base, name)}
+	b, err := os.ReadFile(conn.oauthPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return OAuthMaterial{}, false, nil
+		}
+		return OAuthMaterial{}, false, err
+	}
+	var m OAuthMaterial
+	if err := json.Unmarshal(b, &m); err != nil {
+		return OAuthMaterial{}, false, err
+	}
+	return m, true, nil
 }

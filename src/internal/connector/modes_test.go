@@ -13,7 +13,7 @@ func TestCredential_MapsAllModes(t *testing.T) {
 	}
 	for _, mode := range []string{"bearer", "basic", "api-key", "endpoint", "some-custom-mode"} {
 		def := Definition{Mode: mode, BaseURL: "https://example.test"}
-		cred, err := Credential(conn, def)
+		cred, err := Credential(conn, def, nil)
 		if err != nil {
 			t.Errorf("Credential(mode=%q): %v", mode, err)
 			continue
