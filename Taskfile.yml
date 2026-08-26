@@ -158,6 +158,12 @@ tasks:
     cmds:
       - go test -tags e2e -v -run TestE2E_MCP ./tests/e2e/...
 
+  e2e-oauth-mcp:
+    desc: OAuth-MCP e2e (needs podman) — codex reaches an OAuth-protected MCP server secretlessly through the broker, incl. token refresh
+    deps: [_docker-mirror]
+    cmds:
+      - go test -tags e2e -v -run TestE2E_OAuthMCP ./tests/e2e/...
+
   vet:
     desc: Run go vet
     cmds:
