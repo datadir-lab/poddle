@@ -83,7 +83,7 @@ func addViaOAuth(cmd *cobra.Command, a *app.App, name, connName, url, user, clie
 	m, err := oauth.Discover(ctx, http.DefaultClient, url)
 	if err != nil {
 		if errors.Is(err, oauth.ErrNoOAuth) {
-			return fmt.Errorf("no token provided (set --token / pipe it in)")
+			return fmt.Errorf("no token - pass --token or pipe it on stdin")
 		}
 		return fmt.Errorf("oauth discovery: %w", err)
 	}

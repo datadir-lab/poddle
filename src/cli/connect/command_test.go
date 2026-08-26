@@ -2,11 +2,14 @@ package connect
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
@@ -69,6 +72,9 @@ func TestConnect_LsAndRm(t *testing.T) {
 // /token endpoint. Mirrors oauth.TestDiscover_ChainAndErrNoOAuth's shape.
 func newMockOAuthMCP(t *testing.T) (mcpURL string, asURL string) {
 	t.Helper()
+	var mu sync.Mutex
+	var wantChallenge string // code_challenge captured from /authorize, checked against /token's code_verifier
+
 	var as *httptest.Server
 	as = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -85,6 +91,9 @@ func newMockOAuthMCP(t *testing.T) (mcpURL string, asURL string) {
 			})
 		case "/authorize":
 			q := r.URL.Query()
+			mu.Lock()
+			wantChallenge = q.Get("code_challenge")
+			mu.Unlock()
 			dest := q.Get("redirect_uri") + "?" + url.Values{
 				"code":  {"THECODE"},
 				"state": {q.Get("state")},
@@ -92,7 +101,14 @@ func newMockOAuthMCP(t *testing.T) (mcpURL string, asURL string) {
 			http.Redirect(w, r, dest, http.StatusFound)
 		case "/token":
 			_ = r.ParseForm()
-			if r.FormValue("grant_type") != "authorization_code" || r.FormValue("code") != "THECODE" || r.FormValue("code_verifier") == "" {
+			verifier := r.FormValue("code_verifier")
+			mu.Lock()
+			challenge := wantChallenge
+			mu.Unlock()
+			sum := sha256.Sum256([]byte(verifier))
+			gotChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
+			if r.FormValue("grant_type") != "authorization_code" || r.FormValue("code") != "THECODE" ||
+				verifier == "" || challenge == "" || gotChallenge != challenge {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
