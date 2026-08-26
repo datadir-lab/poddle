@@ -1,11 +1,9 @@
 #!/bin/sh
 # Guardrail: keep the README + marketing-site visual assets from going stale.
-# Regenerate the deterministic demo SVG and compare; for the browser-rendered
-# dashboard screenshot (not byte-stable across machines) require that it was
-# refreshed whenever the dashboard UI changed. Fix locally with: task assets
-# Usage: sh scripts/check-assets.sh [base-ref]   (base-ref defaults to origin/main)
+# Regenerate the deterministic demo SVG and byte-compare. (The browser-rendered
+# dashboard screenshot is verified separately, by a re-render + compare in the
+# dashboard-e2e CI job.) Fix locally with: task assets
 set -eu
-base="${1:-origin/main}"
 fail=0
 
 # --- Terminal demo SVG: pure Node output, so regenerate and byte-compare. ---
@@ -19,15 +17,11 @@ if ! cmp -s .github/assets/demo.svg src/web/site/public/demo.svg; then
   fail=1
 fi
 
-# --- Dashboard screenshot: browser-rendered (font AA differs across machines),
-#     so guard by change-coupling: if the dashboard UI changed, the shot must too. ---
-touched() { ! git diff --quiet "$base"...HEAD -- "$@"; }
-if touched src/web/dashboard/src; then
-  if ! touched .github/assets/dashboard-audit.png; then
-    echo "::error file=.github/assets/dashboard-audit.png::the dashboard changed but its audit screenshot was not refreshed — run 'task assets' and commit dashboard-audit.png."
-    fail=1
-  fi
-fi
+# --- Dashboard screenshot: verified by an actual re-render + byte-compare, not by
+#     change-coupling — the dashboard-e2e CI job (which already builds poddle and
+#     installs chromium) re-renders the shot and fails if the committed PNG is stale.
+#     That correctly passes a no-op/invisible dashboard change (identical re-render)
+#     while still catching a real visual change whose screenshot wasn't refreshed. ---
 
 if [ "$fail" -eq 0 ]; then echo "README + site assets are up to date."; fi
 exit "$fail"

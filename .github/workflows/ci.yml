@@ -88,6 +88,40 @@ jobs:
           test -f dist/index.html
           grep -q "leak out of" dist/index.html
 
+  dashboard-e2e:
+    name: Dashboard UI e2e (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
+      # Drives the real `poddle dashboard` binary in headless chromium — no podman,
+      # so it belongs in PR CI (unlike the podman e2e suites). task e2e-ui builds
+      # bin/poddle (deps: build), installs chromium, and runs the Playwright specs.
+      - name: task e2e-ui
+        run: task e2e-ui
+      # Verify the committed audit screenshot still matches the current dashboard.
+      # The render is deterministic per-platform but Linux/Windows chromium anti-alias
+      # text slightly differently, so compare PERCEPTUALLY (pixelmatch, tolerant of AA
+      # noise) rather than byte-for-byte: an invisible change stays well under the
+      # threshold and passes; a real visual change blows past it and fails.
+      - name: Verify the dashboard screenshot (perceptual)
+        working-directory: src/web/dashboard
+        run: |
+          cp ../../../.github/assets/dashboard-audit.png /tmp/committed-shot.png
+          node tests/screenshot.mjs
+          node tests/compare-shot.mjs /tmp/committed-shot.png ../../../.github/assets/dashboard-audit.png
+      - name: Restore the committed screenshot
+        if: always()
+        run: git checkout -- '*dashboard-audit.png' || true
+
   commitlint:
     name: Commit messages (Conventional Commits)
     if: github.event_name == 'pull_request'
