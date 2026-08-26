@@ -72,14 +72,21 @@ func (p *stateDirPersister) Persist(connName string, m connMirror) error {
 }
 
 // validConnName rejects any connName that is not a bare filename component:
-// no path separators (either OS's), and no "..". filepath.Base normalizes
-// both "/" and "\" as separators on every platform, so comparing against
-// the original catches a traversal attempt regardless of the host OS.
+// no path separators, and no "..". filepath.Base only treats "/" as a
+// separator on Linux — poddle's CI and deployment OS — so a bare
+// filepath.Base check lets a "\"-containing connName like "a\b" slip
+// through there. We explicitly reject both "/" and "\" via
+// strings.ContainsAny on every platform, in addition to the
+// filepath.Base check, so the guard doesn't depend on the host OS's
+// separator convention.
 func validConnName(connName string) error {
 	if connName == "" {
 		return errors.New("oauthpersist: empty connection name")
 	}
 	if connName == "." || connName == ".." || strings.Contains(connName, "..") {
+		return errors.New("oauthpersist: invalid connection name")
+	}
+	if strings.ContainsAny(connName, "/\\") {
 		return errors.New("oauthpersist: invalid connection name")
 	}
 	if filepath.Base(connName) != connName {
