@@ -100,8 +100,15 @@ func (h *Harness) EgressHosts() []string {
 // merged into it (see authSettingsMerge), not clobbered.
 func (h *Harness) ConfigDir() string { return "/root/.gemini" }
 
-// MCPWiring returns nil: brokered-MCP wiring for gemini-cli is a deferred
-// follow-up. Unlike aider (which has no MCP client at all), gemini-cli DOES
-// support MCP servers via settings.json `mcpServers` — wiring it is future work,
-// not a permanent gap.
-func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string { return nil }
+// MCPWiring registers a brokered MCP server with gemini-cli by merging an entry
+// into $HOME/.gemini/settings.json (a node merge, so it composes with the Provisions
+// auth-select and preserves any user mcpServers). The server is a Streamable-HTTP
+// endpoint (`httpUrl`, which the broker relays); the handle rides the Authorization
+// header via ${handleEnv}, which gemini-cli expands at load — so it never lands on
+// disk. gemini-cli discovers MCP tools EAGERLY at startup, so a `poddle task` reaches
+// the brokered server without a tool-driving turn. Verified against gemini-cli 0.57.0.
+func (h *Harness) MCPWiring(name, agentURL, handleEnv string) []string {
+	entry := `{"httpUrl":"` + agentURL + `","headers":{"Authorization":"Bearer ${` + handleEnv + `}"}}`
+	js := `const f=process.env.HOME+"/.gemini/settings.json",fs=require("fs");let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){};(c.mcpServers=c.mcpServers||{})["` + name + `"]=` + entry + `;fs.writeFileSync(f,JSON.stringify(c))`
+	return []string{`mkdir -p "$HOME/.gemini" && node -e ` + shellSingleQuote(js)}
+}

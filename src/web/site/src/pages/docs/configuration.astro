@@ -194,7 +194,7 @@ const opencodeMcpExample = `{
           <tr><td>claude-code</td><td data-label="Info">Wired today - <code>claude mcp add</code> registers the brokered server, scoped to the user.</td></tr>
           <tr><td>opencode</td><td data-label="Info">Wired today - the brokered server is merged into the <code>OPENCODE_CONFIG</code> layer.</td></tr>
           <tr><td>pi</td><td data-label="Info">Wired today - pi has no built-in MCP, so poddle installs the third-party <code>pi-mcp-adapter</code> extension and registers the brokered server in <code>mcp.json</code>.</td></tr>
-          <tr><td>gemini</td><td data-label="Info">Follow-up - gemini-cli supports MCP servers (via <code>settings.json</code>), but poddle's brokered wiring for it is not done yet.</td></tr>
+          <tr><td>gemini</td><td data-label="Info">Wired today - poddle merges the brokered server (an <code>httpUrl</code> entry) into <code>~/.gemini/settings.json</code>; the handle rides the auth header as an env-var reference, expanded at load so it never lands on disk.</td></tr>
           <tr><td>aider</td><td data-label="Info">Not supported - aider has no MCP client (no <code>--mcp-server</code> in any release; MCP is an open, unmerged proposal). Nothing for poddle to wire.</td></tr>
         </tbody>
       </table>
