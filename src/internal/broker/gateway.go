@@ -177,9 +177,14 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handle := handleFromAuth(r.Header.Get("Authorization"))
 	credID, cred, err := g.handles.Resolve(handle)
 	if err != nil {
-		// Fail closed with a bare 401: no WWW-Authenticate. The broker is not an
-		// authorization server, so challenging would make the pod's MCP client
-		// start its own OAuth handshake against us.
+		// Challenge with WWW-Authenticate: Basic. Git doesn't send Basic
+		// credentials preemptively — it probes unauthenticated first and only
+		// retries with the pod's handle as the Basic username after seeing this
+		// challenge, so it must stay present or git-over-broker breaks. A Basic
+		// challenge is safe here: it never triggers an MCP client's OAuth
+		// handshake (that requires a Bearer resource_metadata= challenge), so
+		// this can't turn into the broker impersonating an authorization server.
+		w.Header().Set("WWW-Authenticate", `Basic realm="poddle"`)
 		http.Error(w, "invalid or revoked handle", http.StatusUnauthorized)
 		return
 	}

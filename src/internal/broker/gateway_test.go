@@ -319,6 +319,26 @@ func TestGateway_InvalidHandle401(t *testing.T) {
 	}
 }
 
+// TestGateway_InvalidHandleChallengesBasic guards against a regression where an
+// unresolvable/absent handle's 401 lost its WWW-Authenticate: Basic challenge.
+// Git probes unauthenticated first and only retries with the pod's handle as
+// the Basic username after seeing this challenge, so it must always be
+// present on this path — unlike the OAuth refresh-failure 401, which must
+// stay bare (see TestGateway_RefreshFailureIsFailClosed401).
+func TestGateway_InvalidHandleChallengesBasic(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	g, _ := gatewayWith(t, Credential{Mode: ModeSubscription, Secret: "x", BaseURL: up.URL})
+	gw := serve(t, g)
+
+	resp := doResp(t, gw, "poddle_bogus", http.MethodGet, "/x")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+	if got, want := resp.Header.Get("WWW-Authenticate"), `Basic realm="poddle"`; got != want {
+		t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+	}
+}
+
 func TestGateway_RevokedHandle401(t *testing.T) {
 	up, _ := upstreamRecording(t)
 	v := NewVault()
