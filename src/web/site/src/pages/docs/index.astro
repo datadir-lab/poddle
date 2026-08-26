@@ -61,7 +61,7 @@ import Callout from '../../components/Callout.astro';
 <span class="out">→ my-sandbox up (weak) · broker attached · dropping you in…</span>
 <span class="cmd">poddle down my-sandbox</span></code></pre>
     </div>
-    <p class="doc-p" style="margin-top:1.2rem">Other providers: <code>openai</code> (authenticate with <code>OPENAI_API_KEY</code>). Other harnesses: <code>codex</code>, <code>aider</code>, <code>pi</code>, <code>opencode</code>.</p>
+    <p class="doc-p" style="margin-top:1.2rem">Other providers: <code>openai</code> (authenticate with <code>OPENAI_API_KEY</code>), <code>google</code> (authenticate with <code>GEMINI_API_KEY</code>). Other harnesses: <code>codex</code>, <code>aider</code>, <code>pi</code>, <code>opencode</code>, <code>gemini</code>.</p>
     <Callout type="note" title="Local or remote, same commands">
       <p>Set <code>PODDLE_HOST</code> to <code>ssh://…</code> to run the same commands against a remote host; leave it empty for local Podman. The broker runs where you invoke poddle, so your keys never travel to the remote host either.</p>
     </Callout>

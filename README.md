@@ -164,7 +164,9 @@ wiring rides a separate side channel (codex via `-c` overrides, opencode via a
 dedicated config layer), so your full native config — settings, plugins, MCP
 servers — stays yours. claude-code is a little different: poddle merges its
 onboarding flag into `~/.claude.json` instead of overwriting it, so your
-user-scope `mcpServers` survive a `poddle task`. aider needs no host seed at
+user-scope `mcpServers` survive a `poddle task`; gemini works the same way —
+poddle merges its auth-path selection into `~/.gemini/settings.json`, so your
+other settings and `mcpServers` stay intact. aider needs no host seed at
 all — its config is a project file (`.aider.conf.yml`) checked into the repo,
 and `/workspace` already persists.
 
@@ -176,7 +178,8 @@ broker vault; add the connector to a pod and poddle registers the server with
 the agent through a revocable handle — the real token never enters the pod,
 and `poddle down` revokes it. Wired for **codex, claude-code, opencode, and pi**
 today (pi via the third-party `pi-mcp-adapter` extension; aider has no MCP client, so
-there's nothing to wire); bearer-token / API-key servers only (OAuth 2.1 is a follow-up). See [Configuration](https://poddle.dev/docs/configuration#brokered-mcp)
+there's nothing to wire; gemini supports MCP but its wiring is a follow-up);
+bearer-token / API-key servers only (OAuth 2.1 is a follow-up). See [Configuration](https://poddle.dev/docs/configuration#brokered-mcp)
 for the full walkthrough, including the egress note for explicit policies.
 
 ## Secret-safety
