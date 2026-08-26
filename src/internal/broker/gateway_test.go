@@ -1,11 +1,15 @@
 package broker
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -77,6 +81,26 @@ func do(t *testing.T, gw *httptest.Server, handleVal, method, target string, bod
 	_, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	return resp.StatusCode
+}
+
+// doResp sends a request through the gateway (handle in Authorization if
+// non-empty) and returns the raw *http.Response so callers can assert on
+// headers/status; the body is closed on test cleanup.
+func doResp(t *testing.T, gw *httptest.Server, handleVal, method, target string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, gw.URL+target, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if handleVal != "" {
+		req.Header.Set("Authorization", "Bearer "+handleVal)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
 }
 
 func TestGateway_SubscriptionInjectsBearer(t *testing.T) {
@@ -234,6 +258,76 @@ func TestGateway_PreservesMethodPathQueryBody(t *testing.T) {
 	}
 }
 
+func TestGateway_OAuthBearerInjectsAccessToken(t *testing.T) {
+	up, rec := upstreamRecording(t)
+	g, handle := gatewayWith(t, Credential{Mode: ModeOAuthBearer, Vendor: "mcp", Secret: "access-tok", BaseURL: up.URL})
+	gw := serve(t, g)
+	if code := do(t, gw, handle, http.MethodPost, "/mcp", nil); code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", code)
+	}
+	if rec.auth != "Bearer access-tok" {
+		t.Errorf("upstream Authorization = %q, want Bearer access-tok", rec.auth)
+	}
+}
+
+func TestGateway_RefreshesStaleOAuthToken(t *testing.T) {
+	up, rec := upstreamRecording(t)
+	// expired access token + a refresh func that mints a fresh one.
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused"}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		c.Secret = "fresh"
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+	gw := serve(t, g)
+	if code := do(t, gw, handle, http.MethodPost, "/mcp", nil); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if rec.auth != "Bearer fresh" {
+		t.Errorf("upstream saw %q, want Bearer fresh (refreshed)", rec.auth)
+	}
+}
+
+func TestGateway_RefreshFailureIsFailClosed401(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "dead",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(context.Context, Credential) (Credential, error) {
+		return Credential{}, errors.New("refresh failed")
+	}
+	aud := &recAuditor{}
+	g.SetAuditor(aud)
+	gw := serve(t, g)
+	resp := doResp(t, gw, handle, http.MethodPost, "/mcp") // helper returning *http.Response
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", resp.StatusCode)
+	}
+	if resp.Header.Get("WWW-Authenticate") != "" {
+		t.Error("fail-closed 401 must NOT carry WWW-Authenticate (don't trigger the agent's own OAuth)")
+	}
+	// §4: this path must be audited, secret-free, so operators see a signal that
+	// the credential needs `connect reauth`.
+	recs := aud.all()
+	if len(recs) != 1 {
+		t.Fatalf("expected exactly one audit record for the refresh-failure 401, got %d: %+v", len(recs), recs)
+	}
+	rec := recs[0]
+	if rec.Decision != "deny" || rec.Status != http.StatusUnauthorized {
+		t.Errorf("audit record = %+v, want Decision=deny Status=401", rec)
+	}
+	for _, secret := range []string{"stale", "dead"} {
+		if strings.Contains(rec.Detail, secret) {
+			t.Errorf("audit detail leaked a secret: %+v", rec)
+		}
+	}
+	if strings.Contains(rec.Detail, handle) {
+		t.Errorf("audit detail leaked the handle: %+v", rec)
+	}
+}
+
 func TestGateway_InvalidHandle401(t *testing.T) {
 	up, rec := upstreamRecording(t)
 	g, _ := gatewayWith(t, Credential{Mode: ModeSubscription, Secret: "x", BaseURL: up.URL})
@@ -244,6 +338,26 @@ func TestGateway_InvalidHandle401(t *testing.T) {
 	}
 	if rec.method != "" {
 		t.Errorf("upstream should not be hit for an invalid handle, saw method %q", rec.method)
+	}
+}
+
+// TestGateway_InvalidHandleChallengesBasic guards against a regression where an
+// unresolvable/absent handle's 401 lost its WWW-Authenticate: Basic challenge.
+// Git probes unauthenticated first and only retries with the pod's handle as
+// the Basic username after seeing this challenge, so it must always be
+// present on this path — unlike the OAuth refresh-failure 401, which must
+// stay bare (see TestGateway_RefreshFailureIsFailClosed401).
+func TestGateway_InvalidHandleChallengesBasic(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	g, _ := gatewayWith(t, Credential{Mode: ModeSubscription, Secret: "x", BaseURL: up.URL})
+	gw := serve(t, g)
+
+	resp := doResp(t, gw, "poddle_bogus", http.MethodGet, "/x")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+	if got, want := resp.Header.Get("WWW-Authenticate"), `Basic realm="poddle"`; got != want {
+		t.Errorf("WWW-Authenticate = %q, want %q", got, want)
 	}
 }
 
@@ -258,6 +372,57 @@ func TestGateway_RevokedHandle401(t *testing.T) {
 
 	if code := do(t, gw, handle.Value, http.MethodGet, "/x", nil); code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", code)
+	}
+}
+
+// TestGateway_ConcurrentRefreshCollapsesToOne proves the §5 invariant: N
+// requests racing on one stale OAuth credential must trigger exactly one
+// token refresh. refreshIfStale/credLock (gateway.go:256-290) serialize
+// refreshes per credID and re-read the credential under the lock so
+// 2nd..Nth callers see the freshened token and skip their own refresh.
+func TestGateway_ConcurrentRefreshCollapsesToOne(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused"}
+	g, handle := gatewayWith(t, cred)
+
+	var n int64
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		atomic.AddInt64(&n, 1)
+		c.Secret = "fresh"
+		c.ExpiresAt = time.Now().Add(time.Hour) // future: under-lock re-read sees this as fresh
+		return c, nil
+	}
+	gw := serve(t, g)
+
+	const concurrency = 20
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, gw.URL+"/mcp", nil)
+			if err != nil {
+				t.Errorf("new request: %v", err)
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+handle)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Errorf("do: %v", err)
+				return
+			}
+			_, _ = io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("status = %d, want 200", resp.StatusCode)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&n); got != 1 {
+		t.Errorf("refresh called %d times, want exactly 1", got)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/broker"
 )
@@ -39,7 +40,7 @@ func TestCredential_BasicUsesUserColonToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	def, _ := LoadDefinition("", "forgejo")
-	cred, err := Credential(conn, def)
+	cred, err := Credential(conn, def, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestCredential_BearerUsesToken(t *testing.T) {
 	s := NewStore(t.TempDir())
 	conn, _ := s.Create("wp", "woodpecker", "http://wp:8000", "", "WPTOK", "")
 	def, _ := LoadDefinition("", "woodpecker")
-	cred, _ := Credential(conn, def)
+	cred, _ := Credential(conn, def, nil)
 	if cred.Mode != broker.ModeSubscription || cred.Secret != "WPTOK" {
 		t.Errorf("cred = %+v, want bearer/WPTOK", cred)
 	}
@@ -157,7 +158,7 @@ func TestCredential_PypiTokenUser(t *testing.T) {
 	s := NewStore(t.TempDir())
 	conn, _ := s.Create("pp", "pypi", "", "__token__", "pypi-AgEI", "") // no --url → default
 	def, _ := LoadDefinition("", "pypi")
-	cred, _ := Credential(conn, def)
+	cred, _ := Credential(conn, def, nil)
 	if cred.Mode != broker.ModeBasic || cred.Secret != "__token__:pypi-AgEI" || cred.BaseURL != "https://pypi.org" {
 		t.Errorf("pypi cred = %+v", cred)
 	}
@@ -167,7 +168,7 @@ func TestCredential_DefaultBaseURL(t *testing.T) {
 	s := NewStore(t.TempDir())
 	conn, _ := s.Create("gh", "github", "", "me", "PAT", "") // no --url → default
 	def, _ := LoadDefinition("", "github")
-	cred, _ := Credential(conn, def)
+	cred, _ := Credential(conn, def, nil)
 	if cred.Mode != broker.ModeBasic || cred.Secret != "me:PAT" || cred.BaseURL != "https://github.com" {
 		t.Errorf("github cred = %+v", cred)
 	}
@@ -177,7 +178,7 @@ func TestCredential_ConnectionURLOverridesDefault(t *testing.T) {
 	s := NewStore(t.TempDir())
 	conn, _ := s.Create("ghe", "github", "https://github.mycorp.com", "me", "PAT", "")
 	def, _ := LoadDefinition("", "github")
-	cred, _ := Credential(conn, def)
+	cred, _ := Credential(conn, def, nil)
 	if cred.BaseURL != "https://github.mycorp.com" {
 		t.Errorf("connection URL should override the default, got %q", cred.BaseURL)
 	}
@@ -212,12 +213,12 @@ func TestCredential_RedisAssemblesDSN(t *testing.T) {
 	def, _ := LoadDefinition("", "redis")
 
 	conn, _ := s.Create("cache", "redis", "redis://10.0.0.5:6379", "default", "SECRETPASS", "")
-	if cred, _ := Credential(conn, def); cred.BaseURL != "redis://default:SECRETPASS@10.0.0.5:6379" {
+	if cred, _ := Credential(conn, def, nil); cred.BaseURL != "redis://default:SECRETPASS@10.0.0.5:6379" {
 		t.Errorf("redis DSN = %q", cred.BaseURL)
 	}
 	// bare host, no user → redis:// prefix + empty user (password-only auth)
 	conn2, _ := s.Create("c2", "redis", "10.0.0.5:6379", "", "PW", "")
-	if cred, _ := Credential(conn2, def); cred.BaseURL != "redis://:PW@10.0.0.5:6379" {
+	if cred, _ := Credential(conn2, def, nil); cred.BaseURL != "redis://:PW@10.0.0.5:6379" {
 		t.Errorf("redis DSN (no user) = %q", cred.BaseURL)
 	}
 }
@@ -226,8 +227,33 @@ func TestCredential_PostgresAssemblesDSN(t *testing.T) {
 	s := NewStore(t.TempDir())
 	def, _ := LoadDefinition("", "postgres")
 	conn, _ := s.Create("db", "postgres", "postgres://10.0.0.9:5432/shop", "appuser", "PGPASS", "")
-	if cred, _ := Credential(conn, def); cred.BaseURL != "postgres://appuser:PGPASS@10.0.0.9:5432/shop" {
+	if cred, _ := Credential(conn, def, nil); cred.BaseURL != "postgres://appuser:PGPASS@10.0.0.9:5432/shop" {
 		t.Errorf("postgres DSN = %q", cred.BaseURL)
+	}
+}
+
+// TestCredential_L4IgnoresOAuthMaterial guards against a landmine where
+// oauth.json (once Task 5 starts writing it) could silently hijack an L4
+// datastore credential and drop the real user:password DSN. Even with
+// non-nil OAuthMaterial passed in, an l4-postgres connection must still
+// return the DSN credential, never a ModeOAuthBearer one.
+func TestCredential_L4IgnoresOAuthMaterial(t *testing.T) {
+	s := NewStore(t.TempDir())
+	def, _ := LoadDefinition("", "postgres")
+	conn, err := s.Create("db", "postgres", "postgres://10.0.0.9:5432/shop", "appuser", "PGPASS", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oauth := &OAuthMaterial{AccessToken: "should-never-be-used", RefreshToken: "rt"}
+	cred, err := Credential(conn, def, oauth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cred.Mode == broker.ModeOAuthBearer {
+		t.Fatalf("l4-postgres credential took the OAuth branch: %+v", cred)
+	}
+	if cred.BaseURL != "postgres://appuser:PGPASS@10.0.0.9:5432/shop" {
+		t.Errorf("postgres DSN = %q, want the real user:password DSN preserved", cred.BaseURL)
 	}
 }
 
@@ -249,7 +275,7 @@ func TestBuiltin_MCP_IsBearerGatewayKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cred, err := Credential(conn, def)
+	cred, err := Credential(conn, def, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +287,55 @@ func TestBuiltin_MCP_IsBearerGatewayKind(t *testing.T) {
 	}
 	if cred.BaseURL != "https://mcp.linear.app/mcp" {
 		t.Errorf("cred.BaseURL = %q, want the full endpoint (up strips to origin)", cred.BaseURL)
+	}
+}
+
+func TestCredential_OAuthMaterialBuildsOAuthBearer(t *testing.T) {
+	base := t.TempDir()
+	s := NewStore(base)
+	if _, err := s.Create("gh", "mcp", "https://api.example.com/mcp", "", "", "local"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveOAuth("gh", OAuthMaterial{AccessToken: "at", RefreshToken: "rt",
+		TokenEndpoint: "https://as/token", ClientID: "cid", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	conn, _ := s.Get("gh")
+	def, _ := LoadDefinition(base, "mcp")
+	m, ok, err := s.LoadOAuth("gh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("LoadOAuth ok = false, want true")
+	}
+	cred, err := Credential(conn, def, &m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cred.Mode != broker.ModeOAuthBearer || cred.Secret != "at" || cred.RefreshToken != "rt" ||
+		cred.TokenEndpoint != "https://as/token" || cred.ClientID != "cid" {
+		t.Fatalf("cred = %+v", cred)
+	}
+	if cred.BaseURL != "https://api.example.com/mcp" {
+		t.Errorf("BaseURL = %q", cred.BaseURL)
+	}
+}
+
+func TestLoadOAuth_AbsentReturnsOkFalseNoError(t *testing.T) {
+	s := NewStore(t.TempDir())
+	if _, err := s.Create("gh", "mcp", "https://api.example.com/mcp", "", "TOK", "local"); err != nil {
+		t.Fatal(err)
+	}
+	m, ok, err := s.LoadOAuth("gh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Errorf("ok = true, want false when oauth.json is absent")
+	}
+	if m != (OAuthMaterial{}) {
+		t.Errorf("material = %+v, want zero value", m)
 	}
 }
 

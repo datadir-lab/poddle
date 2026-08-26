@@ -41,23 +41,44 @@ func (h *Handles) IssueHandle(tenant, credID, scope string, ttl time.Duration) (
 	return handle, nil
 }
 
-// Resolve returns the Credential a handle points to, or ErrNotFound if the
-// handle is unknown/revoked or its credential is gone, or ErrExpired if it is
-// past its ExpiresAt (in which case the handle record is lazily removed).
-func (h *Handles) Resolve(value string) (Credential, error) {
+// Resolve returns the credID a handle is bound to and the Credential it points
+// to, or ErrNotFound if the handle is unknown/revoked or its credential is
+// gone, or ErrExpired if it is past its ExpiresAt (in which case the handle
+// record is lazily removed). The credID lets callers persist a refreshed
+// credential back under the SAME id (see ReplaceCred) so the handle keeps
+// resolving.
+func (h *Handles) Resolve(value string) (string, Credential, error) {
 	h.mu.RLock()
 	rec, ok := h.byValue[value]
 	h.mu.RUnlock()
 	if !ok {
-		return Credential{}, ErrNotFound
+		return "", Credential{}, ErrNotFound
 	}
 	if !rec.ExpiresAt.IsZero() && !h.now().Before(rec.ExpiresAt) {
 		h.mu.Lock()
 		delete(h.byValue, value)
 		h.mu.Unlock()
-		return Credential{}, ErrExpired
+		return "", Credential{}, ErrExpired
 	}
-	return h.vault.Get(rec.Tenant, rec.CredID)
+	c, err := h.vault.Get(rec.Tenant, rec.CredID)
+	if err != nil {
+		return "", Credential{}, err
+	}
+	return rec.CredID, c, nil
+}
+
+// ReplaceCred swaps the credential a live handle points to, in place under the
+// same (tenant, credID) — used by the gateway to persist a refreshed OAuth
+// token so the handle keeps resolving. It errors with ErrNotFound if the handle
+// is unknown/revoked.
+func (h *Handles) ReplaceCred(value string, c Credential) error {
+	h.mu.RLock()
+	rec, ok := h.byValue[value]
+	h.mu.RUnlock()
+	if !ok {
+		return ErrNotFound
+	}
+	return h.vault.Replace(rec.Tenant, rec.CredID, c)
 }
 
 // Revoke invalidates a handle immediately.

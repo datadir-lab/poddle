@@ -25,6 +25,9 @@ const (
 	// and the SDK's own x-goog-api-key (both carry the handle) and injects the
 	// real key as x-goog-api-key, the header Google's endpoint expects.
 	ModeGoogleAPIKey Mode = "google-api-key"
+	// ModeOAuthBearer: an OAuth 2.1 access token → Authorization: Bearer, refreshed
+	// by the gateway using RefreshToken/TokenEndpoint/ClientID before it expires.
+	ModeOAuthBearer Mode = "oauth-bearer"
 )
 
 // Credential is a real secret plus how/where to use it. It lives ONLY in the
@@ -34,6 +37,13 @@ type Credential struct {
 	Vendor  string // "anthropic" | "openai" | "local" | ...
 	Secret  string // OAuth token or API key
 	BaseURL string // real upstream, e.g. https://api.anthropic.com
+
+	// OAuth (ModeOAuthBearer only):
+	RefreshToken  string
+	ExpiresAt     time.Time
+	TokenEndpoint string
+	ClientID      string
+	ClientSecret  string
 }
 
 // Handle is the pod-facing capability. The pod only ever sees Value; it is

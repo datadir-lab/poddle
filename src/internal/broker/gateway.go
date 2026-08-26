@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -11,7 +12,16 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/datadir-lab/poddle/src/internal/oauth"
 )
+
+// refreshSkew is how far before an OAuth access token's ExpiresAt the gateway
+// proactively refreshes it, so an in-flight request isn't injected with a token
+// that expires mid-flight.
+const refreshSkew = 60 * time.Second
 
 // maxScanBytes bounds egress redaction; larger bodies are forwarded unscanned.
 const maxScanBytes = 25 << 20
@@ -80,11 +90,42 @@ type Gateway struct {
 	auditor      Auditor
 	policy       PolicyChecker
 	loopbackHost string // if set, a loopback upstream is dialed here (the host); see RewriteLoopbackHost
+
+	// refresh mints a fresh Credential from a stale ModeOAuthBearer one (default
+	// calls oauth.Refresh; tests override it). refMu guards refLocks, a per-credID
+	// mutex map that serializes concurrent refreshes of one credential so N racing
+	// requests trigger exactly one token request.
+	refresh  func(context.Context, Credential) (Credential, error)
+	refMu    sync.Mutex
+	refLocks map[string]*sync.Mutex
 }
 
 // NewGateway returns a gateway backed by the handle registry, redacting egress
-// by default (mode "redact").
-func NewGateway(h *Handles) *Gateway { return &Gateway{handles: h, redactor: NewRedactor("redact")} }
+// by default (mode "redact"). It installs the default OAuth refresh function,
+// which calls the credential's token endpoint and rebuilds the Credential with
+// the new access/refresh token and expiry (all other fields preserved).
+func NewGateway(h *Handles) *Gateway {
+	g := &Gateway{
+		handles:  h,
+		redactor: NewRedactor("redact"),
+		refLocks: map[string]*sync.Mutex{},
+	}
+	g.refresh = func(ctx context.Context, cred Credential) (Credential, error) {
+		tok, err := oauth.Refresh(ctx, http.DefaultClient, cred.TokenEndpoint, cred.RefreshToken, cred.ClientID, cred.ClientSecret)
+		if err != nil {
+			return Credential{}, err
+		}
+		// Copy the pre-refresh credential and overwrite ONLY the rotating fields;
+		// Mode/Vendor/BaseURL/TokenEndpoint/ClientID/ClientSecret must survive the
+		// vault swap (Replace takes a full Credential, not a delta).
+		updated := cred
+		updated.Secret = tok.AccessToken
+		updated.RefreshToken = tok.RefreshToken
+		updated.ExpiresAt = tok.ExpiresAt
+		return updated, nil
+	}
+	return g
+}
 
 // SetEgressMode configures egress redaction: "redact" (default), "block", "off".
 func (g *Gateway) SetEgressMode(mode string) { g.redactor = NewRedactor(mode) }
@@ -132,10 +173,17 @@ func (s *statusCapture) Flush() {
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cred, err := g.handles.Resolve(handleFromAuth(r.Header.Get("Authorization")))
+	// Capture the handle before the proxy mutates r.
+	handle := handleFromAuth(r.Header.Get("Authorization"))
+	credID, cred, err := g.handles.Resolve(handle)
 	if err != nil {
-		// Challenge so git (which doesn't send Basic preemptively) retries with
-		// the handle it has in the URL creds.
+		// Challenge with WWW-Authenticate: Basic. Git doesn't send Basic
+		// credentials preemptively — it probes unauthenticated first and only
+		// retries with the pod's handle as the Basic username after seeing this
+		// challenge, so it must stay present or git-over-broker breaks. A Basic
+		// challenge is safe here: it never triggers an MCP client's OAuth
+		// handshake (that requires a Bearer resource_metadata= challenge), so
+		// this can't turn into the broker impersonating an authorization server.
 		w.Header().Set("WWW-Authenticate", `Basic realm="poddle"`)
 		http.Error(w, "invalid or revoked handle", http.StatusUnauthorized)
 		return
@@ -146,13 +194,14 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Capture before the proxy mutates r.
-	handle := handleFromAuth(r.Header.Get("Authorization"))
 	method, path := r.Method, r.URL.Path
 
 	// Policy: the pod's governance policy may forbid this destination/method.
 	// Match on the hostname (port-agnostic). In monitor mode a would-be denial is
-	// let through and recorded (below) instead of blocked.
+	// let through and recorded (below) instead of blocked. Runs BEFORE the OAuth
+	// refresh below so a request the policy will 403 never triggers a token
+	// refresh (wasteful, and for a rotating provider needlessly rotates the
+	// refresh token).
 	var monitored string
 	if g.policy != nil {
 		if allow, reason := g.policy.Check(handle, up.Hostname(), method); !allow {
@@ -164,6 +213,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// Refresh a stale OAuth access token before injecting it. On refresh failure
+	// fail closed (bare 401 — no WWW-Authenticate, so this can't be mistaken for
+	// an OAuth challenge) rather than forwarding an expired credential. Audited
+	// (secret-free) so operators see a signal that the credential needs
+	// `connect reauth`.
+	cred, err = g.refreshIfStale(r.Context(), handle, credID, cred)
+	if err != nil {
+		g.audit(handle, up.Host, method, path, "deny", "oauth refresh failed — needs reauth", http.StatusUnauthorized)
+		http.Error(w, "poddle: MCP upstream authorization failed", http.StatusUnauthorized)
+		return
 	}
 
 	// Egress redaction: scrub secrets from textual bodies (LLM/API JSON). Git
@@ -194,6 +255,48 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.audit(handle, up.Host, method, path, decision, detail, sc.code)
 }
 
+// refreshIfStale refreshes an OAuth credential nearing expiry and persists the
+// new token in the vault (same credID) so the handle keeps resolving. Refreshes
+// of one credential are serialized per credID: N racing MCP requests trigger a
+// single token request. Returns the credential to inject, or an error (which the
+// caller maps to a fail-closed 401). Non-OAuth credentials, and OAuth ones with
+// no known expiry or still comfortably valid, are returned untouched.
+func (g *Gateway) refreshIfStale(ctx context.Context, handle, credID string, cred Credential) (Credential, error) {
+	if cred.Mode != ModeOAuthBearer || cred.ExpiresAt.IsZero() || time.Now().Add(refreshSkew).Before(cred.ExpiresAt) {
+		return cred, nil
+	}
+	lk := g.credLock(credID)
+	lk.Lock()
+	defer lk.Unlock()
+	// Re-read under the lock: another request may have just refreshed this
+	// credential while we waited, in which case reuse its fresh token.
+	if _, fresh, err := g.handles.Resolve(handle); err == nil &&
+		!fresh.ExpiresAt.IsZero() && time.Now().Add(refreshSkew).Before(fresh.ExpiresAt) {
+		return fresh, nil
+	}
+	updated, err := g.refresh(ctx, cred)
+	if err != nil {
+		return Credential{}, err
+	}
+	if err := g.handles.ReplaceCred(handle, updated); err != nil {
+		return Credential{}, err
+	}
+	return updated, nil
+}
+
+// credLock returns the per-credID mutex that serializes refreshes of one
+// credential, creating it on first use.
+func (g *Gateway) credLock(credID string) *sync.Mutex {
+	g.refMu.Lock()
+	defer g.refMu.Unlock()
+	lk := g.refLocks[credID]
+	if lk == nil {
+		lk = &sync.Mutex{}
+		g.refLocks[credID] = lk
+	}
+	return lk
+}
+
 // audit reports a proxied request to the Auditor, if one is set.
 func (g *Gateway) audit(handle, upstream, method, path, decision, detail string, status int) {
 	if g.auditor == nil {
@@ -219,6 +322,8 @@ func applyAuth(h http.Header, cred Credential) {
 		h.Del("X-Goog-Api-Key")
 		h.Set("X-Goog-Api-Key", cred.Secret)
 	case ModeSubscription:
+		h.Set("Authorization", "Bearer "+cred.Secret)
+	case ModeOAuthBearer:
 		h.Set("Authorization", "Bearer "+cred.Secret)
 	case ModeBasic:
 		// Secret is "user:token".

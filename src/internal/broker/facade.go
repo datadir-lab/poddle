@@ -46,8 +46,11 @@ func (b *Broker) Revoke(handleValue string) { b.handles.Revoke(handleValue) }
 
 // Resolve returns the credential a handle maps to (used by the L4 broker, which
 // reads the handle from a datastore auth exchange rather than an HTTP header).
+// The underlying credID is not exposed here — L4 datastore creds are not
+// OAuth-refreshed, so callers only need the credential itself.
 func (b *Broker) Resolve(handleValue string) (Credential, error) {
-	return b.handles.Resolve(handleValue)
+	_, c, err := b.handles.Resolve(handleValue)
+	return c, err
 }
 
 // SetEgressMode configures egress redaction on the gateway: "redact" (default),

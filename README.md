@@ -178,8 +178,15 @@ broker vault; add the connector to a pod and poddle registers the server with
 the agent through a revocable handle — the real token never enters the pod,
 and `poddle down` revokes it. Wired for **codex, claude-code, opencode, pi, and gemini**
 today (pi via the third-party `pi-mcp-adapter` extension; aider has no MCP client, so
-there's nothing to wire); bearer-token / API-key servers only (OAuth 2.1 is a follow-up). See [Configuration](https://poddle.dev/docs/configuration#brokered-mcp)
-for the full walkthrough, including the egress note for explicit policies.
+there's nothing to wire); bearer-token / API-key servers work as above, and OAuth 2.1
+servers are supported too — omit `--token` and poddle probes the URL, runs browser
+consent on the host (auto-discovery + Dynamic Client Registration, or
+`--client-id`/`--client-secret` when the server has no DCR), and the broker refreshes
+the access token automatically — tokens stay in the broker, never the pod
+(`poddle connect reauth <name>` recovers a revoked/expired grant). See
+[Configuration](https://poddle.dev/docs/configuration#brokered-mcp) for the full
+walkthrough, including the egress note for explicit policies and the v1
+refresh-token-rotation limitation.
 
 ## Secret-safety
 

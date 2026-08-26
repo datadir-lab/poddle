@@ -21,7 +21,7 @@ func TestBroker_StoreIssueResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	got, err := b.handles.Resolve(h.Value) // white-box: the handle maps back to the cred
+	_, got, err := b.handles.Resolve(h.Value) // white-box: the handle maps back to the cred
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestBroker_Revoke(t *testing.T) {
 	h, _ := b.IssueHandle(credID, "box", time.Hour)
 
 	b.Revoke(h.Value)
-	if _, err := b.handles.Resolve(h.Value); !errors.Is(err, ErrNotFound) {
+	if _, _, err := b.handles.Resolve(h.Value); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoked handle should be ErrNotFound, got %v", err)
 	}
 }
