@@ -65,6 +65,21 @@ func TestClient_Status(t *testing.T) {
 	}
 }
 
+func TestClient_OAuthMirror(t *testing.T) {
+	// Isolate OAuthMirrorDir() (under stateHome()) from any real state on the
+	// machine running the test, matching the XDG_STATE_HOME isolation pattern
+	// used elsewhere (e.g. TestEnsureRunning_CreatesRunAndStateDirs).
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+	c := startDaemon(t)
+	out, err := c.OAuthMirror()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("fresh daemon's mirror should be empty, got %v", out)
+	}
+}
+
 func TestClient_EnsureRunning_AlreadyUp(t *testing.T) {
 	c := startDaemon(t)
 	if err := c.EnsureRunning(); err != nil {

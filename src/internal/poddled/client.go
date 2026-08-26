@@ -344,6 +344,29 @@ func (c *Client) VerifyAudit() (ok bool, brokenAt int64, err error) {
 	return v.OK, v.BrokenAt, nil
 }
 
+// OAuthMirror drains the daemon's durable OAuth mirror: the rotated OAuth
+// material the gateway persisted to OAuthMirrorDir() (Task 3), keyed by
+// connection name. poddled cannot be reached directly by the host (bind-mount
+// path indirection into the locked-down container), so this is the only way
+// the host observes it. Passed through as raw JSON — poddled does not import
+// connector, so it can't decode into connector.OAuthMaterial itself; the
+// caller (Task 6) does that.
+func (c *Client) OAuthMirror() (map[string]json.RawMessage, error) {
+	resp, err := c.http.Get(c.uri("/oauth/mirror"))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oauth mirror: %s", resp.Status)
+	}
+	var out map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RevokePod invalidates every handle the daemon issued for pod.
 func (c *Client) RevokePod(pod string) error {
 	req, _ := http.NewRequest(http.MethodDelete, c.uri("/pods/"+url.PathEscape(pod)), nil)

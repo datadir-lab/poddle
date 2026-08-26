@@ -310,6 +310,79 @@ func TestDaemon_LoadsInterceptionCAFromEnvDir(t *testing.T) {
 	}
 }
 
+// TestDaemon_OAuthMirror exercises GET /oauth/mirror directly against the
+// Handler (httptest.NewRecorder, no live socket) so it runs on Windows too,
+// per the brief's note that the socket-based helpers skip there.
+func TestDaemon_OAuthMirror(t *testing.T) {
+	d := New(&fakeBroker{}, nil)
+	d.mirrorDir = filepath.Join(t.TempDir(), "oauth-mirror")
+	if err := os.MkdirAll(d.mirrorDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mirror := `{"access":"a","refresh":"r2","rotated_at":"2026-08-27T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(d.mirrorDir, "gh.json"), []byte(mirror), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A non-.json file in the mirror dir must be ignored, not fail the request.
+	if err := os.WriteFile(filepath.Join(d.mirrorDir, "README.txt"), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth/mirror", nil)
+	rr := httptest.NewRecorder()
+	d.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v (%s)", err, rr.Body.String())
+	}
+	raw, ok := out["gh"]
+	if !ok {
+		t.Fatalf("expected key %q in %v", "gh", out)
+	}
+	var got struct {
+		Refresh   string `json:"refresh"`
+		RotatedAt string `json:"rotated_at"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode gh entry: %v", err)
+	}
+	if got.Refresh != "r2" {
+		t.Errorf("refresh = %q, want r2", got.Refresh)
+	}
+	if got.RotatedAt != "2026-08-27T00:00:00Z" {
+		t.Errorf("rotated_at = %q", got.RotatedAt)
+	}
+	if len(out) != 1 {
+		t.Errorf("expected exactly one entry (README.txt must be skipped), got %v", out)
+	}
+}
+
+// TestDaemon_OAuthMirror_MissingDir asserts a missing mirror dir is an empty
+// map, not an error — the gateway may never have rotated anything yet.
+func TestDaemon_OAuthMirror_MissingDir(t *testing.T) {
+	d := New(&fakeBroker{}, nil)
+	d.mirrorDir = filepath.Join(t.TempDir(), "does-not-exist")
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth/mirror", nil)
+	rr := httptest.NewRecorder()
+	d.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v (%s)", err, rr.Body.String())
+	}
+	if len(out) != 0 {
+		t.Errorf("expected empty map for a missing mirror dir, got %v", out)
+	}
+}
+
 func TestDaemon_RevokePod(t *testing.T) {
 	srv, fb := testServer(t)
 	h1 := issue(t, srv.URL, "box")

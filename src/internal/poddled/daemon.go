@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +60,7 @@ type Daemon struct {
 	forwardAddr    string
 	ca             *tlsca.Authority // egress-interception CA (nil until the forward proxy starts)
 	loopbackHost   string           // if set, a loopback upstream is dialed here (the host route); see broker.RewriteLoopbackHost
+	mirrorDir      string           // OAuthMirrorDir(): where the broker durably writes rotated OAuth material; GET /oauth/mirror reads it
 }
 
 // maxEvents bounds the autoscale event ring surfaced in `daemon status`.
@@ -87,6 +89,7 @@ func New(b brokerAPI, aud *audit.Store) *Daemon {
 		broker: b, audit: aud,
 		pods: map[string][]string{}, handlePod: map[string]string{},
 		podPolicy: map[string]*policy.Policy{},
+		mirrorDir: OAuthMirrorDir(),
 	}
 }
 
@@ -307,6 +310,7 @@ type Status struct {
 //	GET    /gateway                {"addr": pod-facing gateway address}
 //	POST   /pods/{pod}/handles     store a credential + issue a handle for pod
 //	DELETE /pods/{pod}             revoke every handle issued for pod
+//	GET    /oauth/mirror           drain the durable OAuth mirror files (raw JSON per connection)
 func (d *Daemon) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +464,41 @@ func (d *Daemon) Handler() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, events)
 	})
+	// GET /oauth/mirror drains the durable OAuth mirror files the gateway
+	// persists (Task 3) over the control socket: poddled is the only side of
+	// the container boundary that can read its own bind-mounted state dir, and
+	// the host needs the rotated material to reconcile into connections/oauth.json
+	// (Task 6). Passed through as raw per-connection JSON — poddled deliberately
+	// does not import the connector package (no third copy of its OAuth-material
+	// json tags); the host side unmarshals into connector.OAuthMaterial. Never
+	// logged: this endpoint serves the host's own tokens over the 0600
+	// owner-only socket.
+	mux.HandleFunc("GET /oauth/mirror", func(w http.ResponseWriter, r *http.Request) {
+		out := map[string]json.RawMessage{}
+		entries, err := os.ReadDir(d.mirrorDir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				// Secret-free: report the failure shape, never file contents.
+				http.Error(w, "read oauth mirror dir", http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(d.mirrorDir, name))
+			if err != nil || !json.Valid(b) {
+				continue // skip unreadable/invalid files rather than fail the whole request
+			}
+			out[strings.TrimSuffix(name, ".json")] = json.RawMessage(b)
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+
 	mux.HandleFunc("GET /audit/verify", func(w http.ResponseWriter, r *http.Request) {
 		if d.audit == nil {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "brokenAt": int64(0)})
