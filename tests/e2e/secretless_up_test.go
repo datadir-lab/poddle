@@ -88,6 +88,23 @@ var upCases = []upCase{
 		want:  aiderMarker,
 		mock:  mockOpenAIChatUp,
 	},
+	{
+		name:        "gemini",
+		provider:    "google",
+		harness:     "gemini",
+		image:       "docker.io/library/node:22",
+		tokenFile:   "google-token",
+		upstreamEnv: "PODDLE_GOOGLE_BASE_URL",
+		podTokenEnv: "GEMINI_API_KEY",
+		// The harness Provisions install gemini-cli + write the API-key auth
+		// settings, and Env points it at the broker (GOOGLE_GEMINI_BASE_URL +
+		// GEMINI_API_KEY handle + bearer mechanism + trusted workspace), so the
+		// --exec just runs it headless. Prompt is irrelevant — the mock always
+		// replies geminiMarker.
+		inPod: `gemini -p 'reply' --output-format json --yolo </dev/null`,
+		want:  geminiMarker,
+		mock:  mockGeminiUp,
+	},
 }
 
 // selectUpCases returns the cases named in want (comma-separated), or all when
@@ -235,6 +252,44 @@ func mockOpenAIChatUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.S
 	return srv
 }
 
+// geminiMarker is the assistant text the Gemini mock emits — distinctive so the
+// success check can't be satisfied by gemini echoing the prompt.
+const geminiMarker = "PODDLEGEMINIOK"
+
+// mockGeminiUp records the auth headers of every request and streams a minimal
+// Gemini streamGenerateContent SSE reply. Unlike the other mocks it records
+// X-Goog-Api-Key (where the real key rides under ModeGoogleAPIKey) AND
+// Authorization — so a failed handle→key swap OR a failed strip of the pod's
+// Bearer both surface to the secretless assertion as a leak. Binds 0.0.0.0 so the
+// broker container reaches it at host.containers.internal.
+func mockGeminiUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		// Record both auth headers AND the raw query: the secretless assertion's
+		// poddle_ leak check then also catches a handle that ever rode ?key=.
+		*auths = append(*auths, r.Header.Get("X-Goog-Api-Key"), r.Header.Get("Authorization"), r.URL.RawQuery)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		chunk := `{"candidates":[{"content":{"parts":[{"text":"` + geminiMarker + `"}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`
+		fmt.Fprintf(w, "data: %s\r\n\r\n", chunk)
+		if fl != nil {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // TestE2E_Up_Secretless drives the REAL `poddle up --identity --exec` against
 // podman for each selected provider: pod create + Setup (harness install) +
 // broker + the harness runs through the broker to a mock upstream. Proves the
@@ -319,7 +374,11 @@ func runUpCase(t *testing.T, bin string, tc upCase) {
 		if strings.Contains(a, "poddle_") {
 			t.Errorf("the handle leaked to the upstream: %q", a)
 		}
-		if a == "Bearer "+sentinel {
+		// The upstream must have seen the real sentinel secret. Most harnesses
+		// send it as `Bearer <sentinel>`; gemini sends it as a raw x-goog-api-key
+		// value — so match on the (unique) sentinel substring rather than a fixed
+		// prefix. The exact header/prefix per mode is covered by broker unit tests.
+		if strings.Contains(a, sentinel) {
 			sawSecret = true
 		}
 	}

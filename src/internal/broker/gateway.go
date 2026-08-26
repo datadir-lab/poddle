@@ -213,6 +213,11 @@ func applyAuth(h http.Header, cred Credential) {
 	switch cred.Mode {
 	case ModeAPIKey:
 		h.Set("X-Api-Key", cred.Secret)
+	case ModeGoogleAPIKey:
+		// gemini-cli's SDK sends the handle in x-goog-api-key too (alongside the
+		// Bearer handleFromAuth read); drop it and inject the real key there.
+		h.Del("X-Goog-Api-Key")
+		h.Set("X-Goog-Api-Key", cred.Secret)
 	case ModeSubscription:
 		h.Set("Authorization", "Bearer "+cred.Secret)
 	case ModeBasic:

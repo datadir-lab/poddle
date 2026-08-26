@@ -12,7 +12,7 @@ import (
 
 // recordedReq captures what the upstream (fake vendor) actually received.
 type recordedReq struct {
-	method, path, query, auth, apikey, body string
+	method, path, query, auth, apikey, googkey, body string
 }
 
 // upstreamRecording starts a fake vendor that records the request it sees.
@@ -26,6 +26,7 @@ func upstreamRecording(t *testing.T) (*httptest.Server, *recordedReq) {
 		rec.query = r.URL.RawQuery
 		rec.auth = r.Header.Get("Authorization")
 		rec.apikey = r.Header.Get("X-Api-Key")
+		rec.googkey = r.Header.Get("X-Goog-Api-Key")
 		rec.body = string(body)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -110,6 +111,47 @@ func TestGateway_APIKeyInjectsXApiKey(t *testing.T) {
 	}
 	if rec.auth != "" {
 		t.Errorf("Authorization should be cleared (handle stripped), got %q", rec.auth)
+	}
+}
+
+// TestGateway_GoogleAPIKeyInjectsXGoogApiKey covers the Gemini path. gemini-cli
+// in bearer mode presents the handle in BOTH Authorization: Bearer (which the
+// gateway reads to resolve the handle) AND X-Goog-Api-Key (its SDK sends it
+// regardless). applyAuth must strip both and inject the real key as
+// X-Goog-Api-Key — the header Google's endpoint expects.
+func TestGateway_GoogleAPIKeyInjectsXGoogApiKey(t *testing.T) {
+	up, rec := upstreamRecording(t)
+	g, handle := gatewayWith(t, Credential{Mode: ModeGoogleAPIKey, Vendor: "google", Secret: "realgkey", BaseURL: up.URL})
+	gw := serve(t, g)
+
+	// Send the handle in both headers, exactly as gemini-cli's bearer mode does.
+	req, _ := http.NewRequest(http.MethodPost, gw.URL+"/v1beta/models/gemini-2.5-flash:streamGenerateContent", nil)
+	req.Header.Set("Authorization", "Bearer "+handle)
+	req.Header.Set("X-Goog-Api-Key", handle)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	if rec.googkey != "realgkey" {
+		t.Errorf("upstream X-Goog-Api-Key = %q, want %q", rec.googkey, "realgkey")
+	}
+	if rec.auth != "" {
+		t.Errorf("Authorization should be cleared (handle stripped), got %q", rec.auth)
+	}
+	if strings.Contains(rec.googkey, handle) || strings.Contains(rec.auth, handle) {
+		t.Errorf("handle leaked to upstream: auth=%q goog=%q", rec.auth, rec.googkey)
+	}
+	// Defense-in-depth: the handle must never ride the query string either (Google's
+	// legacy ?key= form). applyAuth only rewrites headers, so this guards against a
+	// future client putting the secret in the URL.
+	if strings.Contains(rec.query, handle) {
+		t.Errorf("handle leaked to upstream via query string: %q", rec.query)
 	}
 }
 

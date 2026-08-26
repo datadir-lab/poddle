@@ -19,6 +19,12 @@ const (
 	// ModeBasic: HTTP Basic auth (git/Forgejo) → Authorization: Basic. Secret
 	// holds "user:token".
 	ModeBasic Mode = "basic"
+	// ModeGoogleAPIKey: a Google AI Studio API key → x-goog-api-key. The pod's
+	// gemini-cli presents its handle as Authorization: Bearer (its bearer auth
+	// mechanism), which the gateway reads; applyAuth then strips both the Bearer
+	// and the SDK's own x-goog-api-key (both carry the handle) and injects the
+	// real key as x-goog-api-key, the header Google's endpoint expects.
+	ModeGoogleAPIKey Mode = "google-api-key"
 )
 
 // Credential is a real secret plus how/where to use it. It lives ONLY in the

@@ -182,14 +182,14 @@ const flows = [
             Start small and let poddled auto-grow a pod when it nears its memory limit; burst to a stronger shell for a headless task and drop back after. Size for the common case, not the peak.
           </Feature>
           <Feature icon="plug" title="Bring your own agent">
-            A harness registry - claude-code, codex, aider, and pi today; local planned.
+            A harness registry - claude-code, codex, aider, pi, opencode, and gemini today; local planned.
           </Feature>
         </div>
       </div>
     </div>
   </Section>
 
-  <Section eyebrow="Providers &amp; harnesses" title="Bring your provider. Bring your harness.">
+  <Section eyebrow="Providers & harnesses" title="Bring your provider. Bring your harness.">
     <p class="prose">
       Poddle wires your coding agent to your model provider through the broker - the harness
       installs itself in the pod, and authentication syncs to your identity. No keys to copy,
@@ -200,6 +200,12 @@ const flows = [
     <div class="chips">
       <a class="chip" href="https://www.anthropic.com" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/anthropic.svg" alt="" width="18" height="18" />Anthropic<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://platform.openai.com" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/openai.svg" alt="" width="18" height="18" />OpenAI<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+      <a class="chip" href="https://aistudio.google.com" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/googlegemini.svg" alt="" width="18" height="18" />Google<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
     </div>
     <p class="glabel">Planned</p>
@@ -213,17 +219,11 @@ const flows = [
       <a class="chip" href="https://github.com/anthropics/claude-code" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/claude.svg" alt="" width="18" height="18" />Claude Code<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
-    </div>
-    <p class="glabel">Planned</p>
-    <div class="chips chips--planned">
-      <a class="chip" href="https://pi.dev" target="_blank" rel="noopener">
-        <img class="chip__logo" src="/icons/pi.svg" alt="" width="18" height="18" />Pi<span class="chip__ext" aria-hidden="true">↗</span>
-      </a>
       <a class="chip" href="https://github.com/openai/codex" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/openai.svg" alt="" width="18" height="18" />Codex<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
-      <a class="chip" href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener">
-        <img class="chip__logo" src="/icons/googlegemini.svg" alt="" width="18" height="18" />Gemini<span class="chip__ext" aria-hidden="true">↗</span>
+      <a class="chip" href="https://pi.dev" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/pi.svg" alt="" width="18" height="18" />Pi<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
       <a class="chip" href="https://aider.chat" target="_blank" rel="noopener">
         <span class="chip__mark">Ai</span>Aider<span class="chip__ext" aria-hidden="true">↗</span>
@@ -231,13 +231,21 @@ const flows = [
       <a class="chip" href="https://opencode.ai" target="_blank" rel="noopener">
         <img class="chip__logo" src="/icons/opencode.svg" alt="" width="18" height="18" />OpenCode<span class="chip__ext" aria-hidden="true">↗</span>
       </a>
+      <a class="chip" href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener">
+        <img class="chip__logo" src="/icons/googlegemini.svg" alt="" width="18" height="18" />Gemini<span class="chip__ext" aria-hidden="true">↗</span>
+      </a>
+    </div>
+    <p class="glabel">Planned</p>
+    <div class="chips chips--planned">
+      <span class="chip chip--soon">more coming</span>
     </div>
   </Section>
 
   <Section eyebrow="Connectors" title="Connect your world - without handing over a key.">
     <p class="prose">
-      Connect forges, pipelines, secrets, cloud, databases, and more - wired into a pod through
-      the broker and authed on the wire, so the pod never sees a token.
+      Connect forges, pipelines, secrets, cloud, databases, and remote MCP servers - wired into
+      a pod through the broker and authed on the wire, so the pod never sees a token. Point an
+      agent at a brokered MCP server and its token stays in the vault, never the sandbox.
     </p>
     <div class="conns">
       <span class="conn"><img class="conn__i" src="/icons/github.svg" alt="" width="30" height="30" />GitHub</span>

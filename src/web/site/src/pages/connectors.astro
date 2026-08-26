@@ -61,6 +61,13 @@ import Base from '../layouts/Base.astro';
       <a class="conn conn--diy" href="/docs"><span class="conn__plus">+</span>Write your own</a>
     </div>
 
+    <p class="ilabel">Model Context Protocol</p>
+    <p class="cx-note">
+      Point a pod at any remote MCP server - the broker swaps a revocable handle for the real
+      token on every call, so the server's credentials never enter the sandbox. Wired for Codex,
+      Claude Code, OpenCode, and Pi.
+    </p>
+
     <div class="planned">
       <p class="ilabel ilabel--planned">Planned</p>
 
@@ -143,6 +150,7 @@ import Base from '../layouts/Base.astro';
   .cx-lead { font-size: var(--fs-lead); color: var(--muted); max-width: 56ch; margin: 1.2rem 0 0; }
   .cx-body { padding-bottom: var(--space-section); }
   .ilabel { font-size: var(--fs-eyebrow); text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin: 2rem 0 0.7rem; }
+  .cx-note { font-size: 0.92rem; color: var(--muted); max-width: 60ch; margin: 0.3rem 0 0; line-height: 1.55; }
   .conns { display: flex; flex-wrap: wrap; gap: 1.4rem 1.6rem; margin: 0.3rem 0 0.4rem; }
   .conn { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; width: 78px; text-align: center; text-decoration: none; color: var(--muted); font-size: 0.82rem; font-weight: 500; }
   .conn__i { width: 30px; height: 30px; object-fit: contain; opacity: 0.82; }

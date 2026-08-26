@@ -27,10 +27,12 @@ import (
 	aiderharness "github.com/datadir-lab/poddle/src/internal/harness/aider"
 	"github.com/datadir-lab/poddle/src/internal/harness/claudecode"
 	codexharness "github.com/datadir-lab/poddle/src/internal/harness/codex"
+	geminiharness "github.com/datadir-lab/poddle/src/internal/harness/gemini"
 	opencodeharness "github.com/datadir-lab/poddle/src/internal/harness/opencode"
 	piharness "github.com/datadir-lab/poddle/src/internal/harness/pi"
 	idn "github.com/datadir-lab/poddle/src/internal/identity"
 	"github.com/datadir-lab/poddle/src/internal/identity/anthropic"
+	googleprovider "github.com/datadir-lab/poddle/src/internal/identity/google"
 	openaiprovider "github.com/datadir-lab/poddle/src/internal/identity/openai"
 	"github.com/datadir-lab/poddle/src/internal/poddled"
 	"github.com/datadir-lab/poddle/src/internal/podman"
@@ -52,12 +54,14 @@ func buildRegistries() (idn.Registry, harness.Registry) {
 	return idn.Registry{
 			"anthropic": anthropic.New(),
 			"openai":    openaiprovider.New(),
+			"google":    googleprovider.New(),
 		}, harness.Registry{
 			"claude-code": claudecode.New(),
 			"codex":       codexharness.New(),
 			"aider":       aiderharness.New(),
 			"pi":          piharness.New(),
 			"opencode":    opencodeharness.New(),
+			"gemini":      geminiharness.New(),
 		}
 }
 

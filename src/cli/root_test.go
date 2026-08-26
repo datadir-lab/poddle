@@ -66,14 +66,30 @@ func TestBuildRegistries_IncludeOpencode(t *testing.T) {
 	}
 }
 
+func TestBuildRegistries_IncludeGoogleAndGemini(t *testing.T) {
+	reg, harnesses := buildRegistries()
+	if _, ok := reg.Get("google"); !ok {
+		t.Error("google provider not registered")
+	}
+	if _, ok := harnesses.Get("gemini"); !ok {
+		t.Error("gemini harness not registered")
+	}
+}
+
 // TestBuildRegistries_MCPWiringMatrix pins the brokered-MCP support status of every
 // registered harness in one place. codex, claude-code, opencode, and pi are wired —
 // MCPWiring returns a Setup command carrying the broker MCP URL (pi via the
-// pi-mcp-adapter extension installed in its Provisions). aider has NO way to consume MCP
-// (verified 2026-08-26: aider has no --mcp-server in any released version, only an
-// open unmerged proposal, and no MCP-client architecture), so its MCPWiring is
-// deliberately nil. Asserting the whole matrix here makes the support explicit and
-// catches an accidental wiring (or a regression that drops one) for any harness.
+// pi-mcp-adapter extension installed in its Provisions).
+//
+// Two harnesses return nil, for DIFFERENT reasons:
+//   - aider: no MCP-consumer support upstream at all (verified 2026-08-26: no
+//     --mcp-server in any released version, only an open unmerged proposal) — a
+//     PERMANENT gap.
+//   - gemini: gemini-cli DOES support MCP (settings.json mcpServers), but poddle's
+//     brokered-MCP wiring for it is a DEFERRED follow-up, so it is nil for now.
+//
+// Asserting the whole matrix here makes the support explicit and catches an
+// accidental wiring (or a regression that drops one) for any harness.
 func TestBuildRegistries_MCPWiringMatrix(t *testing.T) {
 	_, harnesses := buildRegistries()
 	const agentURL = "http://10.0.0.5:9000/mcp"
@@ -91,13 +107,13 @@ func TestBuildRegistries_MCPWiringMatrix(t *testing.T) {
 			t.Errorf("%s MCPWiring should reference the broker MCP url %q: %v", name, agentURL, got)
 		}
 	}
-	for _, name := range []string{"aider"} {
+	for _, name := range []string{"aider", "gemini"} {
 		h, ok := harnesses.Get(name)
 		if !ok {
 			t.Fatalf("harness %q not registered", name)
 		}
 		if got := h.MCPWiring("srv", agentURL, "PODDLE_MCP_SRV"); got != nil {
-			t.Errorf("%s has no MCP-consumer support upstream — MCPWiring must be nil, got %v", name, got)
+			t.Errorf("%s MCPWiring must be nil for now, got %v", name, got)
 		}
 	}
 }
