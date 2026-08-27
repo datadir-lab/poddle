@@ -195,6 +195,9 @@ func TestConnect_AddOAuth_HeadlessBrowserFlow(t *testing.T) {
 	if mat.ExpiresAt.IsZero() {
 		t.Error("ExpiresAt not set from expires_in")
 	}
+	if mat.RotatedAt.IsZero() {
+		t.Error("RotatedAt not stamped when a fresh grant was sealed")
+	}
 
 	// Static-token path stays empty for an OAuth connection.
 	conn, err := store.Get("my-mcp")
@@ -301,6 +304,9 @@ func TestConnect_Reauth_HeadlessBrowserFlow(t *testing.T) {
 	}
 	if mat.ClientID != "dyn-client" {
 		t.Errorf("reauth should reuse the stored ClientID, got %q", mat.ClientID)
+	}
+	if mat.RotatedAt.IsZero() {
+		t.Error("RotatedAt not stamped when reauth sealed a fresh grant")
 	}
 	if strings.Contains(out.String(), "ACCESS-XYZ-SECRET") || strings.Contains(out.String(), "REFRESH-XYZ-SECRET") {
 		t.Errorf("stdout leaked a token:\n%s", out.String())

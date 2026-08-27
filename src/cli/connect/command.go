@@ -118,6 +118,7 @@ func addViaOAuth(cmd *cobra.Command, a *app.App, name, connName, url, user, clie
 		ClientSecret:  clientSecret,
 		Scope:         tok.Scope,
 		ExpiresAt:     tok.ExpiresAt,
+		RotatedAt:     time.Now(),
 	}); err != nil {
 		return err
 	}
@@ -173,6 +174,7 @@ func reauthCmd(a *app.App) *cobra.Command {
 				ClientSecret:  mat.ClientSecret,
 				Scope:         tok.Scope,
 				ExpiresAt:     tok.ExpiresAt,
+				RotatedAt:     time.Now(),
 			}); err != nil {
 				return err
 			}

@@ -2,6 +2,7 @@
 package up
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -109,6 +110,11 @@ type podBroker interface {
 	Audit(e audit.Event) error
 	SetPolicy(pod string, p *policy.Policy) error
 	Egress(pod string) (token, addr string, err error)
+	// OAuthMirror drains the daemon's durable OAuth mirror — rotated refresh
+	// tokens the gateway persisted while a pod ran — keyed by connection name.
+	// buildSpec drains it once per `up` and reconciles it against each
+	// connector's on-disk oauth.json (see loadConnectorOAuth/reconcileOAuth).
+	OAuthMirror() (map[string]json.RawMessage, error)
 }
 
 // brokerNet puts the shared broker on a pod's internal lock network and resolves
@@ -417,6 +423,16 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 			egressHosts = append(egressHosts, apiHost)
 			egressHosts = append(egressHosts, h.EgressHosts()...)
 		}
+		// Drain the broker's durable OAuth mirror ONCE before seeding connectors —
+		// a rotated refresh token the gateway persisted while a previous pod ran.
+		// Best-effort: OAuthMirror talks to poddled over its bind-mount indirection,
+		// so a transient error here must never block `up` — loadConnectorOAuth
+		// falls back to each connector's on-disk oauth.json when a mirror entry is
+		// missing or malformed (see reconcileOAuth).
+		var rawMirror map[string]json.RawMessage
+		if len(tpl.Connectors) > 0 {
+			rawMirror, _ = b.OAuthMirror()
+		}
 		var redisPodAddr, pgPodAddr string // resolved lazily, only if needed
 		for _, cn := range tpl.Connectors {
 			conn, err := a.Connections.Get(cn)
@@ -453,7 +469,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 					ports[brokerendpoint.Postgres] = p
 				}
 			case "mcp":
-				oauth, err := loadConnectorOAuth(a.Connections, cn)
+				oauth, err := loadConnectorOAuth(a.Connections, cn, rawMirror)
 				if err != nil {
 					return fail(err)
 				}
@@ -465,7 +481,7 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 					egressHosts = append(egressHosts, host)
 				}
 			default:
-				oauth, err := loadConnectorOAuth(a.Connections, cn)
+				oauth, err := loadConnectorOAuth(a.Connections, cn, rawMirror)
 				if err != nil {
 					return fail(err)
 				}
@@ -616,15 +632,59 @@ func applyIdentity(b podBroker, store *idn.Store, reg idn.Registry, h harness.Ha
 // they keep using the static token. Callers are exactly the mcp and default
 // (HTTP) connector cases; L4 datastore connections never call this — see
 // applyRedisDatastore/applyPostgresDatastore, which always pass nil.
-func loadConnectorOAuth(store *connector.Store, cn string) (*connector.OAuthMaterial, error) {
-	oauthMat, ok, err := store.LoadOAuth(cn)
+//
+// rawMirror is the broker's OAuth mirror (buildSpec drains it once via
+// b.OAuthMirror()), keyed by connection name. If it holds a rotated token for
+// cn that is STRICTLY newer than the on-disk material (reconcileOAuth), that
+// rotated token is adopted AND written back to connections/<cn>/oauth.json —
+// so a pod always seeds from the freshest copy, and the host's copy catches up
+// with whatever the broker rotated while a previous pod ran. A malformed
+// mirror entry is treated as "no mirror" (best-effort — never blocks `up`).
+func loadConnectorOAuth(store *connector.Store, cn string, rawMirror map[string]json.RawMessage) (*connector.OAuthMaterial, error) {
+	onDiskMat, ok, err := store.LoadOAuth(cn)
 	if err != nil {
 		return nil, fmt.Errorf("connection %q oauth: %w", cn, err)
 	}
-	if !ok {
-		return nil, nil
+	var onDisk *connector.OAuthMaterial
+	if ok {
+		onDisk = &onDiskMat
 	}
-	return &oauthMat, nil
+
+	var mirror *connector.OAuthMaterial
+	if raw, ok := rawMirror[cn]; ok {
+		var m connector.OAuthMaterial
+		if err := json.Unmarshal(raw, &m); err == nil {
+			mirror = &m
+		} // unmarshal error: treat as no mirror entry, fall back to onDisk
+	}
+
+	use, adopt := reconcileOAuth(onDisk, mirror)
+	if adopt && use != nil {
+		if err := store.SaveOAuth(cn, *use); err != nil {
+			return nil, fmt.Errorf("connection %q oauth write-back: %w", cn, err)
+		}
+	}
+	return use, nil
+}
+
+// reconcileOAuth resolves which OAuth material a pod should seed from: the
+// broker's mirror (a refresh token the gateway rotated while a previous pod
+// ran) wins ONLY when it is strictly newer than the host's on-disk copy — an
+// equal RotatedAt (e.g. immediately after `connect add`/`reauth` sealed a
+// fresh grant) keeps the on-disk material, so a same-instant race never
+// triggers a needless write-back. adopt reports whether the caller should
+// persist use back to the connection's oauth.json.
+func reconcileOAuth(onDisk, mirror *connector.OAuthMaterial) (use *connector.OAuthMaterial, adopt bool) {
+	if mirror == nil {
+		return onDisk, false
+	}
+	if onDisk == nil {
+		return mirror, true // the mirror is the only copy
+	}
+	if mirror.RotatedAt.After(onDisk.RotatedAt) {
+		return mirror, true
+	}
+	return onDisk, false
 }
 
 // applyConnector issues a pod-scoped handle for a connection's service token at
@@ -665,6 +725,11 @@ func applyMCPConnector(b podBroker, h harness.Harness, conn connector.Connection
 	if err != nil {
 		return "", err
 	}
+	// Key the credential to this connection so the gateway can mirror a rotated
+	// refresh token back to it (see broker.Credential.WriteBackKey,
+	// Gateway.persistRotation) — Task 6's host side drains that mirror on the
+	// next `up` via loadConnectorOAuth/reconcileOAuth.
+	cred.WriteBackKey = conn.Name
 	base := cred.BaseURL
 	if !strings.Contains(base, "://") {
 		base = "https://" + base
