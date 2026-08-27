@@ -660,8 +660,13 @@ func loadConnectorOAuth(store *connector.Store, cn string, rawMirror map[string]
 
 	use, adopt := reconcileOAuth(onDisk, mirror)
 	if adopt && use != nil {
+		// Best-effort write-back: `use` is already correct in memory and seeds
+		// the pod fine; a local oauth.json write hiccup (perms/disk/lock) must
+		// not fail `up` — that would be a new availability regression for a pure
+		// durability sync. The broker mirror is durable (served over the control
+		// socket), so the reconcile is retried on the next `up`.
 		if err := store.SaveOAuth(cn, *use); err != nil {
-			return nil, fmt.Errorf("connection %q oauth write-back: %w", cn, err)
+			fmt.Fprintf(os.Stderr, "warning: connection %q oauth write-back failed (proceeding with the rotated token): %v\n", cn, err)
 		}
 	}
 	return use, nil

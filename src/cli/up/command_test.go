@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1113,6 +1114,45 @@ func TestLoadConnectorOAuth_KeepsOnDiskWhenMirrorNotNewer(t *testing.T) {
 	}
 	if got == nil || got.AccessToken != "fresh" {
 		t.Fatalf("loadConnectorOAuth = %+v, want the on-disk material kept", got)
+	}
+}
+
+// TestLoadConnectorOAuth_WriteBackFailureIsBestEffort: if the adopt-path
+// SaveOAuth write-back fails (read-only oauth.json), `up` must NOT fail — the
+// in-memory rotated material is returned to seed the pod, and the durable
+// broker mirror means the reconcile is retried next `up`.
+func TestLoadConnectorOAuth_WriteBackFailureIsBestEffort(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod read-only write semantics differ on Windows")
+	}
+	base := t.TempDir()
+	cstore := connector.NewStore(base)
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "stale", RotatedAt: stale}); err != nil {
+		t.Fatal(err)
+	}
+	oauthPath := filepath.Join(base, "linear", "oauth.json")
+	if err := os.Chmod(oauthPath, 0o400); err != nil { // read-only → the write-back OpenFile(O_WRONLY) fails
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(oauthPath, 0o600) }) // let TempDir cleanup remove it
+
+	fresh := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	rawFresh, err := json.Marshal(connector.OAuthMaterial{AccessToken: "rotated", RefreshToken: "r2", RotatedAt: fresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := map[string]json.RawMessage{"linear": rawFresh}
+
+	got, err := loadConnectorOAuth(cstore, "linear", mirror)
+	if err != nil {
+		t.Fatalf("loadConnectorOAuth must be best-effort on write-back failure, got err: %v", err)
+	}
+	if got == nil || got.AccessToken != "rotated" {
+		t.Fatalf("loadConnectorOAuth = %+v, want the in-memory rotated material despite the write-back failure", got)
 	}
 }
 
