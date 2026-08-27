@@ -61,6 +61,13 @@ type Daemon struct {
 	ca             *tlsca.Authority // egress-interception CA (nil until the forward proxy starts)
 	loopbackHost   string           // if set, a loopback upstream is dialed here (the host route); see broker.RewriteLoopbackHost
 	mirrorDir      string           // OAuthMirrorDir(): where the broker durably writes rotated OAuth material; GET /oauth/mirror reads it
+
+	// Fresh-audit egress gate (opt-in via PODDLE_REQUIRE_FRESH_AUDIT). When on,
+	// Check denies egress unless the audit was acked within maxStaleness.
+	requireFreshAudit bool
+	maxStaleness      time.Duration
+	lastAck           int64     // cloud acked_through (informational)
+	lastAckAt         time.Time // daemon receive time of the last ack (zero = never)
 }
 
 // maxEvents bounds the autoscale event ring surfaced in `daemon status`.
@@ -105,6 +112,8 @@ func (d *Daemon) Check(handle, host, method string) (bool, string) {
 	d.mu.Lock()
 	pod, known := d.handlePod[handle]
 	pol := d.podPolicy[pod]
+	stale := d.requireFreshAudit && (d.lastAckAt.IsZero() || time.Since(d.lastAckAt) > d.maxStaleness)
+	staleness := d.maxStaleness
 	d.mu.Unlock()
 	// An empty or unrecognized egress token maps to no pod, hence no governing
 	// policy — deny rather than fall through to podPolicy[""] == nil == allow.
@@ -113,6 +122,9 @@ func (d *Daemon) Check(handle, host, method string) (bool, string) {
 	// own allow-list. (nil pol below = a known pod with no policy = default-allow.)
 	if !known {
 		return false, "unrecognized egress token"
+	}
+	if stale {
+		return false, "audit not fresh (fail-closed): no cloud ack within " + staleness.String()
 	}
 	return pol.Decide(host, method)
 }
@@ -174,6 +186,17 @@ func (d *Daemon) Proxy(r broker.ProxyRecord) {
 // L4 Redis and Postgres listeners pods reach for datastore access.
 func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind string) (string, error) {
 	d.broker.SetEgressMode(egress)
+	// Opt-in fail-closed gate (default off): deny egress unless the audit was
+	// acked within PODDLE_MAX_AUDIT_STALENESS (default 5m).
+	if v := os.Getenv("PODDLE_REQUIRE_FRESH_AUDIT"); v == "1" || strings.EqualFold(v, "true") {
+		d.requireFreshAudit = true
+		d.maxStaleness = 5 * time.Minute
+		if s := os.Getenv("PODDLE_MAX_AUDIT_STALENESS"); s != "" {
+			if dur, err := time.ParseDuration(s); err == nil && dur > 0 {
+				d.maxStaleness = dur
+			}
+		}
+	}
 	if a, ok := d.broker.(interface{ SetAuditor(broker.Auditor) }); ok {
 		a.SetAuditor(d) // audit every proxied request
 	}
@@ -439,6 +462,24 @@ func (d *Daemon) Handler() http.Handler {
 			return
 		}
 		d.recordEvent(body.Msg)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// Report an audit-sync watermark: an external syncer (the cloud agent) posts
+	// how far the durable copy has been acked. Generic — the daemon stamps its own
+	// receive time and never trusts a caller clock. Feeds the fresh-audit gate.
+	mux.HandleFunc("POST /audit/ack", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			AckedThrough int64 `json:"acked_through"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		d.mu.Lock()
+		d.lastAck = body.AckedThrough
+		d.lastAckAt = time.Now()
+		d.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
