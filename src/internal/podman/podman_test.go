@@ -389,3 +389,94 @@ func TestPods_JoinsListAndStats(t *testing.T) {
 		t.Errorf("PodView = %+v, want %+v", got[0], want)
 	}
 }
+
+// brokerTestRunner captures calls and returns appropriate outputs for EnsureBroker tests.
+type brokerTestRunner struct {
+	calls [][]string
+}
+
+func (r *brokerTestRunner) Run(name string, args ...string) (exec.Result, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	// ps call returns empty (broker is absent)
+	for _, a := range args {
+		if a == "ps" {
+			return exec.Result{Stdout: ""}, nil
+		}
+	}
+	// run call succeeds
+	return exec.Result{Stdout: "broker-id\n"}, nil
+}
+
+func (r *brokerTestRunner) RunInteractive(name string, args ...string) error { return nil }
+
+func TestEnsureBroker_ForwardsFreshAuditEnv(t *testing.T) {
+	t.Setenv("PODDLE_REQUIRE_FRESH_AUDIT", "1")
+
+	r := &brokerTestRunner{}
+	p := New(r, "")
+
+	cfg := BrokerConfig{
+		Name:      "poddle-broker",
+		Image:     "ghcr.io/poddle-broker:latest",
+		EgressNet: "poddle-egress",
+		RunDir:    "/tmp/poddle",
+		StateDir:  "/tmp/poddle-state",
+	}
+
+	if err := p.EnsureBroker(cfg); err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+
+	// Find the "run" call
+	var runCall string
+	for _, c := range r.calls {
+		if j := strings.Join(c, " "); strings.Contains(j, "run -d") {
+			runCall = j
+			break
+		}
+	}
+
+	if runCall == "" {
+		t.Fatalf("no 'run -d' call found")
+	}
+
+	if !strings.Contains(runCall, "-e PODDLE_REQUIRE_FRESH_AUDIT=1") {
+		t.Errorf("env var not forwarded: %q", runCall)
+	}
+}
+
+func TestEnsureBroker_SkipsUnsetFreshAuditEnv(t *testing.T) {
+	// Don't set the env var
+
+	r := &brokerTestRunner{}
+	p := New(r, "")
+
+	cfg := BrokerConfig{
+		Name:      "poddle-broker",
+		Image:     "ghcr.io/poddle-broker:latest",
+		EgressNet: "poddle-egress",
+		RunDir:    "/tmp/poddle",
+		StateDir:  "/tmp/poddle-state",
+	}
+
+	if err := p.EnsureBroker(cfg); err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+
+	// Find the "run" call
+	var runCall string
+	for _, c := range r.calls {
+		if j := strings.Join(c, " "); strings.Contains(j, "run -d") {
+			runCall = j
+			break
+		}
+	}
+
+	if runCall == "" {
+		t.Fatalf("no 'run -d' call found")
+	}
+
+	if strings.Contains(runCall, "PODDLE_REQUIRE_FRESH_AUDIT") {
+		t.Errorf("env var should not be forwarded: %q", runCall)
+	}
+}

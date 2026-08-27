@@ -19,6 +19,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/policy"
 )
 
 // fakeBroker records what the daemon asks of the broker.
@@ -330,5 +331,59 @@ func TestDaemon_RevokePod(t *testing.T) {
 	}
 	if len(fb.revoked) != 2 {
 		t.Errorf("second delete should revoke nothing, got %v", fb.revoked)
+	}
+}
+
+func TestFreshAuditGate(t *testing.T) {
+	// A known handle -> pod with a nil policy (default-allow).
+	d := &Daemon{handlePod: map[string]string{"h": "pod"}, podPolicy: map[string]*policy.Policy{"pod": nil}}
+
+	// Gate OFF (default): allow regardless of ack state.
+	if ok, _ := d.Check("h", "api.example.com", "GET"); !ok {
+		t.Fatal("gate off: should allow")
+	}
+
+	// Gate ON, never acked -> deny.
+	d.requireFreshAudit = true
+	d.maxStaleness = time.Minute
+	if ok, reason := d.Check("h", "api.example.com", "GET"); ok {
+		t.Fatalf("gate on, no ack: should deny, got allow")
+	} else if !strings.Contains(reason, "not fresh") {
+		t.Fatalf("deny reason = %q, want 'not fresh'", reason)
+	}
+
+	// Fresh ack -> allow.
+	d.lastAckAt = time.Now()
+	if ok, _ := d.Check("h", "api.example.com", "GET"); !ok {
+		t.Fatal("fresh ack: should allow")
+	}
+
+	// Stale ack -> deny.
+	d.lastAckAt = time.Now().Add(-2 * time.Minute)
+	if ok, _ := d.Check("h", "api.example.com", "GET"); ok {
+		t.Fatal("stale ack: should deny")
+	}
+
+	// Unknown handle denied regardless of freshness.
+	d.lastAckAt = time.Now()
+	if ok, reason := d.Check("nope", "api.example.com", "GET"); ok || !strings.Contains(reason, "unrecognized") {
+		t.Fatalf("unknown handle: want deny/unrecognized, got ok=%v reason=%q", ok, reason)
+	}
+}
+
+func TestAuditAckEndpoint(t *testing.T) {
+	d := &Daemon{handlePod: map[string]string{}, podPolicy: map[string]*policy.Policy{}}
+	h := d.Handler()
+	req := httptest.NewRequest("POST", "/audit/ack", strings.NewReader(`{"acked_through":42}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
+	d.mu.Lock()
+	ack, at := d.lastAck, d.lastAckAt
+	d.mu.Unlock()
+	if ack != 42 || at.IsZero() {
+		t.Fatalf("after ack: lastAck=%d lastAckAt.zero=%v", ack, at.IsZero())
 	}
 }
