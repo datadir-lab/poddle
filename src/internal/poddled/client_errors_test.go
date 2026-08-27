@@ -30,6 +30,7 @@ func TestClientUnit_AllMethods_TransportError(t *testing.T) {
 		{"Audits", func() error { _, err := c.Audits(audit.Filter{}); return err }},
 		{"VerifyAudit", func() error { _, _, err := c.VerifyAudit(); return err }},
 		{"RevokePod", func() error { return c.RevokePod("p") }},
+		{"OAuthMirror", func() error { _, err := c.OAuthMirror(); return err }},
 	}
 	for _, ch := range checks {
 		if err := ch.call(); err == nil {
@@ -57,6 +58,9 @@ func TestClientUnit_DecodeErrors(t *testing.T) {
 	if _, _, err := c.VerifyAudit(); err == nil {
 		t.Error("VerifyAudit: expected a decode error")
 	}
+	if _, err := c.OAuthMirror(); err == nil {
+		t.Error("OAuthMirror: expected a decode error")
+	}
 }
 
 // Non-success statuses must become errors on the methods that check them.
@@ -71,5 +75,8 @@ func TestClientUnit_BadStatusErrors(t *testing.T) {
 	}
 	if err := c.RevokePod("p"); err == nil {
 		t.Error("RevokePod: expected an error on 500")
+	}
+	if _, err := c.OAuthMirror(); err == nil {
+		t.Error("OAuthMirror: expected an error on 500")
 	}
 }

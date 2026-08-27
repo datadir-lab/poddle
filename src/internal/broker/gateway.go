@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,6 +100,16 @@ type Gateway struct {
 	refresh  func(context.Context, Credential) (Credential, error)
 	refMu    sync.Mutex
 	refLocks map[string]*sync.Mutex
+
+	// persister durably mirrors a connection's rotated OAuth refresh token to
+	// disk (nil = no write-back; wired via SetOAuthPersister/Broker.EnableOAuthWriteBack).
+	// reauthMu guards needsReauth, the set of WriteBackKeys whose most recent
+	// refresh attempt failed — surfaced via NeedsReauth() so operators know which
+	// connections need `connect reauth`, and cleared once the host re-stores a
+	// fresh credential for that key (Broker.Store).
+	persister   OAuthPersister
+	reauthMu    sync.Mutex
+	needsReauth map[string]bool
 }
 
 // NewGateway returns a gateway backed by the handle registry, redacting egress
@@ -106,9 +118,10 @@ type Gateway struct {
 // the new access/refresh token and expiry (all other fields preserved).
 func NewGateway(h *Handles) *Gateway {
 	g := &Gateway{
-		handles:  h,
-		redactor: NewRedactor("redact"),
-		refLocks: map[string]*sync.Mutex{},
+		handles:     h,
+		redactor:    NewRedactor("redact"),
+		refLocks:    map[string]*sync.Mutex{},
+		needsReauth: map[string]bool{},
 	}
 	g.refresh = func(ctx context.Context, cred Credential) (Credential, error) {
 		tok, err := oauth.Refresh(ctx, http.DefaultClient, cred.TokenEndpoint, cred.RefreshToken, cred.ClientID, cred.ClientSecret)
@@ -140,6 +153,36 @@ func (g *Gateway) SetPolicyChecker(pc PolicyChecker) { g.policy = pc }
 // 127.0.0.1) dial loopbackHost instead — the host route from a containerized
 // broker (host.containers.internal). Empty (the default) disables the rewrite.
 func (g *Gateway) SetLoopbackHost(h string) { g.loopbackHost = h }
+
+// SetOAuthPersister wires the sink that durably mirrors a connection's
+// rotated OAuth refresh token to disk, so it survives a poddled restart. Nil
+// (the default) disables write-back — a refresh still rotates the in-memory
+// credential, it just isn't mirrored.
+func (g *Gateway) SetOAuthPersister(p OAuthPersister) { g.persister = p }
+
+// NeedsReauth returns the WriteBackKeys of connections whose most recent
+// OAuth refresh attempt failed, sorted for stable output. A key clears once
+// the host re-stores a fresh credential for it (Broker.Store).
+func (g *Gateway) NeedsReauth() []string {
+	g.reauthMu.Lock()
+	defer g.reauthMu.Unlock()
+	keys := make([]string, 0, len(g.needsReauth))
+	for k, flagged := range g.needsReauth {
+		if flagged {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// clearReauth clears the needs-reauth flag for key, if any is set. Called
+// when the host re-stores a credential for key — a successful reauth.
+func (g *Gateway) clearReauth(key string) {
+	g.reauthMu.Lock()
+	defer g.reauthMu.Unlock()
+	delete(g.needsReauth, key)
+}
 
 // dialURL returns the URL the gateway should dial for upstream up: up itself,
 // or a copy with a loopback host rewritten to g.loopbackHost (scheme, port, and
@@ -235,12 +278,92 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return // blocked (403 already written)
 	}
 
+	// For an OAuth upstream, buffer the request body so the reactive-retry path
+	// (ModifyResponse below) can replay it under a freshly refreshed token. MCP
+	// JSON-RPC requests are small; this mirrors the redact-body buffering above.
+	// ONLY OAuth creds are buffered — git and other upstreams stream unchanged so
+	// large packfiles aren't held in memory.
+	var bodyBytes []byte
+	if cred.Mode == ModeOAuthBearer && r.Body != nil {
+		b, rerr := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if rerr != nil {
+			http.Error(w, "poddle: MCP upstream request read failed", http.StatusBadGateway)
+			return
+		}
+		bodyBytes = b
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		r.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+		}
+	}
+
 	proxy := httputil.NewSingleHostReverseProxy(g.dialURL(up))
 	base := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		base(req)          // scheme/host/path -> upstream (loopback dialed at the host)
 		req.Host = up.Host // match the REAL upstream Host header, not the dial host
 		applyAuth(req.Header, cred)
+	}
+	// OAuth upstreams only (§4): the pod's MCP client must NEVER see an upstream
+	// WWW-Authenticate — a `Bearer resource_metadata=` challenge would send it off
+	// to run its own OAuth handshake against the broker — so strip it always. And
+	// on a 401 against a token that wasn't yet stale (an early revocation inside
+	// the refresh skew, so no proactive refresh ran), force exactly one refresh
+	// and replay the request before surfacing the failure. Non-OAuth upstreams are
+	// left byte-for-byte unchanged (no ModifyResponse, no buffering).
+	if cred.Mode == ModeOAuthBearer {
+		retried := false
+		proxy.ModifyResponse = func(res *http.Response) error {
+			res.Header.Del("WWW-Authenticate")
+			if res.StatusCode != http.StatusUnauthorized || retried {
+				return nil
+			}
+			retried = true // retry AT MOST once per request
+			// cred.Secret is the access token this closure injected via applyAuth at
+			// send time — i.e. the exact token the upstream just rejected.
+			updated, err := g.forceRefresh(res.Request.Context(), handle, credID, cred, cred.Secret)
+			if err != nil {
+				// Refresh failed; forceRefresh already flagged needs-reauth. Leave
+				// the (already stripped) bare 401 for the pod.
+				return nil
+			}
+			// Replay the original request under the refreshed bearer. res.Request is
+			// the outbound request the Director built (URL already the dial target,
+			// Host == up.Host); clone it and reset the body from the replay buffer.
+			req2 := res.Request.Clone(res.Request.Context())
+			if r.GetBody != nil {
+				rc, gerr := r.GetBody()
+				if gerr != nil {
+					return nil // keep the stripped 401
+				}
+				req2.Body = rc
+			} else {
+				req2.Body = nil
+			}
+			req2.ContentLength = int64(len(bodyBytes))
+			req2.Header.Set("Authorization", "Bearer "+updated.Secret)
+			res2, rterr := http.DefaultTransport.RoundTrip(req2)
+			if rterr != nil {
+				return nil // retry transport error: keep the stripped 401
+			}
+			_ = res.Body.Close()
+			res.StatusCode = res2.StatusCode
+			res.Status = res2.Status
+			res.Header = res2.Header
+			res.Body = res2.Body
+			res.ContentLength = res2.ContentLength
+			// The stdlib's reverse proxy runs removeHopByHopHeaders on the ORIGINAL
+			// response before ModifyResponse, but res2 (the retry response) never went
+			// through that — strip it here too, or a retry upstream's
+			// Connection/Keep-Alive/etc. reach the pod.
+			stripHopByHop(res.Header)
+			res.Header.Del("WWW-Authenticate") // the retry response may carry one too
+			if res2.StatusCode == http.StatusUnauthorized {
+				g.flagReauth(cred.WriteBackKey) // even the refreshed token was rejected — the grant is dead
+			}
+			return nil
+		}
 	}
 	sc := &statusCapture{ResponseWriter: w, code: http.StatusOK}
 	proxy.ServeHTTP(sc, r)
@@ -261,6 +384,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // single token request. Returns the credential to inject, or an error (which the
 // caller maps to a fail-closed 401). Non-OAuth credentials, and OAuth ones with
 // no known expiry or still comfortably valid, are returned untouched.
+//
+// Two side effects ride along with a refresh, both keyed off cred.WriteBackKey
+// (empty means "not a write-back-eligible connection" — neither fires):
+//   - On refresh failure, the connection is flagged in needsReauth so operators
+//     (and `connect reauth`) see it needs attention.
+//   - On success, if the refresh token actually rotated, the new material is
+//     mirrored to disk via g.persister (best-effort — a persist failure is
+//     logged secret-free and does not fail the request; the in-memory vault
+//     already has the rotated credential either way).
 func (g *Gateway) refreshIfStale(ctx context.Context, handle, credID string, cred Credential) (Credential, error) {
 	if cred.Mode != ModeOAuthBearer || cred.ExpiresAt.IsZero() || time.Now().Add(refreshSkew).Before(cred.ExpiresAt) {
 		return cred, nil
@@ -274,14 +406,94 @@ func (g *Gateway) refreshIfStale(ctx context.Context, handle, credID string, cre
 		!fresh.ExpiresAt.IsZero() && time.Now().Add(refreshSkew).Before(fresh.ExpiresAt) {
 		return fresh, nil
 	}
+	return g.rotate(ctx, handle, cred)
+}
+
+// forceRefresh unconditionally refreshes cred's OAuth token — skipping the skew
+// check refreshIfStale applies — and swaps the result into the vault under the
+// same credID. It shares the per-credID lock with refreshIfStale so a proactive
+// and a reactive refresh of one credential can't race, and the same
+// rotate-and-persist/flag-on-failure semantics (via rotate). Used by the
+// reactive retry path when an upstream 401s a token that wasn't yet stale (an
+// early revocation inside the refresh skew).
+//
+// rejectedSecret is the access token the upstream just rejected (captured by
+// the caller BEFORE acquiring the lock, since a peer may rotate the credential
+// out from under it while it waits). Under the lock, forceRefresh re-reads the
+// LIVE credential and compares its Secret against rejectedSecret — keyed on
+// the secret, not on ExpiresAt the way refreshIfStale's re-read is, because a
+// reactive 401 carries no expiry signal to compare against (the rejected token
+// wasn't stale by expiry — that's WHY this is the reactive path). If the live
+// Secret already differs, a peer serialized ahead of us on this same lock
+// already rotated the refresh token; calling g.refresh again would replay that
+// now-consumed refresh token a second time, and a provider with rotation-reuse
+// detection (Google/Okta — OAuth 2.1's recommended posture) treats reuse as
+// theft and revokes the WHOLE token family, killing the peer's brand-new
+// access token too. So: live != rejected -> hand back the peer's live
+// credential, no second rotation. live == rejected (nobody has refreshed yet)
+// -> do the real refresh.
+func (g *Gateway) forceRefresh(ctx context.Context, handle, credID string, cred Credential, rejectedSecret string) (Credential, error) {
+	lk := g.credLock(credID)
+	lk.Lock()
+	defer lk.Unlock()
+	if _, live, err := g.handles.Resolve(handle); err == nil && live.Secret != rejectedSecret {
+		return live, nil // a peer already refreshed this credential; reuse it
+	}
+	return g.rotate(ctx, handle, cred)
+}
+
+// rotate refreshes cred, swaps the fresh credential into the vault under handle,
+// mirrors a rotated refresh token via the persister, and flags needs-reauth on
+// failure. The caller MUST already hold the per-credID lock (g.credLock(credID)).
+// It is the shared core of the proactive (refreshIfStale) and reactive
+// (forceRefresh) refresh paths — changing it changes both.
+func (g *Gateway) rotate(ctx context.Context, handle string, cred Credential) (Credential, error) {
 	updated, err := g.refresh(ctx, cred)
 	if err != nil {
+		g.flagReauth(cred.WriteBackKey)
 		return Credential{}, err
 	}
 	if err := g.handles.ReplaceCred(handle, updated); err != nil {
 		return Credential{}, err
 	}
+	g.persistRotation(cred, updated)
 	return updated, nil
+}
+
+// persistRotation mirrors a rotated OAuth refresh token to disk (best-effort),
+// keyed by the connection's WriteBackKey. A no-op when nothing rotated, the
+// connection isn't write-back-eligible (empty WriteBackKey), or no persister is
+// wired. A persist failure is logged secret-free and never fails the request —
+// the in-memory vault already holds the rotated credential.
+func (g *Gateway) persistRotation(old, updated Credential) {
+	if updated.RefreshToken == old.RefreshToken || old.WriteBackKey == "" || g.persister == nil {
+		return
+	}
+	m := connMirror{
+		AccessToken:   updated.Secret,
+		RefreshToken:  updated.RefreshToken,
+		TokenEndpoint: updated.TokenEndpoint,
+		ClientID:      updated.ClientID,
+		ClientSecret:  updated.ClientSecret,
+		ExpiresAt:     updated.ExpiresAt,
+		RotatedAt:     time.Now(),
+	}
+	if err := g.persister.Persist(old.WriteBackKey, m); err != nil {
+		log.Printf("broker: oauth mirror persist failed for %q: %v", old.WriteBackKey, err)
+	}
+}
+
+// flagReauth marks a connection as needing `connect reauth` after a failed
+// refresh (or a reactive retry that still 401s). A no-op for a connection with
+// no WriteBackKey (not write-back-eligible), so an empty key never pollutes
+// NeedsReauth().
+func (g *Gateway) flagReauth(key string) {
+	if key == "" {
+		return
+	}
+	g.reauthMu.Lock()
+	g.needsReauth[key] = true
+	g.reauthMu.Unlock()
 }
 
 // credLock returns the per-credID mutex that serializes refreshes of one
@@ -362,6 +574,31 @@ func (g *Gateway) redactBody(w http.ResponseWriter, r *http.Request, cred Creden
 	r.ContentLength = int64(len(red))
 	r.Header.Set("Content-Length", strconv.Itoa(len(red)))
 	return true, n
+}
+
+// hopByHopHeaders are the standard connection-scoped headers (RFC 9110
+// §7.6.1) that must never be forwarded end-to-end by a proxy.
+var hopByHopHeaders = []string{
+	"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate",
+	"Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade",
+}
+
+// stripHopByHop deletes the standard hop-by-hop headers from h, plus any
+// extra header named in h's own Connection header value (RFC 9110 §7.6.1: a
+// Connection header can nominate additional per-hop headers beyond the
+// standard set). net/http/httputil's ReverseProxy does this for the FIRST
+// upstream response automatically before ModifyResponse runs; it does nothing
+// for a second response the reactive-retry path splices in, so callers that
+// swap in a retry response's header wholesale must call this themselves.
+func stripHopByHop(h http.Header) {
+	if conn := h.Get("Connection"); conn != "" {
+		for _, name := range strings.Split(conn, ",") {
+			h.Del(strings.TrimSpace(name))
+		}
+	}
+	for _, name := range hopByHopHeaders {
+		h.Del(name)
+	}
 }
 
 // isTextual reports whether a Content-Type carries scannable text (LLM/API

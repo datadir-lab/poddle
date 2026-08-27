@@ -33,6 +33,7 @@ type vaultEntry struct {
 	tokenEndpoint string
 	clientID      string
 	clientSecret  *memguard.Enclave // nil for non-OAuth or when the client is public (no secret)
+	writeBackKey  string
 }
 
 // Vault holds credentials in memory, scoped by tenant. Every secret field
@@ -59,7 +60,7 @@ func sealEntry(c Credential) vaultEntry {
 	e := vaultEntry{
 		mode: c.Mode, vendor: c.Vendor, baseURL: c.BaseURL,
 		expiresAt: c.ExpiresAt, tokenEndpoint: c.TokenEndpoint,
-		clientID: c.ClientID,
+		clientID: c.ClientID, writeBackKey: c.WriteBackKey,
 	}
 	if c.Secret != "" {
 		e.secret = memguard.NewEnclave([]byte(c.Secret))
@@ -117,7 +118,7 @@ func (v *Vault) Get(tenant, credID string) (Credential, error) {
 	c := Credential{
 		Mode: e.mode, Vendor: e.vendor, BaseURL: e.baseURL,
 		ExpiresAt: e.expiresAt, TokenEndpoint: e.tokenEndpoint,
-		ClientID: e.clientID,
+		ClientID: e.clientID, WriteBackKey: e.writeBackKey,
 	}
 	if e.secret != nil {
 		lb, err := e.secret.Open()

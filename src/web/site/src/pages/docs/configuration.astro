@@ -216,15 +216,21 @@ const opencodeMcpExample = `{
       confidential client). Either way, consent happens in your browser on the host - the pod never sees
       it. The broker holds the access and refresh tokens in its vault and refreshes the access token
       automatically as it nears expiry; the pod only ever holds a revocable handle, exactly as with a
-      bearer-token connection. If a grant is revoked or a refresh token expires, <code>poddle connect
-      reauth &lt;name&gt;</code> re-runs browser consent and replaces the stored tokens.
+      bearer-token connection. If the provider rotates its refresh token, <code>poddled</code> writes the
+      rotation back to disk and the host reconciles it into the connection's stored material on the next
+      <code>poddle up</code>, so a restart no longer forces a re-consent in the normal case. <code>poddle
+      connect reauth &lt;name&gt;</code> remains the fallback for a grant that's actually been revoked or
+      expired: it re-runs browser consent and replaces the stored tokens. <code>poddle daemon
+      status</code> lists any connection that needs it.
     </p>
-    <Callout type="warn" title="Refresh-token rotation is in-memory for v1">
+    <Callout type="note" title="Rotated refresh tokens write back automatically">
       <p>
-        The broker's refreshed token lives in memory for the daemon's lifetime; it isn't written back to
-        disk. If a provider <strong>rotates</strong> its refresh token on use <em>and</em> <code>poddled</code>
-        restarts before the next refresh, the on-disk refresh token is stale and the next refresh attempt
-        fails closed. Run <code>poddle connect reauth &lt;name&gt;</code> to recover.
+        When the broker refreshes a token and the provider rotates the refresh token, <code>poddled</code>
+        persists the rotation right away. The host picks it up and reconciles it into the connection's
+        stored OAuth material the next time you run <code>poddle up</code> (newest wins). Write-back is
+        best-effort - a persist failure never blocks a request or an <code>up</code> - so it covers the
+        common case, not every case. If a grant is genuinely revoked, run <code>poddle connect
+        reauth &lt;name&gt;</code> to recover.
       </p>
     </Callout>
     <Callout type="warn" title="Explicit policies don't auto-add the MCP host">

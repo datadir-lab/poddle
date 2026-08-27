@@ -2,12 +2,15 @@ package up
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
 	"github.com/datadir-lab/poddle/src/internal/audit"
@@ -145,6 +148,10 @@ func (s *spyBroker) Egress(pod string) (string, string, error) {
 	*s.log = append(*s.log, "egress")
 	return "poddle_egr_spy", "127.0.0.1:9", nil
 }
+func (s *spyBroker) OAuthMirror() (map[string]json.RawMessage, error) {
+	*s.log = append(*s.log, "oauthmirror")
+	return nil, nil
+}
 
 // captureBroker records the policy bound via SetPolicy so tests can assert the
 // derived default-deny allow-list.
@@ -174,6 +181,7 @@ func (stubBroker) SetPolicy(string, *policy.Policy) error { return nil }
 func (stubBroker) Egress(string) (string, string, error) {
 	return "poddle_egr_stub", "127.0.0.1:9", nil
 }
+func (stubBroker) OAuthMirror() (map[string]json.RawMessage, error) { return nil, nil }
 
 func TestUp_CreatesAndAttaches(t *testing.T) {
 	f := &fakeCreator{}
@@ -975,5 +983,372 @@ func TestUp_WithIdentity_ReauthsWhenStale(t *testing.T) {
 	}
 	if !fake.AuthCalled {
 		t.Error("expected re-auth on the client when the identity was not authenticated")
+	}
+}
+
+// --- Task 6: broker OAuth-mirror drain + reconcile on reseed ---
+
+func TestReconcileOAuth(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	onDisk := &connector.OAuthMaterial{AccessToken: "on-disk", RotatedAt: older}
+	mirrorNewer := &connector.OAuthMaterial{AccessToken: "mirror", RotatedAt: newer}
+	mirrorOlder := &connector.OAuthMaterial{AccessToken: "mirror", RotatedAt: older} // == onDisk's RotatedAt
+
+	tests := []struct {
+		name      string
+		onDisk    *connector.OAuthMaterial
+		mirror    *connector.OAuthMaterial
+		wantUse   *connector.OAuthMaterial
+		wantAdopt bool
+	}{
+		{"mirror strictly newer adopts", onDisk, mirrorNewer, mirrorNewer, true},
+		{"onDisk newer keeps onDisk", mirrorNewer, onDisk, mirrorNewer, false},
+		{"equal RotatedAt keeps onDisk (reauth case)", onDisk, mirrorOlder, onDisk, false},
+		{"mirror nil keeps onDisk", onDisk, nil, onDisk, false},
+		{"onDisk nil adopts mirror (mirror is the only copy)", nil, mirrorNewer, mirrorNewer, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			use, adopt := reconcileOAuth(tt.onDisk, tt.mirror)
+			if use != tt.wantUse {
+				t.Errorf("use = %+v, want %+v", use, tt.wantUse)
+			}
+			if adopt != tt.wantAdopt {
+				t.Errorf("adopt = %v, want %v", adopt, tt.wantAdopt)
+			}
+		})
+	}
+}
+
+// TestReconcileOAuth_CarriesForwardScope: a rotation write-back has an empty
+// Scope (broker.Credential has no scope field), so adopting it must PRESERVE the
+// scope the host stored via connect add/reauth rather than erasing oauth.json's.
+func TestReconcileOAuth_CarriesForwardScope(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	onDisk := &connector.OAuthMaterial{AccessToken: "on-disk", Scope: "mcp:read mcp:write", RotatedAt: older}
+	mirror := &connector.OAuthMaterial{AccessToken: "rotated", RefreshToken: "r2", Scope: "", RotatedAt: newer}
+
+	use, adopt := reconcileOAuth(onDisk, mirror)
+	if !adopt {
+		t.Fatal("expected adopt=true for a strictly-newer mirror")
+	}
+	if use.AccessToken != "rotated" {
+		t.Errorf("use.AccessToken = %q, want the rotated mirror token", use.AccessToken)
+	}
+	if use.Scope != "mcp:read mcp:write" {
+		t.Errorf("use.Scope = %q, want the on-disk scope carried forward (not erased)", use.Scope)
+	}
+}
+
+// TestReconcileOAuth_MirrorScopeWinsWhenSet: a non-empty mirror scope is not
+// clobbered by the on-disk scope (carry-forward only fills an empty mirror scope).
+func TestReconcileOAuth_MirrorScopeWinsWhenSet(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	onDisk := &connector.OAuthMaterial{Scope: "old-scope", RotatedAt: older}
+	mirror := &connector.OAuthMaterial{Scope: "new-scope", RotatedAt: newer}
+	use, _ := reconcileOAuth(onDisk, mirror)
+	if use.Scope != "new-scope" {
+		t.Errorf("use.Scope = %q, want the mirror's own non-empty scope preserved", use.Scope)
+	}
+}
+
+// credCaptureBroker records the Credential passed to IssueHandle so a test can
+// assert on fields (like WriteBackKey) that never surface in the pod's env.
+type credCaptureBroker struct {
+	stubBroker
+	cred broker.Credential
+}
+
+func (c *credCaptureBroker) IssueHandle(pod, scope string, cred broker.Credential) (string, error) {
+	c.cred = cred
+	return "poddle_cred_capture", nil
+}
+
+func TestApplyMCPConnector_SetsWriteBackKey(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	conn, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "PAT-XYZ", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := connector.Definition{Mode: "bearer", Transport: "mcp"}
+	h := &harness.FakeHarness{HarnessName: "fake", Vendors: []string{"anthropic"}, MCPWire: []string{"MCP-WIRED"}}
+	cb := &credCaptureBroker{}
+	spec := &sandbox.Spec{}
+
+	if _, err := applyMCPConnector(cb, h, conn, def, "pod", "http://broker:1", nil, spec); err != nil {
+		t.Fatalf("applyMCPConnector: %v", err)
+	}
+	if cb.cred.WriteBackKey != "linear" {
+		t.Errorf("cred.WriteBackKey = %q, want %q", cb.cred.WriteBackKey, "linear")
+	}
+}
+
+// TestLoadConnectorOAuth_AdoptsNewerMirror exercises the drain+reconcile
+// wiring directly: a mirror entry strictly newer than the on-disk material is
+// adopted AND persisted back to connections/oauth.json.
+func TestLoadConnectorOAuth_AdoptsNewerMirror(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "stale", RotatedAt: stale}); err != nil {
+		t.Fatal(err)
+	}
+	fresh := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	rawFresh, err := json.Marshal(connector.OAuthMaterial{AccessToken: "rotated", RefreshToken: "r2", RotatedAt: fresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := map[string]json.RawMessage{"linear": rawFresh}
+
+	got, err := loadConnectorOAuth(cstore, "linear", mirror)
+	if err != nil {
+		t.Fatalf("loadConnectorOAuth: %v", err)
+	}
+	if got == nil || got.AccessToken != "rotated" {
+		t.Fatalf("loadConnectorOAuth = %+v, want the rotated mirror material", got)
+	}
+	// The rotated material must be persisted back to disk (newest-wins write-back).
+	onDisk, ok, err := cstore.LoadOAuth("linear")
+	if err != nil || !ok {
+		t.Fatalf("LoadOAuth after reconcile: ok=%v err=%v", ok, err)
+	}
+	if onDisk.AccessToken != "rotated" {
+		t.Errorf("on-disk material not updated: %+v", onDisk)
+	}
+}
+
+// TestLoadConnectorOAuth_KeepsOnDiskWhenMirrorNotNewer covers the reauth case:
+// a mirror entry that is stale (or malformed) must never clobber a fresher
+// on-disk grant, and must never write anything back.
+func TestLoadConnectorOAuth_KeepsOnDiskWhenMirrorNotNewer(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	fresh := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "fresh", RotatedAt: fresh}); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	rawStale, err := json.Marshal(connector.OAuthMaterial{AccessToken: "stale-mirror", RotatedAt: stale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := map[string]json.RawMessage{"linear": rawStale}
+
+	got, err := loadConnectorOAuth(cstore, "linear", mirror)
+	if err != nil {
+		t.Fatalf("loadConnectorOAuth: %v", err)
+	}
+	if got == nil || got.AccessToken != "fresh" {
+		t.Fatalf("loadConnectorOAuth = %+v, want the on-disk material kept", got)
+	}
+}
+
+// TestLoadConnectorOAuth_WriteBackFailureIsBestEffort: if the adopt-path
+// SaveOAuth write-back fails (read-only oauth.json), `up` must NOT fail — the
+// in-memory rotated material is returned to seed the pod, and the durable
+// broker mirror means the reconcile is retried next `up`.
+func TestLoadConnectorOAuth_WriteBackFailureIsBestEffort(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod read-only write semantics differ on Windows")
+	}
+	base := t.TempDir()
+	cstore := connector.NewStore(base)
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "stale", RotatedAt: stale}); err != nil {
+		t.Fatal(err)
+	}
+	oauthPath := filepath.Join(base, "linear", "oauth.json")
+	if err := os.Chmod(oauthPath, 0o400); err != nil { // read-only → the write-back OpenFile(O_WRONLY) fails
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(oauthPath, 0o600) }) // let TempDir cleanup remove it
+
+	fresh := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	rawFresh, err := json.Marshal(connector.OAuthMaterial{AccessToken: "rotated", RefreshToken: "r2", RotatedAt: fresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := map[string]json.RawMessage{"linear": rawFresh}
+
+	got, err := loadConnectorOAuth(cstore, "linear", mirror)
+	if err != nil {
+		t.Fatalf("loadConnectorOAuth must be best-effort on write-back failure, got err: %v", err)
+	}
+	if got == nil || got.AccessToken != "rotated" {
+		t.Fatalf("loadConnectorOAuth = %+v, want the in-memory rotated material despite the write-back failure", got)
+	}
+}
+
+// TestLoadConnectorOAuth_MalformedMirrorEntryIsIgnored: an unmarshal failure on
+// a mirror entry must be treated as "no mirror" — never block `up`.
+func TestLoadConnectorOAuth_MalformedMirrorEntryIsIgnored(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "on-disk"}); err != nil {
+		t.Fatal(err)
+	}
+	mirror := map[string]json.RawMessage{"linear": json.RawMessage(`not-json`)}
+
+	got, err := loadConnectorOAuth(cstore, "linear", mirror)
+	if err != nil {
+		t.Fatalf("loadConnectorOAuth: %v", err)
+	}
+	if got == nil || got.AccessToken != "on-disk" {
+		t.Fatalf("loadConnectorOAuth = %+v, want the on-disk material kept on unmarshal error", got)
+	}
+}
+
+// mirrorBroker is a podBroker whose OAuthMirror returns a fixed, pre-seeded
+// map — used to drive `up`'s end-to-end drain+reconcile without a real
+// poddled daemon.
+type mirrorBroker struct {
+	stubBroker
+	mirror map[string]json.RawMessage
+}
+
+func (m *mirrorBroker) OAuthMirror() (map[string]json.RawMessage, error) { return m.mirror, nil }
+
+func TestUp_MCPConnector_ReseedsRotatedTokenFromMirror(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "stale", RotatedAt: stale}); err != nil {
+		t.Fatal(err)
+	}
+	fresh := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	rawFresh, err := json.Marshal(connector.OAuthMaterial{AccessToken: "rotated-by-gateway", RefreshToken: "r2", RotatedAt: fresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	mb := &mirrorBroker{mirror: map[string]json.RawMessage{"linear": rawFresh}}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, mb)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	onDisk, ok, err := cstore.LoadOAuth("linear")
+	if err != nil || !ok {
+		t.Fatalf("LoadOAuth after up: ok=%v err=%v", ok, err)
+	}
+	if onDisk.AccessToken != "rotated-by-gateway" {
+		t.Errorf("on-disk oauth.json not reconciled from the mirror: %+v", onDisk)
+	}
+}
+
+// reauthBroker is a podBroker whose NeedsReauth reports a fixed set of
+// connection names — drives `up`'s best-effort reauth warning without a real
+// poddled daemon. NeedsReauth is an OPTIONAL podBroker capability (the real
+// *poddled.Client implements it; stubBroker/spyBroker/mirrorBroker do not),
+// picked up via type-assertion, so embedding stubBroker here is what actually
+// opts this fake in.
+type reauthBroker struct {
+	stubBroker
+	names []string
+	err   error
+}
+
+func (r *reauthBroker) NeedsReauth() ([]string, error) { return r.names, r.err }
+
+func TestUp_MCPConnector_WarnsWhenFlaggedForReauth(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	rb := &reauthBroker{names: []string{"linear"}}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, rb)
+	var errBuf bytes.Buffer
+	c.SetErr(&errBuf)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), `connection "linear" needs reauth`) {
+		t.Errorf("stderr = %q, want a reauth warning naming linear", errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "poddle connect reauth linear") {
+		t.Errorf("stderr = %q, want the reauth command hint", errBuf.String())
+	}
+}
+
+// TestUp_MCPConnector_NoWarningWhenNotFlagged is the common-case control: a
+// seeded connector NOT in the reauth set must not print any warning.
+func TestUp_MCPConnector_NoWarningWhenNotFlagged(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	rb := &reauthBroker{names: []string{"some-other-connection"}}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, rb)
+	var errBuf bytes.Buffer
+	c.SetErr(&errBuf)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(errBuf.String(), "needs reauth") {
+		t.Errorf("stderr = %q, want no reauth warning (linear isn't flagged)", errBuf.String())
+	}
+}
+
+// TestUp_MCPConnector_ReauthFetchErrorIsBestEffort confirms a NeedsReauth
+// error never blocks `up` — best-effort, matching OAuthMirror's contract.
+func TestUp_MCPConnector_ReauthFetchErrorIsBestEffort(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	rb := &reauthBroker{err: fmt.Errorf("daemon unreachable")}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, rb)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute should succeed despite the NeedsReauth error: %v", err)
 	}
 }

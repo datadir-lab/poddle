@@ -230,6 +230,18 @@ func (c *Client) Status() (Status, error) {
 	return s, nil
 }
 
+// NeedsReauth returns the connection names whose most recent OAuth refresh
+// failed (Status.NeedsReauth). `up` uses this — via an optional-capability
+// type-assertion, so test doubles need not implement it — to print a
+// best-effort, non-fatal warning when seeding a flagged OAuth-MCP connector.
+func (c *Client) NeedsReauth() ([]string, error) {
+	s, err := c.Status()
+	if err != nil {
+		return nil, err
+	}
+	return s.NeedsReauth, nil
+}
+
 // Egress mints a per-pod egress token and returns it plus the forward-proxy
 // address, so the pod's arbitrary (non-brokered) egress can be routed through
 // the broker (HTTP_PROXY) and governed by the pod's policy.
@@ -342,6 +354,29 @@ func (c *Client) VerifyAudit() (ok bool, brokenAt int64, err error) {
 		return false, 0, err
 	}
 	return v.OK, v.BrokenAt, nil
+}
+
+// OAuthMirror drains the daemon's durable OAuth mirror: the rotated OAuth
+// material the gateway persisted to OAuthMirrorDir() (Task 3), keyed by
+// connection name. poddled cannot be reached directly by the host (bind-mount
+// path indirection into the locked-down container), so this is the only way
+// the host observes it. Passed through as raw JSON — poddled does not import
+// connector, so it can't decode into connector.OAuthMaterial itself; the
+// caller (Task 6) does that.
+func (c *Client) OAuthMirror() (map[string]json.RawMessage, error) {
+	resp, err := c.http.Get(c.uri("/oauth/mirror"))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oauth mirror: %s", resp.Status)
+	}
+	var out map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // RevokePod invalidates every handle the daemon issued for pod.

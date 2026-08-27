@@ -121,6 +121,23 @@ func TestVault_ReplaceSwapsSecretForSameCredID(t *testing.T) {
 	}
 }
 
+func TestVault_WriteBackKeyRoundTrips(t *testing.T) {
+	v := NewVault()
+	c := Credential{Mode: ModeOAuthBearer, Secret: "a", RefreshToken: "r", WriteBackKey: "gh"}
+
+	id, err := v.Store("local", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := v.Get("local", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WriteBackKey != "gh" {
+		t.Errorf("WriteBackKey = %q, want %q", got.WriteBackKey, "gh")
+	}
+}
+
 func TestVault_EmptyClientSecretRoundTripsToEmpty(t *testing.T) {
 	v := NewVault()
 	c := Credential{Mode: ModeOAuthBearer, Secret: "tok", TokenEndpoint: "https://example.com/token", ClientID: "cid"}

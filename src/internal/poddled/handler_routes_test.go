@@ -32,6 +32,35 @@ func TestDaemon_Status(t *testing.T) {
 	if s.Pods["box"] != 1 {
 		t.Errorf("pods = %v, want box:1", s.Pods)
 	}
+	if len(s.NeedsReauth) != 0 {
+		t.Errorf("needs_reauth = %v, want empty (fakeBroker doesn't implement NeedsReauth)", s.NeedsReauth)
+	}
+}
+
+// TestDaemon_Status_NeedsReauth exercises the positive case: a broker that
+// DOES implement the optional NeedsReauth() []string capability must surface
+// its flagged connection names under the "needs_reauth" JSON key.
+func TestDaemon_Status_NeedsReauth(t *testing.T) {
+	d := New(&reauthFakeBroker{reauth: []string{"gh"}}, nil)
+	if _, err := d.Start("0.0.0.0:0", "redact", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(d.Handler())
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(raw["needs_reauth"]); got != `["gh"]` {
+		t.Errorf(`needs_reauth JSON = %s, want ["gh"]`, got)
+	}
 }
 
 func TestDaemon_Egress(t *testing.T) {

@@ -3,6 +3,7 @@ package connector
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -319,6 +320,37 @@ func TestCredential_OAuthMaterialBuildsOAuthBearer(t *testing.T) {
 	}
 	if cred.BaseURL != "https://api.example.com/mcp" {
 		t.Errorf("BaseURL = %q", cred.BaseURL)
+	}
+}
+
+func TestSaveLoadOAuth_RotatedAtRoundTrips(t *testing.T) {
+	base := t.TempDir()
+	s := NewStore(base)
+	if _, err := s.Create("gh", "mcp", "https://api.example.com/mcp", "", "", "local"); err != nil {
+		t.Fatal(err)
+	}
+	rotatedAt := time.Now().Add(-time.Hour).Truncate(0)
+	if err := s.SaveOAuth("gh", OAuthMaterial{AccessToken: "at", RefreshToken: "rt", RotatedAt: rotatedAt}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(base, "gh", "oauth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"rotated_at"`) {
+		t.Errorf("oauth.json missing %q key, got: %s", "rotated_at", raw)
+	}
+
+	m, ok, err := s.LoadOAuth("gh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("LoadOAuth ok = false, want true")
+	}
+	if !m.RotatedAt.Equal(rotatedAt) {
+		t.Errorf("RotatedAt = %v, want %v", m.RotatedAt, rotatedAt)
 	}
 }
 

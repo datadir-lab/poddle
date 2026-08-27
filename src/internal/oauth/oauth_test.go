@@ -3,6 +3,8 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -133,3 +135,30 @@ func TestDiscover_ChainAndErrNoOAuth(t *testing.T) {
 }
 
 func mcpBase(r *http.Request) string { u := url.URL{Scheme: "http", Host: r.Host}; return u.String() }
+
+// TestRegister_NonSuccessStatus_ErrNoDCR documents CURRENT behavior (M1):
+// Register collapses ANY non-2xx registration-endpoint response — whether
+// it's a hard 500 or a routing-mistake 404 — into the single sentinel
+// ErrNoDCR, same as an endpoint that was never advertised at all. This test
+// does not assert that collapse is desirable, only that it's what ships;
+// do not change Register to differentiate status codes without updating
+// this test and its caller in cli/connect (which surfaces one fixed
+// "needs pre-registered client" message for ErrNoDCR either way).
+func TestRegister_NonSuccessStatus_ErrNoDCR(t *testing.T) {
+	for _, status := range []int{http.StatusInternalServerError, http.StatusNotFound} {
+		t.Run(fmt.Sprintf("status_%d", status), func(t *testing.T) {
+			as := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer as.Close()
+
+			clientID, clientSecret, err := Register(context.Background(), as.Client(), as.URL+"/register", "http://127.0.0.1/callback")
+			if !errors.Is(err, ErrNoDCR) {
+				t.Fatalf("Register (status %d): err = %v, want ErrNoDCR", status, err)
+			}
+			if clientID != "" || clientSecret != "" {
+				t.Errorf("Register (status %d): clientID=%q clientSecret=%q, want both empty on error", status, clientID, clientSecret)
+			}
+		})
+	}
+}

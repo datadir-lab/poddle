@@ -39,6 +39,11 @@ type OAuthMaterial struct {
 	Scope         string `json:"scope"`
 
 	ExpiresAt time.Time `json:"expires_at"`
+
+	// RotatedAt is when this material was last refreshed. It is the
+	// newest-wins freshness stamp used to reconcile a rotated refresh token
+	// written back from the broker against the host's copy.
+	RotatedAt time.Time `json:"rotated_at"`
 }
 
 type connMeta struct {

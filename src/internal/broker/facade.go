@@ -31,9 +31,19 @@ func NewBroker() *Broker {
 	}
 }
 
-// Store seals a credential in the vault and returns its id.
+// Store seals a credential in the vault and returns its id. If c carries a
+// WriteBackKey, this also clears any needs-reauth flag the gateway raised for
+// it — a host that just re-stores a fresh credential for a connection has, by
+// definition, resolved whatever made the prior refresh fail.
 func (b *Broker) Store(c Credential) (string, error) {
-	return b.vault.Store(b.tenant, c)
+	id, err := b.vault.Store(b.tenant, c)
+	if err != nil {
+		return "", err
+	}
+	if c.WriteBackKey != "" {
+		b.server.gw.clearReauth(c.WriteBackKey)
+	}
+	return id, nil
 }
 
 // IssueHandle mints a pod-facing handle for a stored credential.
@@ -67,6 +77,18 @@ func (b *Broker) SetPolicyChecker(pc PolicyChecker) { b.server.gw.SetPolicyCheck
 // containerized broker's host.containers.internal). Empty disables it. Call
 // before Serve.
 func (b *Broker) SetLoopbackHost(h string) { b.server.gw.SetLoopbackHost(h) }
+
+// EnableOAuthWriteBack turns on durable OAuth refresh-token write-back: when
+// the gateway rotates a connection's refresh token, the new material is
+// mirrored under dir as <connName>.json, so poddled can reseed it on restart
+// without forcing a host reauth. Call before Serve.
+func (b *Broker) EnableOAuthWriteBack(dir string) {
+	b.server.gw.SetOAuthPersister(NewStateDirPersister(dir))
+}
+
+// NeedsReauth returns the WriteBackKeys of connections whose most recent
+// OAuth refresh attempt failed — `connect reauth` targets.
+func (b *Broker) NeedsReauth() []string { return b.server.gw.NeedsReauth() }
 
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }

@@ -4,6 +4,7 @@ package daemon
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -144,29 +145,41 @@ func statusCmd() *cobra.Command {
 				fmt.Fprintln(out, "poddled: not running")
 				return nil
 			}
-			fmt.Fprintln(out, "poddled: running")
-			fmt.Fprintf(out, "  gateway:  %s\n", s.Gateway)
-			if s.Redis != "" {
-				fmt.Fprintf(out, "  redis:    %s\n", s.Redis)
-			}
-			if s.Postgres != "" {
-				fmt.Fprintf(out, "  postgres: %s\n", s.Postgres)
-			}
-			if len(s.Pods) == 0 {
-				fmt.Fprintln(out, "  pods:     none")
-			} else {
-				fmt.Fprintf(out, "  pods:     %d\n", len(s.Pods))
-				for name, n := range s.Pods {
-					fmt.Fprintf(out, "    - %s (%d handles)\n", name, n)
-				}
-			}
-			if len(s.Events) > 0 {
-				fmt.Fprintln(out, "  autoscale:")
-				for _, e := range s.Events {
-					fmt.Fprintf(out, "    - %s\n", e)
-				}
-			}
+			renderStatus(out, s)
 			return nil
 		},
+	}
+}
+
+// renderStatus prints a poddled Status the way `poddle daemon status` reports
+// it. Split out from statusCmd's RunE so it's testable without a live daemon.
+func renderStatus(out io.Writer, s poddled.Status) {
+	fmt.Fprintln(out, "poddled: running")
+	fmt.Fprintf(out, "  gateway:  %s\n", s.Gateway)
+	if s.Redis != "" {
+		fmt.Fprintf(out, "  redis:    %s\n", s.Redis)
+	}
+	if s.Postgres != "" {
+		fmt.Fprintf(out, "  postgres: %s\n", s.Postgres)
+	}
+	if len(s.Pods) == 0 {
+		fmt.Fprintln(out, "  pods:     none")
+	} else {
+		fmt.Fprintf(out, "  pods:     %d\n", len(s.Pods))
+		for name, n := range s.Pods {
+			fmt.Fprintf(out, "    - %s (%d handles)\n", name, n)
+		}
+	}
+	if len(s.Events) > 0 {
+		fmt.Fprintln(out, "  autoscale:")
+		for _, e := range s.Events {
+			fmt.Fprintf(out, "    - %s\n", e)
+		}
+	}
+	if len(s.NeedsReauth) > 0 {
+		fmt.Fprintln(out, "  needs reauth:")
+		for _, name := range s.NeedsReauth {
+			fmt.Fprintf(out, "    - %s (run: poddle connect reauth %s)\n", name, name)
+		}
 	}
 }
