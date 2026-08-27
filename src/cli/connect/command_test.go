@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/datadir-lab/poddle/src/internal/app"
@@ -209,6 +210,135 @@ func TestConnect_AddOAuth_HeadlessBrowserFlow(t *testing.T) {
 	}
 
 	for _, secret := range []string{"ACCESS-XYZ-SECRET", "REFRESH-XYZ-SECRET"} {
+		if strings.Contains(out.String(), secret) {
+			t.Errorf("stdout leaked a token:\n%s", out.String())
+		}
+	}
+}
+
+// newMockOAuthMCPDevice is like newMockOAuthMCP but the AS additionally
+// advertises a device_authorization_endpoint (RFC 8628) and serves
+// /device_authorization + a device-code-grant /token that reports
+// authorization_pending once before issuing the real token — so the test
+// exercises DeviceFlow's poll loop, not just its happy-path single request.
+func newMockOAuthMCPDevice(t *testing.T) (mcpURL string) {
+	t.Helper()
+	var pendingLeft int32 = 1
+
+	var as *httptest.Server
+	as = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint":        as.URL + "/authorize",
+				"token_endpoint":                as.URL + "/token",
+				"registration_endpoint":         as.URL + "/register",
+				"device_authorization_endpoint": as.URL + "/device_authorization",
+			})
+		case "/register":
+			json.NewEncoder(w).Encode(map[string]string{
+				"client_id":     "dyn-client",
+				"client_secret": "dyn-secret",
+			})
+		case "/device_authorization":
+			json.NewEncoder(w).Encode(map[string]any{
+				"device_code":      "DEVCODE123",
+				"user_code":        "WDJB-MJHT",
+				"verification_uri": as.URL + "/activate",
+				"interval":         1,
+				"expires_in":       300,
+			})
+		case "/token":
+			_ = r.ParseForm()
+			if r.FormValue("grant_type") != "urn:ietf:params:oauth:grant-type:device_code" || r.FormValue("device_code") != "DEVCODE123" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
+				return
+			}
+			if atomic.AddInt32(&pendingLeft, -1) >= 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "DEVICE-ACCESS-SECRET",
+				"refresh_token": "DEVICE-REFRESH-SECRET",
+				"expires_in":    3600,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(as.Close)
+
+	var mcp *httptest.Server
+	mcp = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/oauth-protected-resource" {
+			json.NewEncoder(w).Encode(map[string]any{"authorization_servers": []string{as.URL}})
+			return
+		}
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+mcp.URL+`/.well-known/oauth-protected-resource"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(mcp.Close)
+
+	return mcp.URL
+}
+
+// TestConnect_AddOAuth_DeviceFlow mirrors
+// TestConnect_AddOAuth_HeadlessBrowserFlow but drives `connect add --device`:
+// no browser/headlessOpen is involved at all — the mock AS's
+// device_authorization_endpoint and device-code-grant /token stand in for a
+// headless operator completing consent out-of-band.
+func TestConnect_AddOAuth_DeviceFlow(t *testing.T) {
+	mcpURL := newMockOAuthMCPDevice(t)
+
+	store := connector.NewStore(t.TempDir())
+	var out bytes.Buffer
+	c := NewCmd(&app.App{Connections: store})
+	c.SetOut(&out)
+	c.SetArgs([]string{"add", "my-mcp", "--connector", "mcp", "--url", mcpURL, "--device"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	mat, ok, err := store.LoadOAuth("my-mcp")
+	if err != nil {
+		t.Fatalf("LoadOAuth: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected oauth.json to be written, found none")
+	}
+	if mat.AccessToken != "DEVICE-ACCESS-SECRET" {
+		t.Errorf("AccessToken = %q", mat.AccessToken)
+	}
+	if mat.RefreshToken != "DEVICE-REFRESH-SECRET" {
+		t.Errorf("RefreshToken = %q", mat.RefreshToken)
+	}
+	if mat.TokenEndpoint == "" {
+		t.Error("TokenEndpoint not saved")
+	}
+	if mat.ClientID != "dyn-client" {
+		t.Errorf("ClientID = %q, want the DCR-issued dyn-client", mat.ClientID)
+	}
+	if mat.ExpiresAt.IsZero() {
+		t.Error("ExpiresAt not set from expires_in")
+	}
+	if mat.RotatedAt.IsZero() {
+		t.Error("RotatedAt not stamped when a fresh grant was sealed")
+	}
+
+	for _, want := range []string{"my-mcp", "WDJB-MJHT"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+	if !strings.Contains(out.String(), "/activate") {
+		t.Errorf("output missing the verification URI:\n%s", out.String())
+	}
+
+	for _, secret := range []string{"DEVICE-ACCESS-SECRET", "DEVICE-REFRESH-SECRET"} {
 		if strings.Contains(out.String(), secret) {
 			t.Errorf("stdout leaked a token:\n%s", out.String())
 		}
