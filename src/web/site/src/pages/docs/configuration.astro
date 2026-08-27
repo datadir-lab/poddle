@@ -223,6 +223,16 @@ const opencodeMcpExample = `{
       expired: it re-runs browser consent and replaces the stored tokens. <code>poddle daemon
       status</code> lists any connection that needs it.
     </p>
+    <p class="doc-p">
+      For a headless or remote host with no browser - CI, an SSH box, a bare server - add
+      <code>--device</code> to either command: <code>poddle connect add search --connector mcp --url
+      ... --device</code> or <code>poddle connect reauth search --device</code> runs the OAuth 2.0
+      device authorization grant (RFC 8628) instead of opening one. Poddle prints a short user code and
+      a verification URL; open that URL on any device, enter the code, and poddle polls until you
+      approve - then seals the same access and refresh tokens as the browser flow. The browser flow
+      remains the default when <code>--device</code> is omitted, and the device flow only works if the
+      server's authorization server advertises a <code>device_authorization_endpoint</code>.
+    </p>
     <Callout type="note" title="Rotated refresh tokens write back automatically">
       <p>
         When the broker refreshes a token and the provider rotates the refresh token, <code>poddled</code>

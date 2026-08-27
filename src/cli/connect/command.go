@@ -42,6 +42,7 @@ func NewCmd(a *app.App) *cobra.Command {
 
 func addCmd(a *app.App) *cobra.Command {
 	var connName, url, user, token, clientID, clientSecret, scope string
+	var device bool
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a service connection (the token is brokered, never stored in a pod)",
@@ -60,7 +61,7 @@ func addCmd(a *app.App) *cobra.Command {
 				_, err := a.Connections.Create(args[0], connName, url, user, token, "")
 				return err
 			}
-			return addViaOAuth(cmd, a, args[0], connName, url, user, clientID, clientSecret, scope)
+			return addViaOAuth(cmd, a, args[0], connName, url, user, clientID, clientSecret, scope, device)
 		},
 	}
 	cmd.Flags().StringVar(&connName, "connector", "", "connector type (forgejo, woodpecker, or a custom one)")
@@ -70,13 +71,15 @@ func addCmd(a *app.App) *cobra.Command {
 	cmd.Flags().StringVar(&clientID, "client-id", "", "pre-registered OAuth client ID (required if the server has no Dynamic Client Registration)")
 	cmd.Flags().StringVar(&clientSecret, "client-secret", "", "OAuth client secret (confidential clients only; pairs with --client-id)")
 	cmd.Flags().StringVar(&scope, "scope", "", "OAuth scope(s) to request")
+	cmd.Flags().BoolVar(&device, "device", false, "use the OAuth 2.0 device flow (RFC 8628) instead of a browser — for headless/remote hosts with no browser")
 	_ = cmd.MarkFlagRequired("connector")
 	return cmd
 }
 
 // addViaOAuth is the no-token path of `connect add`: probe the service for
-// OAuth protection, then run the PKCE authorization-code browser flow.
-func addViaOAuth(cmd *cobra.Command, a *app.App, name, connName, url, user, clientID, clientSecret, scope string) error {
+// OAuth protection, then run the PKCE authorization-code browser flow (or,
+// with device set, the RFC 8628 device flow for headless hosts).
+func addViaOAuth(cmd *cobra.Command, a *app.App, name, connName, url, user, clientID, clientSecret, scope string, device bool) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), oauthFlowTimeout)
 	defer cancel()
 
@@ -98,13 +101,23 @@ func addViaOAuth(cmd *cobra.Command, a *app.App, name, connName, url, user, clie
 		}
 	}
 
-	code, redirectURI, verifier, err := oauth.AuthCodeFlow(ctx, m, clientID, scope, oauth.OpenBrowser)
-	if err != nil {
-		return fmt.Errorf("oauth authorization: %w", err)
-	}
-	tok, err := oauth.Exchange(ctx, http.DefaultClient, m, clientID, clientSecret, code, verifier, redirectURI)
-	if err != nil {
-		return fmt.Errorf("oauth token exchange: %w", err)
+	var tok oauth.Token
+	if device {
+		tok, err = oauth.DeviceFlow(ctx, http.DefaultClient, m, clientID, clientSecret, scope, func(verURI, userCode string) {
+			fmt.Fprintf(cmd.OutOrStdout(), "To authorize poddle, visit:\n  %s\nand enter the code:  %s\n", verURI, userCode)
+		})
+		if err != nil {
+			return fmt.Errorf("device authorization: %w", err)
+		}
+	} else {
+		code, redirectURI, verifier, aerr := oauth.AuthCodeFlow(ctx, m, clientID, scope, oauth.OpenBrowser)
+		if aerr != nil {
+			return fmt.Errorf("oauth authorization: %w", aerr)
+		}
+		tok, err = oauth.Exchange(ctx, http.DefaultClient, m, clientID, clientSecret, code, verifier, redirectURI)
+		if err != nil {
+			return fmt.Errorf("oauth token exchange: %w", err)
+		}
 	}
 
 	if _, err := a.Connections.Create(name, connName, url, user, "", ""); err != nil {
@@ -132,7 +145,8 @@ func addViaOAuth(cmd *cobra.Command, a *app.App, name, connName, url, user, clie
 // (LoadOAuth doesn't persist AuthorizationEndpoint) and reuses the stored
 // client credentials.
 func reauthCmd(a *app.App) *cobra.Command {
-	return &cobra.Command{
+	var device bool
+	cmd := &cobra.Command{
 		Use:     "reauth <name>",
 		Short:   "Re-run the OAuth browser flow for a connection",
 		Example: `  poddle connect reauth my-mcp`,
@@ -158,13 +172,24 @@ func reauthCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("oauth discovery: %w", err)
 			}
-			code, redirectURI, verifier, err := oauth.AuthCodeFlow(ctx, m, mat.ClientID, mat.Scope, oauth.OpenBrowser)
-			if err != nil {
-				return fmt.Errorf("oauth authorization: %w", err)
-			}
-			tok, err := oauth.Exchange(ctx, http.DefaultClient, m, mat.ClientID, mat.ClientSecret, code, verifier, redirectURI)
-			if err != nil {
-				return fmt.Errorf("oauth token exchange: %w", err)
+
+			var tok oauth.Token
+			if device {
+				tok, err = oauth.DeviceFlow(ctx, http.DefaultClient, m, mat.ClientID, mat.ClientSecret, mat.Scope, func(verURI, userCode string) {
+					fmt.Fprintf(cmd.OutOrStdout(), "To authorize poddle, visit:\n  %s\nand enter the code:  %s\n", verURI, userCode)
+				})
+				if err != nil {
+					return fmt.Errorf("device authorization: %w", err)
+				}
+			} else {
+				code, redirectURI, verifier, aerr := oauth.AuthCodeFlow(ctx, m, mat.ClientID, mat.Scope, oauth.OpenBrowser)
+				if aerr != nil {
+					return fmt.Errorf("oauth authorization: %w", aerr)
+				}
+				tok, err = oauth.Exchange(ctx, http.DefaultClient, m, mat.ClientID, mat.ClientSecret, code, verifier, redirectURI)
+				if err != nil {
+					return fmt.Errorf("oauth token exchange: %w", err)
+				}
 			}
 			if err := a.Connections.SaveOAuth(name, connector.OAuthMaterial{
 				AccessToken:   tok.AccessToken,
@@ -182,6 +207,8 @@ func reauthCmd(a *app.App) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&device, "device", false, "use the OAuth 2.0 device flow (RFC 8628) instead of a browser — for headless/remote hosts with no browser")
+	return cmd
 }
 
 func lsCmd(a *app.App) *cobra.Command {
