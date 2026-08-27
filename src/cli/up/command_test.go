@@ -1022,6 +1022,40 @@ func TestReconcileOAuth(t *testing.T) {
 	}
 }
 
+// TestReconcileOAuth_CarriesForwardScope: a rotation write-back has an empty
+// Scope (broker.Credential has no scope field), so adopting it must PRESERVE the
+// scope the host stored via connect add/reauth rather than erasing oauth.json's.
+func TestReconcileOAuth_CarriesForwardScope(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	onDisk := &connector.OAuthMaterial{AccessToken: "on-disk", Scope: "mcp:read mcp:write", RotatedAt: older}
+	mirror := &connector.OAuthMaterial{AccessToken: "rotated", RefreshToken: "r2", Scope: "", RotatedAt: newer}
+
+	use, adopt := reconcileOAuth(onDisk, mirror)
+	if !adopt {
+		t.Fatal("expected adopt=true for a strictly-newer mirror")
+	}
+	if use.AccessToken != "rotated" {
+		t.Errorf("use.AccessToken = %q, want the rotated mirror token", use.AccessToken)
+	}
+	if use.Scope != "mcp:read mcp:write" {
+		t.Errorf("use.Scope = %q, want the on-disk scope carried forward (not erased)", use.Scope)
+	}
+}
+
+// TestReconcileOAuth_MirrorScopeWinsWhenSet: a non-empty mirror scope is not
+// clobbered by the on-disk scope (carry-forward only fills an empty mirror scope).
+func TestReconcileOAuth_MirrorScopeWinsWhenSet(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	onDisk := &connector.OAuthMaterial{Scope: "old-scope", RotatedAt: older}
+	mirror := &connector.OAuthMaterial{Scope: "new-scope", RotatedAt: newer}
+	use, _ := reconcileOAuth(onDisk, mirror)
+	if use.Scope != "new-scope" {
+		t.Errorf("use.Scope = %q, want the mirror's own non-empty scope preserved", use.Scope)
+	}
+}
+
 // credCaptureBroker records the Credential passed to IssueHandle so a test can
 // assert on fields (like WriteBackKey) that never surface in the pod's env.
 type credCaptureBroker struct {

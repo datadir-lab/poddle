@@ -708,6 +708,14 @@ func reconcileOAuth(onDisk, mirror *connector.OAuthMaterial) (use *connector.OAu
 		return mirror, true // the mirror is the only copy
 	}
 	if mirror.RotatedAt.After(onDisk.RotatedAt) {
+		// A rotation write-back carries the new access+refresh token and expiry,
+		// but broker.Credential has no Scope, so the mirror's scope is always
+		// empty. The granted scope does not change on a refresh, so preserve the
+		// scope the host originally stored (from connect add/reauth) rather than
+		// erasing it when we rewrite oauth.json.
+		if mirror.Scope == "" {
+			mirror.Scope = onDisk.Scope
+		}
 		return mirror, true
 	}
 	return onDisk, false
