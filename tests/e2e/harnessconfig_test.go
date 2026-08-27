@@ -54,6 +54,14 @@ func TestE2E_HarnessConfig_NotClobbered(t *testing.T) {
 			podPath: "/root/.pi/mcp.json",
 			seed:    `{"` + cfgMarker + `":{"command":"echo"}}`,
 		},
+		{
+			name:    "gemini",
+			harness: "gemini",
+			image:   "docker.io/library/node:22",
+			seedRel: "settings.json",
+			podPath: "/root/.gemini/settings.json",
+			seed:    `{"` + cfgMarker + `":true,"theme":"Default"}`,
+		},
 	}
 
 	for _, tc := range cases {
