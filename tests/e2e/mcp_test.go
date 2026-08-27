@@ -130,9 +130,20 @@ func mockMCPServer(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Serv
 }
 
 // mockOpenAIStreamUp is a minimal SSE-streaming chat-completions mock (opencode
-// always sends stream:true; a flat-JSON mock makes its SDK loop forever). Records
-// auth; binds 0.0.0.0 so the broker container reaches it via host.containers.internal.
+// always sends stream:true; a flat-JSON mock makes its SDK loop forever) that
+// replies "works" — kept for mcp_test's existing callers, which don't need a
+// distinctive marker. Delegates to mockOpenAIStreamUpMarker.
 func mockOpenAIStreamUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	return mockOpenAIStreamUpMarker(t, auths, mu, "works")
+}
+
+// mockOpenAIStreamUpMarker is mockOpenAIStreamUp parameterized on the streamed
+// assistant content, so callers that need a distinctive success marker (e.g.
+// secretless_up_test.go's opencode/pi rows) can tell a real reply apart from
+// the harness merely echoing the prompt. Records auth; binds 0.0.0.0 so the
+// broker container reaches it via host.containers.internal.
+func mockOpenAIStreamUpMarker(t *testing.T, auths *[]string, mu *sync.Mutex, marker string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -141,7 +152,7 @@ func mockOpenAIStreamUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, piChunk(map[string]any{"role": "assistant", "content": ""}, nil))
-		fmt.Fprint(w, piChunk(map[string]any{"content": "works"}, nil))
+		fmt.Fprint(w, piChunk(map[string]any{"content": marker}, nil))
 		fmt.Fprint(w, piChunk(map[string]any{}, "stop"))
 		fmt.Fprint(w, "data: [DONE]\n\n")
 		if fl, ok := w.(http.Flusher); ok {
