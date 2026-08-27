@@ -182,7 +182,10 @@ there's nothing to wire); bearer-token / API-key servers work as above, and OAut
 servers are supported too — omit `--token` and poddle probes the URL, runs browser
 consent on the host (auto-discovery + Dynamic Client Registration, or
 `--client-id`/`--client-secret` when the server has no DCR), and the broker refreshes
-the access token automatically - tokens stay in the broker, never the pod. If a
+the access token automatically - tokens stay in the broker, never the pod. Add
+`--device` to `connect add` (or `connect reauth`) for headless consent - the OAuth
+2.0 device flow (RFC 8628) - on remote or CI hosts with no browser: poddle prints a
+code and URL to approve on any device and polls until authorized. If a
 provider rotates its refresh token, poddled writes the rotation back to disk and
 reconciles it on the next `poddle up`, so a restart no longer forces a reauth in the
 normal case; `poddle connect reauth <name>` is the fallback for a grant that's
