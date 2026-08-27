@@ -705,6 +705,201 @@ func TestGateway_StripsUpstreamWWWAuthenticate(t *testing.T) {
 	}
 }
 
+// TestGateway_ReactiveRetryReplaysNonEmptyBody covers Fix 3: the earlier
+// reactive-retry tests only ever send nil-body POSTs, so the bodyBytes/GetBody
+// buffer-and-replay path (gateway.go's ModifyResponse) is never actually
+// exercised on real bytes. Send a non-empty JSON-RPC body, 401 the first
+// attempt, 200 the retry, and assert the upstream's retry request received the
+// IDENTICAL body bytes as the original.
+func TestGateway_ReactiveRetryReplaysNonEmptyBody(t *testing.T) {
+	const body = `{"jsonrpc":"2.0","method":"tools/list","id":1}`
+	var mu sync.Mutex
+	var bodies []string
+	var calls int64
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		if atomic.AddInt64(&calls, 1) == 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="https://mcp.example/x"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("unauthorized"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(up.Close)
+
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL, TokenEndpoint: "http://unused"}
+	g, handle := gatewayWith(t, cred)
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		c.Secret = "fresh"
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+	gw := serve(t, g)
+
+	code := do(t, gw, handle, http.MethodPost, "/mcp", strings.NewReader(body))
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (reactive retry should succeed)", code)
+	}
+
+	mu.Lock()
+	got := append([]string(nil), bodies...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("upstream saw %d requests, want 2 (original + one retry): %v", len(got), got)
+	}
+	if got[0] != body {
+		t.Errorf("original request body = %q, want %q", got[0], body)
+	}
+	if got[1] != body {
+		t.Errorf("retry request body = %q, want %q (identical replay)", got[1], body)
+	}
+}
+
+// TestGateway_ForceRefreshSkipsWhenPeerAlreadyRefreshed unit-tests Fix 1's
+// compare-and-skip directly: when the live credential's Secret already differs
+// from the rejected one, a peer beat us to the lock and already rotated the
+// refresh token — forceRefresh must return the peer's live credential and must
+// NOT call g.refresh again (that would replay the peer's now-consumed refresh
+// token a second time).
+func TestGateway_ForceRefreshSkipsWhenPeerAlreadyRefreshed(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL}
+	g, handle := gatewayWith(t, cred)
+	credID, _, err := g.handles.Resolve(handle)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	var refreshes int64
+	g.refresh = func(context.Context, Credential) (Credential, error) {
+		atomic.AddInt64(&refreshes, 1)
+		return Credential{}, errors.New("must not be called")
+	}
+
+	// Simulate a peer that already refreshed while we waited for the lock: the
+	// vault now holds "fresh"/"r2", but we still have the pre-refresh
+	// "access-old" in hand (captured before the peer's refresh landed) and we
+	// were rejected on that stale token.
+	fresh := Credential{Mode: ModeOAuthBearer, Secret: "fresh", RefreshToken: "r2",
+		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL}
+	if err := g.handles.ReplaceCred(handle, fresh); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	got, err := g.forceRefresh(context.Background(), handle, credID, cred, "access-old")
+	if err != nil {
+		t.Fatalf("forceRefresh: %v", err)
+	}
+	if got.Secret != "fresh" {
+		t.Errorf("forceRefresh returned Secret = %q, want %q (the peer's live credential)", got.Secret, "fresh")
+	}
+	if n := atomic.LoadInt64(&refreshes); n != 0 {
+		t.Errorf("g.refresh called %d times, want 0 (peer already refreshed — must not rotate again)", n)
+	}
+}
+
+// TestGateway_ForceRefreshRefreshesWhenNobodyBeatUs complements the above:
+// when the live credential's Secret still equals the rejected one (nobody has
+// refreshed yet), forceRefresh must perform the real refresh.
+func TestGateway_ForceRefreshRefreshesWhenNobodyBeatUs(t *testing.T) {
+	up, _ := upstreamRecording(t)
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL}
+	g, handle := gatewayWith(t, cred)
+	credID, _, err := g.handles.Resolve(handle)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	var refreshes int64
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		atomic.AddInt64(&refreshes, 1)
+		c.Secret = "fresh"
+		c.RefreshToken = "r2"
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+
+	got, err := g.forceRefresh(context.Background(), handle, credID, cred, "access-old")
+	if err != nil {
+		t.Fatalf("forceRefresh: %v", err)
+	}
+	if got.Secret != "fresh" {
+		t.Errorf("forceRefresh returned Secret = %q, want %q", got.Secret, "fresh")
+	}
+	if n := atomic.LoadInt64(&refreshes); n != 1 {
+		t.Errorf("g.refresh called %d times, want exactly 1 (nobody had refreshed yet)", n)
+	}
+}
+
+// TestGateway_ForceRefreshCollapsesConcurrentEarlyRevocation proves Fix 1's
+// invariant end-to-end through ServeHTTP/ModifyResponse: N requests racing on
+// one OAuth credential that all hit an early-revocation 401 (well inside the
+// refresh skew, so no PROACTIVE refresh ever fires — refreshIfStale is a
+// no-op) must still collapse to exactly one refresh. Before Fix 1, every
+// serialized caller called g.refresh again with its own captured
+// pre-rejection credential (replaying the same already-consumed refresh
+// token); after Fix 1, only the first caller through the lock refreshes and
+// every other caller reuses that peer's live, already-rotated credential.
+func TestGateway_ForceRefreshCollapsesConcurrentEarlyRevocation(t *testing.T) {
+	up, seen := revocableBearer(t, "fresh")
+	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
+		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL, TokenEndpoint: "http://unused"}
+	g, handle := gatewayWith(t, cred)
+
+	var refreshes int64
+	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		atomic.AddInt64(&refreshes, 1)
+		c.Secret = "fresh"
+		c.RefreshToken = "r2"
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+	gw := serve(t, g)
+
+	const concurrency = 12
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, gw.URL+"/mcp", nil)
+			if err != nil {
+				t.Errorf("new request: %v", err)
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+handle)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Errorf("do: %v", err)
+				return
+			}
+			_, _ = io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("status = %d, want 200 (peer-refreshed bearer should be accepted)", resp.StatusCode)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&refreshes); got != 1 {
+		t.Errorf("refresh called %d times, want exactly 1 (all peers should collapse onto the first)", got)
+	}
+	for _, bearer := range seen() {
+		if bearer != "Bearer access-old" && bearer != "Bearer fresh" {
+			t.Errorf("upstream saw unexpected bearer %q", bearer)
+		}
+	}
+}
+
 // TestGateway_NonOAuth401NotRetriedNorStripped covers §4's scope guard: only
 // ModeOAuthBearer upstreams get the retry + strip. A non-OAuth upstream's 401 —
 // and its WWW-Authenticate — pass through byte-for-byte, and no refresh fires.

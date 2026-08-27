@@ -320,7 +320,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return nil
 			}
 			retried = true // retry AT MOST once per request
-			updated, err := g.forceRefresh(res.Request.Context(), handle, credID, cred)
+			// cred.Secret is the access token this closure injected via applyAuth at
+			// send time — i.e. the exact token the upstream just rejected.
+			updated, err := g.forceRefresh(res.Request.Context(), handle, credID, cred, cred.Secret)
 			if err != nil {
 				// Refresh failed; forceRefresh already flagged needs-reauth. Leave
 				// the (already stripped) bare 401 for the pod.
@@ -351,6 +353,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			res.Header = res2.Header
 			res.Body = res2.Body
 			res.ContentLength = res2.ContentLength
+			// The stdlib's reverse proxy runs removeHopByHopHeaders on the ORIGINAL
+			// response before ModifyResponse, but res2 (the retry response) never went
+			// through that — strip it here too, or a retry upstream's
+			// Connection/Keep-Alive/etc. reach the pod.
+			stripHopByHop(res.Header)
 			res.Header.Del("WWW-Authenticate") // the retry response may carry one too
 			if res2.StatusCode == http.StatusUnauthorized {
 				g.flagReauth(cred.WriteBackKey) // even the refreshed token was rejected — the grant is dead
@@ -403,18 +410,35 @@ func (g *Gateway) refreshIfStale(ctx context.Context, handle, credID string, cre
 }
 
 // forceRefresh unconditionally refreshes cred's OAuth token — skipping the skew
-// check refreshIfStale applies AND its under-lock re-read (the reactive path
-// already knows the upstream rejected the current token, so a re-read that
-// returned it would be useless) — and swaps the result into the vault under the
+// check refreshIfStale applies — and swaps the result into the vault under the
 // same credID. It shares the per-credID lock with refreshIfStale so a proactive
 // and a reactive refresh of one credential can't race, and the same
 // rotate-and-persist/flag-on-failure semantics (via rotate). Used by the
 // reactive retry path when an upstream 401s a token that wasn't yet stale (an
 // early revocation inside the refresh skew).
-func (g *Gateway) forceRefresh(ctx context.Context, handle, credID string, cred Credential) (Credential, error) {
+//
+// rejectedSecret is the access token the upstream just rejected (captured by
+// the caller BEFORE acquiring the lock, since a peer may rotate the credential
+// out from under it while it waits). Under the lock, forceRefresh re-reads the
+// LIVE credential and compares its Secret against rejectedSecret — keyed on
+// the secret, not on ExpiresAt the way refreshIfStale's re-read is, because a
+// reactive 401 carries no expiry signal to compare against (the rejected token
+// wasn't stale by expiry — that's WHY this is the reactive path). If the live
+// Secret already differs, a peer serialized ahead of us on this same lock
+// already rotated the refresh token; calling g.refresh again would replay that
+// now-consumed refresh token a second time, and a provider with rotation-reuse
+// detection (Google/Okta — OAuth 2.1's recommended posture) treats reuse as
+// theft and revokes the WHOLE token family, killing the peer's brand-new
+// access token too. So: live != rejected -> hand back the peer's live
+// credential, no second rotation. live == rejected (nobody has refreshed yet)
+// -> do the real refresh.
+func (g *Gateway) forceRefresh(ctx context.Context, handle, credID string, cred Credential, rejectedSecret string) (Credential, error) {
 	lk := g.credLock(credID)
 	lk.Lock()
 	defer lk.Unlock()
+	if _, live, err := g.handles.Resolve(handle); err == nil && live.Secret != rejectedSecret {
+		return live, nil // a peer already refreshed this credential; reuse it
+	}
 	return g.rotate(ctx, handle, cred)
 }
 
@@ -550,6 +574,31 @@ func (g *Gateway) redactBody(w http.ResponseWriter, r *http.Request, cred Creden
 	r.ContentLength = int64(len(red))
 	r.Header.Set("Content-Length", strconv.Itoa(len(red)))
 	return true, n
+}
+
+// hopByHopHeaders are the standard connection-scoped headers (RFC 9110
+// §7.6.1) that must never be forwarded end-to-end by a proxy.
+var hopByHopHeaders = []string{
+	"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate",
+	"Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade",
+}
+
+// stripHopByHop deletes the standard hop-by-hop headers from h, plus any
+// extra header named in h's own Connection header value (RFC 9110 §7.6.1: a
+// Connection header can nominate additional per-hop headers beyond the
+// standard set). net/http/httputil's ReverseProxy does this for the FIRST
+// upstream response automatically before ModifyResponse runs; it does nothing
+// for a second response the reactive-retry path splices in, so callers that
+// swap in a retry response's header wholesale must call this themselves.
+func stripHopByHop(h http.Header) {
+	if conn := h.Get("Connection"); conn != "" {
+		for _, name := range strings.Split(conn, ",") {
+			h.Del(strings.TrimSpace(name))
+		}
+	}
+	for _, name := range hopByHopHeaders {
+		h.Del(name)
+	}
 }
 
 // isTextual reports whether a Content-Type carries scannable text (LLM/API
