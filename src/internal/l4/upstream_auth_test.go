@@ -139,8 +139,8 @@ func TestWriteErrPG(t *testing.T) {
 
 func TestPgSCRAM_RejectsWhenMechanismAbsent(t *testing.T) {
 	// The upstream advertises only MD5, so SCRAM must fail before any I/O
-	// (up/upR are never touched on this path).
-	if err := pgSCRAM(nil, nil, "pw", []byte("MD5\x00")); err == nil {
+	// (up/upR and the authenticator are never touched on this path).
+	if err := pgSCRAM(nil, nil, localSCRAMAuthenticator{password: "pw"}, []byte("MD5\x00")); err == nil {
 		t.Fatal("expected error when SCRAM-SHA-256 is not offered")
 	}
 }
@@ -152,11 +152,58 @@ func TestPgSCRAM_HappyPath(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() { errc <- fakeSCRAMUpstream(srv) }()
 
-	if err := pgSCRAM(up, bufio.NewReader(up), "s3cret", []byte("SCRAM-SHA-256\x00")); err != nil {
+	auth := localSCRAMAuthenticator{password: "s3cret"}
+	if err := pgSCRAM(up, bufio.NewReader(up), auth, []byte("SCRAM-SHA-256\x00")); err != nil {
 		t.Fatalf("pgSCRAM: %v", err)
 	}
 	if err := <-errc; err != nil {
 		t.Fatalf("fake upstream: %v", err)
+	}
+}
+
+// fakeSCRAMKeeper implements SCRAMKeeper for tests: it computes the proof via
+// ComputeSCRAMProof (the same math localSCRAMAuthenticator uses) and records
+// the handle it was asked to resolve, so tests can assert the delegation
+// actually crossed the SCRAMKeeper boundary rather than silently falling back
+// to a locally-held password.
+type fakeSCRAMKeeper struct {
+	password  string
+	calls     int
+	gotHandle string
+}
+
+func (f *fakeSCRAMKeeper) SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error) {
+	f.calls++
+	f.gotHandle = handle
+	return ComputeSCRAMProof(f.password, salt, iter, authMessage)
+}
+
+// TestPgSCRAM_HappyPath_ViaKeeper is the keeper-delegated twin of
+// TestPgSCRAM_HappyPath: pgSCRAM is driven with a keeperSCRAMAuthenticator
+// instead of a localSCRAMAuthenticator, proving the production wiring
+// (ServePostgres constructs exactly this when a keeper is available) drives
+// the SAME pgSCRAM/scramClient code, unmodified, with the proof crossing to
+// the keeper rather than being computed from a password pgSCRAM itself holds.
+func TestPgSCRAM_HappyPath_ViaKeeper(t *testing.T) {
+	up, srv := net.Pipe()
+	defer up.Close()
+
+	errc := make(chan error, 1)
+	go func() { errc <- fakeSCRAMUpstream(srv) }()
+
+	fk := &fakeSCRAMKeeper{password: "s3cret"}
+	auth := keeperSCRAMAuthenticator{keeper: fk, handle: "poddle_handle"}
+	if err := pgSCRAM(up, bufio.NewReader(up), auth, []byte("SCRAM-SHA-256\x00")); err != nil {
+		t.Fatalf("pgSCRAM: %v", err)
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("fake upstream: %v", err)
+	}
+	if fk.calls != 1 {
+		t.Errorf("keeper.SCRAMProof calls = %d, want 1", fk.calls)
+	}
+	if fk.gotHandle != "poddle_handle" {
+		t.Errorf("keeper.SCRAMProof handle = %q, want %q", fk.gotHandle, "poddle_handle")
 	}
 }
 

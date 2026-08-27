@@ -35,7 +35,8 @@ func TestPgClientAuth_MD5(t *testing.T) {
 		}
 		errc <- writeMessage(srv, 'R', authInt32(0)) // AuthenticationOk
 	}()
-	if err := pgClientAuth(up, bufio.NewReader(up), "user", "pass", "db"); err != nil {
+	auth := localSCRAMAuthenticator{password: "pass"}
+	if err := pgClientAuth(up, bufio.NewReader(up), "user", "pass", auth, "db"); err != nil {
 		t.Fatalf("pgClientAuth: %v", err)
 	}
 	if err := <-errc; err != nil {
@@ -51,7 +52,7 @@ func TestPgClientAuth_UpstreamError(t *testing.T) {
 		_, _ = readStartup(r)
 		_ = writeMessage(srv, 'E', []byte("SFATAL\x00Mdenied\x00\x00")) // ErrorResponse
 	}()
-	if err := pgClientAuth(up, bufio.NewReader(up), "u", "p", "db"); err == nil {
+	if err := pgClientAuth(up, bufio.NewReader(up), "u", "p", localSCRAMAuthenticator{password: "p"}, "db"); err == nil {
 		t.Error("expected an error when the upstream returns ErrorResponse")
 	}
 }
@@ -64,7 +65,7 @@ func TestPgClientAuth_UnsupportedAuthType(t *testing.T) {
 		_, _ = readStartup(r)
 		_ = writeMessage(srv, 'R', authInt32(99)) // an auth type poddle does not implement
 	}()
-	if err := pgClientAuth(up, bufio.NewReader(up), "u", "p", "db"); err == nil {
+	if err := pgClientAuth(up, bufio.NewReader(up), "u", "p", localSCRAMAuthenticator{password: "p"}, "db"); err == nil {
 		t.Error("expected an error for an unsupported upstream auth type")
 	}
 }
@@ -77,7 +78,7 @@ func TestPgClientAuth_ShortAuthMessage(t *testing.T) {
 		_, _ = readStartup(r)
 		_ = writeMessage(srv, 'R', []byte{0, 1}) // fewer than 4 bytes: no valid auth code
 	}()
-	if err := pgClientAuth(up, bufio.NewReader(up), "u", "p", "db"); err == nil {
+	if err := pgClientAuth(up, bufio.NewReader(up), "u", "p", localSCRAMAuthenticator{password: "p"}, "db"); err == nil {
 		t.Error("expected an error for a short authentication message")
 	}
 }

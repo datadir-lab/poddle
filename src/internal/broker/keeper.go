@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/datadir-lab/poddle/src/internal/l4"
 	"github.com/datadir-lab/poddle/src/internal/oauth"
 )
 
@@ -73,6 +73,12 @@ type Keeper interface {
 	// needs the sealed managed secret to scan. It returns proceed=false (after
 	// writing a 403) when redaction is set to block and a secret is found;
 	// otherwise proceed=true and the number of secrets redacted.
+	//
+	// Call order is load-bearing: the caller must run InjectAuth (which calls
+	// refreshIfStale) for handle BEFORE RedactBody, so a just-rotated credential
+	// is already persisted to the vault when RedactBody re-resolves handle — the
+	// scan then targets the SAME secret that's about to hit the wire, not a
+	// stale pre-rotation one.
 	RedactBody(w http.ResponseWriter, r *http.Request, handle string) (proceed bool, hits int)
 
 	// NeedsReauth, ClearReauth, and FlagReauth manage the set of connections whose
@@ -84,13 +90,16 @@ type Keeper interface {
 	ClearReauth(key string)
 	FlagReauth(handle string)
 
-	// Proof is the SCRAM password-bearing step (the l4.scramAuthenticator shape):
-	// the one step of a SCRAM exchange that needs the real password. The boundary
-	// presents it now so the keeper contract is complete; routing the L4 SCRAM
-	// terminators' delegation through the broker keeper is a Phase 2 follow-up, so
-	// Phase 1 leaves this unimplemented (the in-process l4.localSCRAMAuthenticator
-	// still owns SCRAM today).
-	Proof(salt []byte, iter int, authMessage string) ([]byte, error)
+	// SCRAMProof is the SCRAM password-bearing step for an L4 Postgres session
+	// (the l4.scramAuthenticator shape, keyed by the pod handle that session
+	// authenticated with): the one step of a SCRAM exchange that needs the real
+	// password. The L4 Postgres terminator holds only handle and a
+	// l4.keeperSCRAMAuthenticator that calls this instead of computing the proof
+	// itself, so the DB password never becomes long-lived state in the L4 front —
+	// the same custody rule InjectAuth/RedactBody already apply to the HTTP path.
+	// Today the call is in-process (*localKeeper); under Tier 2 it crosses the
+	// socketpair to the vault process with no change to l4's state machine.
+	SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error)
 
 	// SetEgressMode and SetOAuthPersister configure keeper-owned state (the egress
 	// redactor and the OAuth write-back sink). Called before Serve, so the facade's
@@ -237,10 +246,26 @@ func (k *localKeeper) FlagReauth(handle string) {
 	}
 }
 
-// Proof is the SCRAM password-bearing step; see the Keeper interface doc. Not
-// wired in Phase 1 — the in-process l4 authenticator still owns SCRAM.
-func (k *localKeeper) Proof(salt []byte, iter int, authMessage string) ([]byte, error) {
-	return nil, errors.New("broker: keeper SCRAM proof delegation not wired in phase 1")
+// SCRAMProof is the SCRAM password-bearing step; see the Keeper interface doc.
+// It re-resolves handle for its credential — same custody rule as
+// InjectAuth/RedactBody, the front holds no Credential — then derives the
+// proof with l4's shared RFC 7677 arithmetic (l4.ComputeSCRAMProof), so that
+// math exists in exactly one place: l4.localSCRAMAuthenticator.Proof (still
+// the vector TestSCRAM_RFC7677 exercises in-process) and this keeper-side path
+// call the identical code. An L4 datastore credential carries its password in
+// the DSN userinfo of BaseURL, not Secret (see connector.Credential), hence
+// the l4.TargetFromDSN parse. No per-credID lock is taken: unlike a refresh,
+// this never mutates the vault, so it can't race one (see credLock).
+func (k *localKeeper) SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error) {
+	_, cred, err := k.handles.Resolve(handle)
+	if err != nil {
+		return nil, err
+	}
+	target, err := l4.TargetFromDSN(cred.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	return l4.ComputeSCRAMProof(target.Pass, salt, iter, authMessage)
 }
 
 // NeedsReauth returns the WriteBackKeys of connections whose most recent OAuth

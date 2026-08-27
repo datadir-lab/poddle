@@ -96,7 +96,7 @@ func TestServePostgres_SSLThenResolveError(t *testing.T) {
 	broker, pod := net.Pipe()
 	defer pod.Close()
 	done := make(chan error, 1)
-	go func() { done <- ServePostgres(broker, fakeResolver{err: errors.New("revoked")}) }()
+	go func() { done <- ServePostgres(broker, fakeResolver{err: errors.New("revoked")}, nil) }()
 
 	pr := bufio.NewReader(pod)
 
@@ -136,7 +136,7 @@ func TestServePostgres_UpstreamUnreachable(t *testing.T) {
 	broker, pod := net.Pipe()
 	defer pod.Close()
 	done := make(chan error, 1)
-	go func() { done <- ServePostgres(broker, fakeResolver{target: Target{Addr: "127.0.0.1:1"}}) }()
+	go func() { done <- ServePostgres(broker, fakeResolver{target: Target{Addr: "127.0.0.1:1"}}, nil) }()
 
 	pr := bufio.NewReader(pod)
 	if err := writeStartup(pod, "u", ""); err != nil { // direct startup, no SSL probe

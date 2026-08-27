@@ -26,7 +26,14 @@ const (
 // real database and performs the REAL auth (trust / cleartext / md5 / SCRAM)
 // with the real password, tells the pod AuthenticationOk, then splices — the
 // upstream's ParameterStatus/BackendKeyData/ReadyForQuery flow straight through.
-func ServePostgres(pod net.Conn, r Resolver) error {
+//
+// keeper, when non-nil, is the Tier 2 privsep boundary for the SCRAM step (see
+// docs/design/broker-privilege-separation.md): the SCRAM proof is delegated to
+// it instead of being computed from a locally-held password, so the L4 front
+// never holds the DB password as long-lived state for that path. keeper is
+// nil in tests that never reach the SCRAM branch (upstream advertises
+// cleartext/md5), which fall back to the in-process authenticator.
+func ServePostgres(pod net.Conn, r Resolver, keeper SCRAMKeeper) error {
 	defer pod.Close()
 	podR := bufio.NewReader(pod)
 
@@ -77,7 +84,17 @@ func ServePostgres(pod net.Conn, r Resolver) error {
 	}
 	defer up.Close()
 	upR := bufio.NewReader(up)
-	if err := pgClientAuth(up, upR, target.User, target.Pass, db); err != nil {
+
+	// The SCRAM proof step is the one that needs the password (see scram.go);
+	// when a keeper is wired, delegate it there instead of computing it from
+	// target.Pass — target.Pass still carries the plaintext password for the
+	// cleartext/md5 branches, which is out of scope for this delegation (see
+	// docs/design/broker-privilege-separation.md, "cleartext is the exception").
+	var auth scramAuthenticator = localSCRAMAuthenticator{password: target.Pass}
+	if keeper != nil {
+		auth = keeperSCRAMAuthenticator{keeper: keeper, handle: handle}
+	}
+	if err := pgClientAuth(up, upR, target.User, target.Pass, auth, db); err != nil {
 		writeErrPG(pod, "28P01", "poddle upstream auth failed")
 		return err
 	}
@@ -101,7 +118,10 @@ func pgAuthCode(body []byte) (code uint32, ok bool) {
 }
 
 // pgClientAuth performs the real startup + authentication to the upstream.
-func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
+// auth carries the SCRAM proof delegation (see ServePostgres); cleartext and
+// md5 still authenticate directly with pass — see scram.go's doc comment on
+// why cleartext can't hide the password from the socket-writing side.
+func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass string, auth scramAuthenticator, db string) error {
 	if err := writeStartup(up, user, db); err != nil {
 		return err
 	}
@@ -132,7 +152,7 @@ func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
 					return err
 				}
 			case 10: // SASL
-				return pgSCRAM(up, upR, pass, body[4:])
+				return pgSCRAM(up, upR, auth, body[4:])
 			default:
 				return fmt.Errorf("unsupported upstream auth type %d", code)
 			}
@@ -145,8 +165,10 @@ func pgClientAuth(up net.Conn, upR *bufio.Reader, user, pass, db string) error {
 }
 
 // pgSCRAM runs the SCRAM-SHA-256 exchange to the upstream, consuming through
-// AuthenticationOk.
-func pgSCRAM(up net.Conn, upR *bufio.Reader, pass string, mechs []byte) error {
+// AuthenticationOk. auth performs the one password-bearing step (see scram.go);
+// this function and the scramClient state machine it drives never see the
+// password themselves.
+func pgSCRAM(up net.Conn, upR *bufio.Reader, auth scramAuthenticator, mechs []byte) error {
 	if !bytes.Contains(mechs, []byte("SCRAM-SHA-256")) {
 		return fmt.Errorf("upstream does not offer SCRAM-SHA-256")
 	}
@@ -154,7 +176,7 @@ func pgSCRAM(up net.Conn, upR *bufio.Reader, pass string, mechs []byte) error {
 	if err != nil {
 		return err
 	}
-	sc := newSCRAM("", pass, nonce)
+	sc := newSCRAMWithAuth(auth, "", nonce)
 
 	first := sc.firstMessage()
 	var init bytes.Buffer

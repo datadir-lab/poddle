@@ -100,6 +100,7 @@ func FuzzPgClientAuth(f *testing.F) {
 	f.Add([]byte{'E', 0, 0, 0, 4})             // ErrorResponse, empty body
 	f.Fuzz(func(t *testing.T, upstream []byte) {
 		upR := bufio.NewReader(bytes.NewReader(upstream))
-		_ = pgClientAuth(fuzzDiscardConn{}, upR, "user", "pass", "db") // must not panic or hang
+		auth := localSCRAMAuthenticator{password: "pass"}
+		_ = pgClientAuth(fuzzDiscardConn{}, upR, "user", "pass", auth, "db") // must not panic or hang
 	})
 }
