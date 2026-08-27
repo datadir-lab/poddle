@@ -23,44 +23,54 @@ func TestE2E_HarnessConfig_NotClobbered(t *testing.T) {
 	bin := buildBinary(t)
 
 	cases := []struct {
-		name    string
-		harness string
-		image   string
-		seedRel string // file under the harness config dir to seed
-		podPath string // where it lands in the pod (ConfigDir + seedRel)
-		seed    string // seeded content (contains cfgMarker)
+		name          string
+		harness       string
+		image         string
+		seedRel       string                                   // file under the harness config dir to seed
+		podPath       string                                   // where it lands in the pod (ConfigDir + seedRel)
+		seed          string                                   // seeded content (contains cfgMarker)
+		writeIdentity func(t *testing.T, cfg, sentinel string) // identity matching the harness's vendor
 	}{
 		{
-			name:    "codex",
-			harness: "codex",
-			image:   "docker.io/library/node:22",
-			seedRel: "config.toml",
-			podPath: "/root/.codex/config.toml",
-			seed:    "# " + cfgMarker + "\n[mcp_servers.demo]\ncommand = \"echo\"\n",
+			name:          "codex",
+			harness:       "codex",
+			image:         "docker.io/library/node:22",
+			seedRel:       "config.toml",
+			podPath:       "/root/.codex/config.toml",
+			seed:          "# " + cfgMarker + "\n[mcp_servers.demo]\ncommand = \"echo\"\n",
+			writeIdentity: writeOpenAIIdentity,
 		},
 		{
-			name:    "opencode",
-			harness: "opencode",
-			image:   "docker.io/library/node:22",
-			seedRel: "opencode.json",
-			podPath: "/root/.config/opencode/opencode.json",
-			seed:    `{"$schema":"https://opencode.ai/config.json","mcp":{"` + cfgMarker + `":{"type":"local","command":["echo"]}}}`,
+			name:          "opencode",
+			harness:       "opencode",
+			image:         "docker.io/library/node:22",
+			seedRel:       "opencode.json",
+			podPath:       "/root/.config/opencode/opencode.json",
+			seed:          `{"$schema":"https://opencode.ai/config.json","mcp":{"` + cfgMarker + `":{"type":"local","command":["echo"]}}}`,
+			writeIdentity: writeOpenAIIdentity,
 		},
 		{
-			name:    "pi",
-			harness: "pi",
-			image:   "docker.io/library/node:22",
-			seedRel: "mcp.json",
-			podPath: "/root/.pi/mcp.json",
-			seed:    `{"` + cfgMarker + `":{"command":"echo"}}`,
+			name:          "pi",
+			harness:       "pi",
+			image:         "docker.io/library/node:22",
+			seedRel:       "mcp.json",
+			podPath:       "/root/.pi/mcp.json",
+			seed:          `{"` + cfgMarker + `":{"command":"echo"}}`,
+			writeIdentity: writeOpenAIIdentity,
 		},
 		{
-			name:    "gemini",
-			harness: "gemini",
-			image:   "docker.io/library/node:22",
-			seedRel: "settings.json",
-			podPath: "/root/.gemini/settings.json",
-			seed:    `{"` + cfgMarker + `":true,"theme":"Default"}`,
+			// gemini's vendor is google, so it needs a google identity (an openai
+			// identity is rejected at `up` with "harness gemini does not support
+			// vendor openai"). This row also exercises gemini's authSettingsMerge
+			// Setup step (node-merges security.auth.selectedType into settings.json),
+			// so it proves merge-not-clobber, like the claude onboarding-merge test.
+			name:          "gemini",
+			harness:       "gemini",
+			image:         "docker.io/library/node:22",
+			seedRel:       "settings.json",
+			podPath:       "/root/.gemini/settings.json",
+			seed:          `{"` + cfgMarker + `":true,"theme":"Default"}`,
+			writeIdentity: writeGoogleIdentity,
 		},
 	}
 
@@ -69,7 +79,7 @@ func TestE2E_HarnessConfig_NotClobbered(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			const sentinel = "SENTINEL-CFG"
 			cfg := t.TempDir()
-			writeOpenAIIdentity(t, cfg, sentinel)
+			tc.writeIdentity(t, cfg, sentinel)
 			env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
 
 			seedDir := filepath.Join(cfg, "poddle", "harness", tc.harness)
