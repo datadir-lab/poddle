@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -74,6 +75,93 @@ func TestAuthCodeFlow_AuthorizationError(t *testing.T) {
 	}
 	if code != "" {
 		t.Errorf("code must be empty on authorization error, got %q", code)
+	}
+}
+
+// TestAuthCodeFlow_Success drives the happy path: a fake `open` that (in a
+// goroutine, like a real browser navigating async) GETs the callback URL
+// with a valid code and the state AuthCodeFlow generated. Covers the
+// default branch of the callback handler (browserflow.go's `default:` case)
+// that the state-mismatch/authz-error/timeout tests never reach.
+func TestAuthCodeFlow_Success(t *testing.T) {
+	m := Metadata{AuthorizationEndpoint: "http://example.invalid/authorize"}
+	open := func(authURL string) error {
+		redirectURI, state := callbackURLFrom(t, authURL)
+		go func() {
+			resp, err := http.Get(redirectURI + "?code=THECODE&state=" + state)
+			if err != nil {
+				return
+			}
+			resp.Body.Close()
+		}()
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	done := make(chan struct{})
+	var code, redirectURI, verifier string
+	var err error
+	go func() {
+		code, redirectURI, verifier, err = AuthCodeFlow(ctx, m, "cid", "", open)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AuthCodeFlow did not return after a successful callback")
+	}
+
+	if err != nil {
+		t.Fatalf("AuthCodeFlow: %v", err)
+	}
+	if code != "THECODE" {
+		t.Errorf("code = %q, want THECODE", code)
+	}
+	if !strings.Contains(redirectURI, "/callback") {
+		t.Errorf("redirectURI = %q, want it to end in /callback", redirectURI)
+	}
+	if verifier == "" {
+		t.Error("verifier must be non-empty")
+	}
+}
+
+// TestAuthCodeFlow_OpenFails covers the `open` failure branch: when the
+// caller-supplied opener (e.g. a broken OpenBrowser) errors, AuthCodeFlow
+// must return that error wrapped (not hang waiting on a callback that will
+// never arrive).
+func TestAuthCodeFlow_OpenFails(t *testing.T) {
+	m := Metadata{AuthorizationEndpoint: "http://example.invalid/authorize"}
+	wantErr := errors.New("boom: no browser available")
+	open := func(_ string) error { return wantErr }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	done := make(chan struct{})
+	var code string
+	var err error
+	go func() {
+		code, _, _, err = AuthCodeFlow(ctx, m, "cid", "", open)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AuthCodeFlow did not return after open() failed")
+	}
+
+	if err == nil {
+		t.Fatal("expected an error when open() fails")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Errorf("error = %v, want it to wrap %v", err, wantErr)
+	}
+	if code != "" {
+		t.Errorf("code must be empty on open failure, got %q", code)
 	}
 }
 

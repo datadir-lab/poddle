@@ -266,6 +266,148 @@ func newMockOAuthMCPNoDCR(t *testing.T) (mcpURL string, asURL string) {
 	return mcp.URL, as.URL
 }
 
+// newMockOAuthMCPManualClient is like newMockOAuthMCP but the AS advertises
+// no registration_endpoint (a DCR attempt would 404 and fail with ErrNoDCR)
+// — it exists to prove the manual --client-id/--client-secret path in `add`
+// completes the browser + token exchange, and that the supplied client_id
+// is the one actually sent to the token endpoint, without ever needing
+// Dynamic Client Registration.
+func newMockOAuthMCPManualClient(t *testing.T) (mcpURL string) {
+	t.Helper()
+	var mu sync.Mutex
+	var wantChallenge string
+
+	var as *httptest.Server
+	as = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint": as.URL + "/authorize",
+				"token_endpoint":         as.URL + "/token",
+			})
+		case "/authorize":
+			q := r.URL.Query()
+			mu.Lock()
+			wantChallenge = q.Get("code_challenge")
+			mu.Unlock()
+			dest := q.Get("redirect_uri") + "?" + url.Values{
+				"code":  {"MANUALCODE"},
+				"state": {q.Get("state")},
+			}.Encode()
+			http.Redirect(w, r, dest, http.StatusFound)
+		case "/token":
+			_ = r.ParseForm()
+			verifier := r.FormValue("code_verifier")
+			mu.Lock()
+			challenge := wantChallenge
+			mu.Unlock()
+			sum := sha256.Sum256([]byte(verifier))
+			gotChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
+			if r.FormValue("grant_type") != "authorization_code" || r.FormValue("code") != "MANUALCODE" ||
+				r.FormValue("client_id") != "manual-client" ||
+				verifier == "" || challenge == "" || gotChallenge != challenge {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "MANUAL-ACCESS",
+				"refresh_token": "MANUAL-REFRESH",
+				"expires_in":    3600,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(as.Close)
+
+	var mcp *httptest.Server
+	mcp = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/oauth-protected-resource" {
+			json.NewEncoder(w).Encode(map[string]any{"authorization_servers": []string{as.URL}})
+			return
+		}
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+mcp.URL+`/.well-known/oauth-protected-resource"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(mcp.Close)
+
+	return mcp.URL
+}
+
+// TestConnect_AddOAuth_ManualClientID_SkipsDCR covers the second half of
+// addViaOAuth's `if clientID == ""` branch: when --client-id (and
+// --client-secret) are supplied, Register/DCR must never be attempted, and
+// the manually-supplied credentials are what get persisted and sent to the
+// token endpoint. The mock AS has no working /register endpoint at all, so
+// if the code mistakenly called Register anyway, the command would fail
+// with the "needs a pre-registered OAuth client" error instead of succeeding.
+func TestConnect_AddOAuth_ManualClientID_SkipsDCR(t *testing.T) {
+	mcpURL := newMockOAuthMCPManualClient(t)
+
+	orig := oauth.OpenBrowser
+	oauth.OpenBrowser = headlessOpen(t)
+	t.Cleanup(func() { oauth.OpenBrowser = orig })
+
+	store := connector.NewStore(t.TempDir())
+	c := NewCmd(&app.App{Connections: store})
+	c.SetArgs([]string{
+		"add", "my-mcp", "--connector", "mcp", "--url", mcpURL,
+		"--client-id", "manual-client", "--client-secret", "manual-secret",
+	})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	mat, ok, err := store.LoadOAuth("my-mcp")
+	if err != nil {
+		t.Fatalf("LoadOAuth: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected oauth.json to be written, found none")
+	}
+	if mat.ClientID != "manual-client" {
+		t.Errorf("ClientID = %q, want the manually-supplied client id (DCR must be skipped)", mat.ClientID)
+	}
+	if mat.ClientSecret != "manual-secret" {
+		t.Errorf("ClientSecret = %q, want the manually-supplied secret", mat.ClientSecret)
+	}
+	if mat.AccessToken != "MANUAL-ACCESS" || mat.RefreshToken != "MANUAL-REFRESH" {
+		t.Errorf("tokens = %+v, want the AS's issued grant", mat)
+	}
+}
+
+// TestConnect_Add_NoOAuthNoToken_StaticTokenError covers the discovery
+// branch where the service isn't OAuth-protected (Discover returns
+// oauth.ErrNoOAuth because the unauthenticated probe never 401s) and no
+// --token/stdin token was supplied either: `add` must surface the
+// user-facing "pass --token or pipe it on stdin" message, not a raw
+// discovery error.
+func TestConnect_Add_NoOAuthNoToken_StaticTokenError(t *testing.T) {
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(plain.Close)
+
+	store := connector.NewStore(t.TempDir())
+	c := NewCmd(&app.App{Connections: store})
+	c.SetArgs([]string{"add", "my-svc", "--connector", "generic", "--url", plain.URL})
+	c.SetIn(strings.NewReader("")) // nothing piped on stdin
+
+	err := c.Execute()
+	if err == nil {
+		t.Fatal("expected an error: no OAuth and no token")
+	}
+	const want = "no token - pass --token or pipe it on stdin"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+
+	if _, getErr := store.Get("my-svc"); getErr == nil {
+		t.Error("no connection should have been persisted on this failure path")
+	}
+}
+
 func TestConnect_Reauth_HeadlessBrowserFlow(t *testing.T) {
 	mcpURL, _ := newMockOAuthMCP(t)
 
