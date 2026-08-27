@@ -131,7 +131,12 @@ func assertSecretless(t *testing.T, auths []string, sentinel string, mu *sync.Mu
 		if strings.Contains(a, "poddle_") {
 			t.Errorf("the handle leaked to the upstream: %q", a)
 		}
-		if a == "Bearer "+sentinel {
+		// Most harnesses send the secret as `Bearer <sentinel>`; gemini rides it in
+		// x-goog-api-key as a raw value (broker.ModeGoogleAPIKey deletes Authorization
+		// and injects the real key there). Match on the (unique) sentinel substring so
+		// both shapes count as "the upstream saw the real secret" — same reasoning as
+		// runUpCase in secretless_up_test.go.
+		if strings.Contains(a, sentinel) {
 			sawSecret = true
 		}
 	}
@@ -438,6 +443,148 @@ func TestE2E_Edit_Pi(t *testing.T) {
 	runCmd.Env = env
 	if out, err := runCmd.CombinedOutput(); err != nil {
 		t.Fatalf("pi run failed: %v\n%s", err, out)
+	}
+
+	assertFileInPod(t, pod)
+	assertSecretless(t, auths, sentinel, &mu)
+}
+
+// geminiSSEChunk formats one gemini streamGenerateContent SSE event carrying the
+// given candidate parts. Framing matches mockGeminiUp exactly: a single
+// `data: <json>\r\n\r\n` event whose top-level shape is
+// candidates[0].content.parts — only the parts content differs per turn.
+func geminiSSEChunk(parts []any) string {
+	obj := map[string]any{
+		"candidates": []any{map[string]any{
+			"content":      map[string]any{"parts": parts, "role": "model"},
+			"finishReason": "STOP",
+			"index":        0,
+		}},
+		"usageMetadata": map[string]any{"promptTokenCount": 1, "candidatesTokenCount": 1, "totalTokenCount": 2},
+	}
+	b, _ := json.Marshal(obj)
+	return "data: " + string(b) + "\r\n\r\n"
+}
+
+// geminiEditSSE builds gemini-cli's two-turn streamGenerateContent conversation:
+// turn 1's candidate part is a functionCall to gemini-cli's built-in shell tool
+// (run_shell_command) running a POSIX command that creates the file; turn 2 is a
+// plain-text part so the agent finishes cleanly. The tool name/args mirror
+// gemini-cli's ShellTool declaration (`run_shell_command` with a `{command}` arg);
+// --yolo auto-executes the call in the trusted workspace. json.Marshal escapes the
+// command payload. Returns the turn-1 and turn-2 SSE bodies.
+func geminiEditSSE() (turn1, turn2 string) {
+	// POSIX command (the pod is Linux). echo adds a trailing newline — the assertion
+	// uses Contains, so that's fine.
+	call := map[string]any{"functionCall": map[string]any{
+		"name": "run_shell_command",
+		"args": map[string]any{"command": "echo " + editMarker + " > " + editFile},
+	}}
+	turn1 = geminiSSEChunk([]any{call})
+	turn2 = geminiSSEChunk([]any{map[string]any{"text": editMarker + " done"}})
+	return turn1, turn2
+}
+
+// startGeminiEditMock serves gemini-cli's streamGenerateContent SSE: the
+// run_shell_command functionCall on the first streamGenerateContent POST, the
+// plain-text completion on later ones (a request counter over streamGenerateContent
+// POSTs suffices — the mock never parses gemini's functionResponse). countTokens is
+// stubbed so a token-count probe never consumes a turn. Records X-Goog-Api-Key /
+// Authorization / raw query (mirrors mockGeminiUp) so a failed handle→key swap OR a
+// failed strip of the pod's Bearer both surface to the secretless assertion. Binds
+// 0.0.0.0 so the broker container reaches it at host.containers.internal.
+func startGeminiEditMock(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	turn1, turn2 := geminiEditSSE()
+	var calls int
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("X-Goog-Api-Key"), r.Header.Get("Authorization"), r.URL.RawQuery)
+		mu.Unlock()
+		if strings.Contains(r.URL.Path, "countTokens") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"totalTokens":1}`))
+			return
+		}
+		if !strings.Contains(r.URL.Path, "streamGenerateContent") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("{}"))
+			return
+		}
+		mu.Lock()
+		calls++
+		body := turn2
+		if calls == 1 {
+			body = turn1
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestE2E_Edit_Gemini proves gemini-cli does REAL work through the broker: a
+// scripted streamGenerateContent mock drives it to run its built-in shell tool
+// (run_shell_command, auto-approved by --yolo) to create a file — while the pod
+// holds only a handle and the upstream sees only the real (sentinel) key (as
+// x-goog-api-key under broker.ModeGoogleAPIKey; the pod's Bearer handle is stripped).
+func TestE2E_Edit_Gemini(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-EDIT-GEMINI"
+	var mu sync.Mutex
+	var auths []string
+	mock := startGeminiEditMock(t, &auths, &mu)
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeGoogleIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_GOOGLE_BASE_URL="+mockURL)
+
+	pod := "poddle-edit-gemini"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// Bring the pod up (installs gemini-cli + selects the API-key auth path via the
+	// harness Provisions; the broker wiring rides the harness Env).
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "gemini",
+		"--image", "docker.io/library/node:22")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Run gemini-cli headless in the workspace to create the file (through the
+	// broker). --yolo auto-approves the scripted run_shell_command call; </dev/null
+	// avoids the headless-hang (#12362). `poddle run` wraps the command in sh -c.
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && gemini -p 'create a file "+editFile+" containing "+editMarker+"' "+
+			"--output-format json --yolo </dev/null")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("gemini run failed: %v\n%s", err, out)
 	}
 
 	assertFileInPod(t, pod)
