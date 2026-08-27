@@ -66,13 +66,24 @@ func shellSingleQuote(s string) string {
 }
 
 // StateDirs is empty: pi's config (models.json) is rewritten by Provisions on each
-// up/move, and its session state lives under the config dir — nothing needs a
-// separate persisted volume for a first cut.
+// up/move, and its session state lives under PI_CODING_AGENT_DIR (ConfigDir,
+// /root/.pi), which is already a persisted volume — so resume needs no separate
+// state volume of its own.
 func (h *Harness) StateDirs() []string { return nil }
 
-// ResumeCommand is empty: pi session resume is not yet wired, so a `move` recreates
-// the shell rather than continuing the conversation. (Follow-up.)
-func (h *Harness) ResumeCommand(mode string) string { return "" }
+const resumeNudge = "continue where you left off"
+
+// ResumeCommand continues pi's most recent conversation, persisted under
+// PI_CODING_AGENT_DIR (the ConfigDir volume, carried over by move). pi's -c/
+// --continue composes with -p (spike-verified): interactive re-opens the session
+// on the TTY; headless drives it to completion with a nudge (a bare -c would wait
+// on stdin, which /dev/null would otherwise no-op).
+func (h *Harness) ResumeCommand(mode string) string {
+	if mode == "interactive" {
+		return "pi --provider poddle --model poddle-model -c"
+	}
+	return "pi --provider poddle --model poddle-model -p -c " + shellSingleQuote(resumeNudge)
+}
 
 // EgressHosts is what pi needs to install and run: the npm registry and OpenAI's
 // API host. Seeds the default-deny allow-list.

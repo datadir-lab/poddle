@@ -81,9 +81,27 @@ func TestTaskCommand_QuotesAdversarialPrompt(t *testing.T) {
 	}
 }
 
-func TestStateDirs_Empty(t *testing.T) {
-	if got := New().StateDirs(); len(got) != 0 {
-		t.Errorf("StateDirs = %v, want empty", got)
+func TestStateDirs_SessionDBVolume(t *testing.T) {
+	got := New().StateDirs()
+	want := []string{"/root/.local/share/opencode"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("StateDirs = %v, want %v", got, want)
+	}
+}
+
+func TestResumeCommand_Headless(t *testing.T) {
+	cmd := New().ResumeCommand("headless")
+	for _, want := range []string{"opencode run", "-c", "--format json", "continue where you left off"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("headless ResumeCommand missing %q: %q", want, cmd)
+		}
+	}
+}
+
+func TestResumeCommand_Interactive(t *testing.T) {
+	cmd := New().ResumeCommand("interactive")
+	if !strings.Contains(cmd, "-c") {
+		t.Errorf("interactive ResumeCommand missing -c: %q", cmd)
 	}
 }
 

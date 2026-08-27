@@ -92,10 +92,26 @@ func TestStateDirs_Empty(t *testing.T) {
 	}
 }
 
-func TestResumeCommand_Empty(t *testing.T) {
-	// pi resume is a follow-up; empty means move recreates the shell.
-	if New().ResumeCommand("interactive") != "" || New().ResumeCommand("headless") != "" {
-		t.Error("pi ResumeCommand must be empty until resume is wired")
+func TestResumeCommand_Headless(t *testing.T) {
+	cmd := New().ResumeCommand("headless")
+	// " -p " (space-bounded) checked separately from "--provider", which also
+	// contains the bare substring "-p".
+	for _, want := range []string{" -p ", "-c", "continue where you left off"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("headless ResumeCommand missing %q: %q", want, cmd)
+		}
+	}
+}
+
+func TestResumeCommand_Interactive(t *testing.T) {
+	cmd := New().ResumeCommand("interactive")
+	if !strings.Contains(cmd, "-c") {
+		t.Errorf("interactive ResumeCommand missing -c: %q", cmd)
+	}
+	// " -p " (space-bounded) so "--provider" (which also contains the bare
+	// substring "-p") does not produce a false positive.
+	if strings.Contains(cmd, " -p ") {
+		t.Errorf("interactive ResumeCommand must not carry -p: %q", cmd)
 	}
 }
 

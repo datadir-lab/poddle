@@ -72,13 +72,27 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// StateDirs is empty: opencode's config is rewritten by Provisions on each up/move,
-// and session state is not persisted for a first cut.
-func (h *Harness) StateDirs() []string { return nil }
+// StateDirs persists opencode's session DB (opencode.db), which lives in the XDG
+// data dir /root/.local/share/opencode — OUTSIDE ConfigDir
+// (/root/.config/opencode) — so it needs its own named volume for a moved pod to
+// still find the prior session (and for ResumeCommand's -c/--continue to resolve it).
+func (h *Harness) StateDirs() []string { return []string{"/root/.local/share/opencode"} }
 
-// ResumeCommand is empty: opencode session resume (its -c/--continue) is not yet
-// wired, so a `move` recreates the shell. (Follow-up.)
-func (h *Harness) ResumeCommand(mode string) string { return "" }
+const resumeNudge = "continue where you left off"
+
+// ResumeCommand continues opencode's most recent session, found in opencode.db
+// under the StateDirs volume. -c/--continue composes with `opencode run`
+// (spike-verified). opencode has no distinct interactive TUI-resume form usable
+// from a poddle shell, so both modes use the non-interactive `run` verb:
+// interactive omits a prompt and hands the TTY back; headless carries a nudge
+// prompt (a bare run with no prompt would no-op) plus --format json to drive one
+// more turn to completion, matching TaskCommand's flags.
+func (h *Harness) ResumeCommand(mode string) string {
+	if mode == "interactive" {
+		return "opencode run -m poddle/poddle-model --auto -c"
+	}
+	return "opencode run " + shellSingleQuote(resumeNudge) + " -m poddle/poddle-model --format json --auto -c"
+}
 
 // EgressHosts is what opencode needs to install and run: the npm registry
 // (install), OpenAI's API host (LLM), GitHub (ripgrep binary auto-download), and
