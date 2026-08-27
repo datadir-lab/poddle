@@ -1221,3 +1221,100 @@ func TestUp_MCPConnector_ReseedsRotatedTokenFromMirror(t *testing.T) {
 		t.Errorf("on-disk oauth.json not reconciled from the mirror: %+v", onDisk)
 	}
 }
+
+// reauthBroker is a podBroker whose NeedsReauth reports a fixed set of
+// connection names — drives `up`'s best-effort reauth warning without a real
+// poddled daemon. NeedsReauth is an OPTIONAL podBroker capability (the real
+// *poddled.Client implements it; stubBroker/spyBroker/mirrorBroker do not),
+// picked up via type-assertion, so embedding stubBroker here is what actually
+// opts this fake in.
+type reauthBroker struct {
+	stubBroker
+	names []string
+	err   error
+}
+
+func (r *reauthBroker) NeedsReauth() ([]string, error) { return r.names, r.err }
+
+func TestUp_MCPConnector_WarnsWhenFlaggedForReauth(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	rb := &reauthBroker{names: []string{"linear"}}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, rb)
+	var errBuf bytes.Buffer
+	c.SetErr(&errBuf)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), `connection "linear" needs reauth`) {
+		t.Errorf("stderr = %q, want a reauth warning naming linear", errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "poddle connect reauth linear") {
+		t.Errorf("stderr = %q, want the reauth command hint", errBuf.String())
+	}
+}
+
+// TestUp_MCPConnector_NoWarningWhenNotFlagged is the common-case control: a
+// seeded connector NOT in the reauth set must not print any warning.
+func TestUp_MCPConnector_NoWarningWhenNotFlagged(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	rb := &reauthBroker{names: []string{"some-other-connection"}}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, rb)
+	var errBuf bytes.Buffer
+	c.SetErr(&errBuf)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(errBuf.String(), "needs reauth") {
+		t.Errorf("stderr = %q, want no reauth warning (linear isn't flagged)", errBuf.String())
+	}
+}
+
+// TestUp_MCPConnector_ReauthFetchErrorIsBestEffort confirms a NeedsReauth
+// error never blocks `up` — best-effort, matching OAuthMirror's contract.
+func TestUp_MCPConnector_ReauthFetchErrorIsBestEffort(t *testing.T) {
+	cstore := connector.NewStore(t.TempDir())
+	if _, err := cstore.Create("linear", "mcp", "https://mcp.linear.app/mcp", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := cstore.SaveOAuth("linear", connector.OAuthMaterial{AccessToken: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	hreg := harness.Registry{"fake": &harness.FakeHarness{
+		HarnessName: "fake", Vendors: []string{"anthropic"}, Provs: []string{"install-fake"},
+		MCPWire: []string{"MCP-WIRED"},
+	}}
+	f := &fakeCreator{}
+	rb := &reauthBroker{err: fmt.Errorf("daemon unreachable")}
+	c := NewCmd(&app.App{Engine: f, Harnesses: hreg, Connections: cstore,
+		Templates: fakeTemplates{tpl: config.Template{Connectors: []string{"linear"}}}}, rb)
+	c.SetArgs([]string{"box", "--harness", "fake", "--exec", "true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute should succeed despite the NeedsReauth error: %v", err)
+	}
+}

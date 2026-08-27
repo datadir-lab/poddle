@@ -430,8 +430,24 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 		// falls back to each connector's on-disk oauth.json when a mirror entry is
 		// missing or malformed (see reconcileOAuth).
 		var rawMirror map[string]json.RawMessage
+		// needsReauth names the connections poddled's broker has flagged as
+		// needing reauth (Task 3: their most recent OAuth refresh failed —
+		// WriteBackKey is only ever set for mcp-transport connectors, see
+		// applyMCPConnector, so this only ever names OAuth-MCP connections). b's
+		// NeedsReauth is an OPTIONAL capability (poddled.Client implements it; test
+		// doubles need not) — a type-assertion mirrors the daemon's own optional-
+		// capability pattern. Best-effort: never blocks `up`.
+		var needsReauth map[string]bool
 		if len(tpl.Connectors) > 0 {
 			rawMirror, _ = b.OAuthMirror()
+			if nr, ok := b.(interface{ NeedsReauth() ([]string, error) }); ok {
+				if names, err := nr.NeedsReauth(); err == nil {
+					needsReauth = make(map[string]bool, len(names))
+					for _, n := range names {
+						needsReauth[n] = true
+					}
+				}
+			}
 		}
 		var redisPodAddr, pgPodAddr string // resolved lazily, only if needed
 		for _, cn := range tpl.Connectors {
@@ -479,6 +495,11 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 				}
 				if host != "" {
 					egressHosts = append(egressHosts, host)
+				}
+				// Non-fatal: this connector is being seeded anyway (whatever OAuth
+				// material it has); just make sure the user notices it's stale.
+				if needsReauth[cn] {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: connection %q needs reauth — run: poddle connect reauth %s\n", cn, cn)
 				}
 			default:
 				oauth, err := loadConnectorOAuth(a.Connections, cn, rawMirror)

@@ -50,6 +50,18 @@ func (f *fakeBroker) Addr() string               { return f.addr }
 func (f *fakeBroker) SetEgressMode(m string)     { f.egress = m }
 func (f *fakeBroker) Stop(context.Context) error { return nil }
 
+// reauthFakeBroker embeds fakeBroker and additionally implements NeedsReauth,
+// the OPTIONAL broker capability GET /status picks up via type-assertion
+// (mirroring SetAuditor/SetPolicyChecker). fakeBroker itself deliberately does
+// NOT implement it, so the positive case (this type) and the absent case
+// (plain fakeBroker, exercised by TestDaemon_Status) are both covered.
+type reauthFakeBroker struct {
+	fakeBroker
+	reauth []string
+}
+
+func (r *reauthFakeBroker) NeedsReauth() []string { return r.reauth }
+
 func TestDaemon_AuditsHandleIssueAndPostedEvents(t *testing.T) {
 	store, err := audit.Open(filepath.Join(t.TempDir(), "audit.db"))
 	if err != nil {

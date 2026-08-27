@@ -297,11 +297,12 @@ type issueReq struct {
 // Status is what GET /status reports: the pod-facing addresses and the active
 // pods with their live handle counts.
 type Status struct {
-	Gateway  string         `json:"gateway"`
-	Redis    string         `json:"redis"`
-	Postgres string         `json:"postgres"`
-	Pods     map[string]int `json:"pods"`
-	Events   []string       `json:"events"` // recent autoscale activity (grows, warnings)
+	Gateway     string         `json:"gateway"`
+	Redis       string         `json:"redis"`
+	Postgres    string         `json:"postgres"`
+	Pods        map[string]int `json:"pods"`
+	Events      []string       `json:"events"`       // recent autoscale activity (grows, warnings)
+	NeedsReauth []string       `json:"needs_reauth"` // connection names whose OAuth refresh failed (broker.Broker.NeedsReauth) — secretless, names only
 }
 
 // Handler returns the control API:
@@ -330,9 +331,17 @@ func (d *Daemon) Handler() http.Handler {
 		}
 		events := append([]string(nil), d.events...)
 		d.mu.Unlock()
+		// NeedsReauth is an OPTIONAL broker capability (mirrors SetAuditor/
+		// SetPolicyChecker above): a type-assertion so existing brokerAPI test
+		// doubles that don't implement it need no change — absent capability just
+		// reports no flagged connections.
+		var needsReauth []string
+		if nr, ok := d.broker.(interface{ NeedsReauth() []string }); ok {
+			needsReauth = nr.NeedsReauth()
+		}
 		writeJSON(w, http.StatusOK, Status{
 			Gateway: d.broker.Addr(), Redis: d.l4RedisAddr, Postgres: d.l4PostgresAddr,
-			Pods: pods, Events: events,
+			Pods: pods, Events: events, NeedsReauth: needsReauth,
 		})
 	})
 	mux.HandleFunc("POST /pods/{pod}/handles", func(w http.ResponseWriter, r *http.Request) {

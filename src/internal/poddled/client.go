@@ -230,6 +230,18 @@ func (c *Client) Status() (Status, error) {
 	return s, nil
 }
 
+// NeedsReauth returns the connection names whose most recent OAuth refresh
+// failed (Status.NeedsReauth). `up` uses this — via an optional-capability
+// type-assertion, so test doubles need not implement it — to print a
+// best-effort, non-fatal warning when seeding a flagged OAuth-MCP connector.
+func (c *Client) NeedsReauth() ([]string, error) {
+	s, err := c.Status()
+	if err != nil {
+		return nil, err
+	}
+	return s.NeedsReauth, nil
+}
+
 // Egress mints a per-pod egress token and returns it plus the forward-proxy
 // address, so the pod's arbitrary (non-brokered) egress can be routed through
 // the broker (HTTP_PROXY) and governed by the pod's policy.
