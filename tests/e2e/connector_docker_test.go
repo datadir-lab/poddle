@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // registryUser/registryPass are the REAL credentials for the registry:2
@@ -96,20 +98,16 @@ func TestE2E_Connectors_DockerRegistry(t *testing.T) {
 
 	// --- 1. A real registry:2 backend, with real htpasswd Basic auth. ---
 	//
-	// The htpasswd file is generated with the registry image's OWN htpasswd
-	// binary (the standard recipe: `--entrypoint htpasswd`), so its bcrypt
-	// hash is guaranteed compatible with the registry's own auth middleware.
-	htBytes, err := exec.Command("podman", "run", "--rm", "--entrypoint", "htpasswd",
-		"docker.io/library/registry:2", "-Bbn", registryUser, registryPass).Output()
+	// Generate the htpasswd line directly with Go bcrypt: the minimal
+	// registry:2 image does NOT ship the htpasswd binary (so `--entrypoint
+	// htpasswd` fails with exit 127). registry:2's own auth middleware uses
+	// x/crypto/bcrypt, which accepts the $2a$ hash GenerateFromPassword emits.
+	hash, err := bcrypt.GenerateFromPassword([]byte(registryPass), bcrypt.DefaultCost)
 	if err != nil {
-		var stderr string
-		if ee, ok := err.(*exec.ExitError); ok {
-			stderr = string(ee.Stderr)
-		}
-		t.Fatalf("generate htpasswd: %v\n%s", err, stderr)
+		t.Fatalf("bcrypt htpasswd hash: %v", err)
 	}
 	htpasswdPath := filepath.Join(t.TempDir(), "htpasswd")
-	writeFile(t, htpasswdPath, string(htBytes))
+	writeFile(t, htpasswdPath, registryUser+":"+string(hash)+"\n")
 
 	_ = exec.Command("podman", "rm", "-f", "poddle-registry-upstream").Run()
 	// Host networking (like l4_test.go's redis/postgres upstreams): the test
