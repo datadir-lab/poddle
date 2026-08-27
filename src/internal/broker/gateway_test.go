@@ -16,15 +16,19 @@ import (
 
 // recordedReq captures what the upstream (fake vendor) actually received.
 type recordedReq struct {
+	mu                                               sync.Mutex // guards the fields: concurrent tests hit the upstream from N goroutines
 	method, path, query, auth, apikey, googkey, body string
 }
 
-// upstreamRecording starts a fake vendor that records the request it sees.
+// upstreamRecording starts a fake vendor that records the request it sees. The
+// recorder is mutex-guarded because concurrent tests (e.g. the refresh-collapse
+// test) drive N requests at once, so N httptest handler goroutines write it.
 func upstreamRecording(t *testing.T) (*httptest.Server, *recordedReq) {
 	t.Helper()
 	rec := &recordedReq{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		rec.mu.Lock()
 		rec.method = r.Method
 		rec.path = r.URL.Path
 		rec.query = r.URL.RawQuery
@@ -32,6 +36,7 @@ func upstreamRecording(t *testing.T) (*httptest.Server, *recordedReq) {
 		rec.apikey = r.Header.Get("X-Api-Key")
 		rec.googkey = r.Header.Get("X-Goog-Api-Key")
 		rec.body = string(body)
+		rec.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	}))
