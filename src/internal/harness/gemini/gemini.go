@@ -84,8 +84,14 @@ func shellSingleQuote(s string) string {
 // volume would collide with it.
 func (h *Harness) StateDirs() []string { return nil }
 
-// ResumeCommand is empty: gemini-cli session resume is not yet wired, so a `move`
-// recreates the shell rather than continuing the conversation. (Follow-up.)
+// ResumeCommand is empty: gemini-cli's session resume is an interactive REPL
+// slash command (/chat save, /chat resume <tag>), with no -p-compatible flag to
+// drive it headlessly or non-interactively — so unlike claude-code/codex/aider (a
+// resume flag) or pi/opencode (-c/--continue composes with the headless verb),
+// there is no CLI surface poddle can script for a moved pod. Wiring resume here
+// would need a dedicated spike (e.g. scripting the REPL, or a session-file format
+// poddle could point a fresh gemini invocation at). Until then a `move` recreates
+// the shell rather than continuing the conversation.
 func (h *Harness) ResumeCommand(mode string) string { return "" }
 
 // EgressHosts is what gemini-cli needs to install and run: the npm registry and
