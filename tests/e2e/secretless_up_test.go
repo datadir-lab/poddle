@@ -105,6 +105,42 @@ var upCases = []upCase{
 		want:  geminiMarker,
 		mock:  mockGeminiUp,
 	},
+	{
+		name:        "opencode",
+		provider:    "openai", // reuses the openai provider
+		harness:     "opencode",
+		image:       "docker.io/library/node:22",
+		tokenFile:   "openai-token",
+		upstreamEnv: "PODDLE_OPENAI_BASE_URL",
+		podTokenEnv: "OPENAI_API_KEY",
+		// opencode's verified headless invocation (mcp_test.go's mcpCases opencode
+		// row): -m selects the poddle/poddle-model provider Provisions wrote into
+		// the OPENCODE_CONFIG layer; --auto auto-approves tool permissions so a
+		// trivial prompt never stalls. The prompt is irrelevant — the mock always
+		// replies opencodeMarker.
+		inPod: `opencode run 'reply' -m poddle/poddle-model --format json --auto`,
+		want:  opencodeMarker,
+		mock: func(t *testing.T, a *[]string, mu *sync.Mutex) *httptest.Server {
+			return mockOpenAIStreamUpMarker(t, a, mu, opencodeMarker)
+		},
+	},
+	{
+		name:        "pi",
+		provider:    "openai", // reuses the openai provider
+		harness:     "pi",
+		image:       "docker.io/library/node:22",
+		tokenFile:   "openai-token",
+		upstreamEnv: "PODDLE_OPENAI_BASE_URL",
+		podTokenEnv: "OPENAI_API_KEY",
+		// pi's verified headless invocation (mcp_test.go's mcpCases pi row): pi
+		// always sends stream:true, so it needs the SSE model mock (same reason as
+		// opencode). The prompt is irrelevant — the mock always replies piMarker.
+		inPod: `pi --provider poddle --model poddle-model -p 'reply'`,
+		want:  piMarker,
+		mock: func(t *testing.T, a *[]string, mu *sync.Mutex) *httptest.Server {
+			return mockOpenAIStreamUpMarker(t, a, mu, piMarker)
+		},
+	},
 }
 
 // selectUpCases returns the cases named in want (comma-separated), or all when
@@ -255,6 +291,16 @@ func mockOpenAIChatUp(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.S
 // geminiMarker is the assistant text the Gemini mock emits — distinctive so the
 // success check can't be satisfied by gemini echoing the prompt.
 const geminiMarker = "PODDLEGEMINIOK"
+
+// opencodeMarker and piMarker are the assistant text mockOpenAIStreamUpMarker
+// streams for the opencode and pi rows respectively — distinctive so the
+// success check can't be satisfied by either harness echoing the prompt, and
+// distinct from each other so one row's mock can't false-positive the other's
+// assertion.
+const (
+	opencodeMarker = "SENTINEL-OC-REPLY"
+	piMarker       = "SENTINEL-PI-REPLY"
+)
 
 // mockGeminiUp records the auth headers of every request and streams a minimal
 // Gemini streamGenerateContent SSE reply. Unlike the other mocks it records
