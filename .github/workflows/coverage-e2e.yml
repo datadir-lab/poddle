@@ -37,7 +37,8 @@ jobs:
         # Suites that pass on GitHub's rootless podman AND drive the instrumented
         # binary (so GOCOVERDIR captures their coverage). e2e-move/e2e-task
         # isolate poddled's socket via PODDLE_SOCKET (not XDG_RUNTIME_DIR), so
-        # they run rootless too. Excluded: e2e-ui/e2e-claude (UI / external
+        # they run rootless too. Excluded: e2e-ui/e2e-site (Playwright against
+        # a browser, not the instrumented binary)/e2e-claude (external
         # harness); e2e-remote (stubbed harness, drives nothing yet); integration
         # (in-process `go test`, not the spawned binary) — none produce covdata.
         suite:
@@ -50,6 +51,11 @@ jobs:
           - e2e-forward
           - e2e-intercept
           - e2e-lockdown
+          # These also drive the instrumented binary; now coverage-reported.
+          - e2e-edit
+          - e2e-harnessconfig
+          - e2e-mcp
+          - e2e-oauth-mcp
           - e2e-secure
           - e2e-poddled
           - e2e-resize
