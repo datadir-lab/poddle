@@ -70,8 +70,14 @@ func (h *Harness) EgressHosts() []string {
 	return []string{"pypi.org", "files.pythonhosted.org", "api.openai.com"}
 }
 
-// ConfigDir is empty: aider's user-customizable config seed/persist dir is
-// deferred to a rollout follow-up.
+// ConfigDir is empty by design, not by omission: aider's user config is a
+// PROJECT file (.aider.conf.yml), read from $HOME/git-root/cwd — not a per-user
+// dotfile poddle could seed into a fixed location. The pod's git workdir is
+// /workspace, which is already a persisted volume, and poddle writes no aider
+// config file at all (broker wiring is pure env: OPENAI_API_KEY/
+// OPENAI_API_BASE), so there is nothing to seed and nothing poddle could
+// clobber. TestE2E_HarnessConfig_AiderProjectFile (tests/e2e/harnessconfig_test.go)
+// proves a user's /workspace/.aider.conf.yml is honored by aider in the pod.
 func (h *Harness) ConfigDir() string { return "" }
 
 // MCPWiring is nil: aider has no MCP auto-wiring implemented here yet.
