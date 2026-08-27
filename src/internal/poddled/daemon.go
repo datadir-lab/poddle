@@ -40,6 +40,12 @@ type brokerAPI interface {
 	Addr() string
 	SetEgressMode(mode string)
 	Stop(ctx context.Context) error
+
+	// SCRAMProof is the L4 Postgres SCRAM password-bearing step, delegated to
+	// the broker's keeper (see broker.Keeper.SCRAMProof); this method makes
+	// brokerAPI satisfy l4.SCRAMKeeper structurally, so d.broker itself can be
+	// handed to l4.ServePostgres as the L4 Postgres terminator's keeper.
+	SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error)
 }
 
 // Daemon is the persistent broker plus a pod→handles registry (so `down` can
@@ -226,7 +232,13 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		}
 		d.l4Postgres = ln
 		d.l4PostgresAddr = ln.Addr().String()
-		go d.accept(ln, l4.ServePostgres)
+		// d.broker satisfies l4.SCRAMKeeper (its SCRAMProof method), so the L4
+		// Postgres terminator's SCRAM step delegates to the broker keeper instead
+		// of computing the proof from a locally-held password — see
+		// docs/design/broker-privilege-separation.md.
+		go d.accept(ln, func(c net.Conn, r l4.Resolver) error {
+			return l4.ServePostgres(c, r, d.broker)
+		})
 	}
 	if forwardBind != "" {
 		ln, err := net.Listen("tcp", forwardBind)

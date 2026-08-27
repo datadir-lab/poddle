@@ -90,6 +90,15 @@ func (b *Broker) EnableOAuthWriteBack(dir string) {
 // OAuth refresh attempt failed — `connect reauth` targets.
 func (b *Broker) NeedsReauth() []string { return b.server.gw.NeedsReauth() }
 
+// SCRAMProof delegates the L4 Postgres SCRAM password-bearing step to the
+// keeper (see Keeper.SCRAMProof) — the front holds only handle and calls this
+// instead of computing the proof from a locally-held password. Exposed on the
+// facade so poddled's daemon can wire the L4 Postgres terminator's
+// keeper-backed authenticator without reaching into broker internals.
+func (b *Broker) SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error) {
+	return b.server.gw.keeper.SCRAMProof(handle, salt, iter, authMessage)
+}
+
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }
 

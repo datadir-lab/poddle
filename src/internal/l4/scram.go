@@ -53,6 +53,43 @@ func (l localSCRAMAuthenticator) Proof(salt []byte, iter int, authMessage string
 	return proof, nil
 }
 
+// ComputeSCRAMProof derives the SCRAM-SHA-256 client proof for password (RFC
+// 7677 §3) — the exact PBKDF2/HMAC arithmetic localSCRAMAuthenticator.Proof
+// performs, exported so the broker keeper's privsep-side SCRAMProof (see
+// broker.localKeeper.SCRAMProof) can reuse it instead of duplicating the
+// password-bearing math in a second place. l4 has no dependency on package
+// broker (SCRAMKeeper below is the reverse-direction seam, satisfied
+// structurally), so broker importing l4 for this one helper introduces no
+// import cycle.
+func ComputeSCRAMProof(password string, salt []byte, iter int, authMessage string) ([]byte, error) {
+	return localSCRAMAuthenticator{password: password}.Proof(salt, iter, authMessage)
+}
+
+// SCRAMKeeper is the l4-local shape of the broker keeper's SCRAM delegation:
+// given the pod handle an L4 Postgres session authenticated with, it computes
+// the RFC 7677 client proof for that handle's credential — the keeper
+// re-resolves the handle to the real password itself; the L4 front never
+// holds it. Declared here (not imported from package broker) so l4 keeps zero
+// dependency on broker; *broker.localKeeper satisfies this interface
+// structurally, with no import needed in either direction for the type.
+type SCRAMKeeper interface {
+	SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error)
+}
+
+// keeperSCRAMAuthenticator adapts a SCRAMKeeper plus the pod handle a Postgres
+// session authenticated with to the scramAuthenticator interface scramClient
+// expects — exactly the privsep wiring newSCRAMWithAuth's seam was built for.
+// Proof crosses to the keeper (in Phase 1, an in-process call; under Tier 2,
+// an RPC to the vault process) and this struct never holds a password.
+type keeperSCRAMAuthenticator struct {
+	keeper SCRAMKeeper
+	handle string
+}
+
+func (a keeperSCRAMAuthenticator) Proof(salt []byte, iter int, authMessage string) ([]byte, error) {
+	return a.keeper.SCRAMProof(a.handle, salt, iter, authMessage)
+}
+
 // scramClient drives a SCRAM-SHA-256 client exchange (RFC 5802 / 7677). It is
 // used by the L4 Postgres broker to authenticate to the real database with the
 // real password — the pod never performs SCRAM (it can't; it holds only a

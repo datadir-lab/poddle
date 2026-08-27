@@ -19,6 +19,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/audit"
 	"github.com/datadir-lab/poddle/src/internal/broker"
+	"github.com/datadir-lab/poddle/src/internal/l4"
 	"github.com/datadir-lab/poddle/src/internal/policy"
 )
 
@@ -50,6 +51,22 @@ func (f *fakeBroker) Serve(string) (string, error) {
 func (f *fakeBroker) Addr() string               { return f.addr }
 func (f *fakeBroker) SetEgressMode(m string)     { f.egress = m }
 func (f *fakeBroker) Stop(context.Context) error { return nil }
+
+// SCRAMProof makes fakeBroker satisfy l4.SCRAMKeeper: it resolves handle via
+// Resolve (same as the real broker.Broker would) and derives the proof with
+// l4's shared RFC 7677 math, so a test wiring the L4 Postgres listener through
+// this fake gets a functionally real keeper, not a stub.
+func (f *fakeBroker) SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error) {
+	cred, err := f.Resolve(handle)
+	if err != nil {
+		return nil, err
+	}
+	target, err := l4.TargetFromDSN(cred.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	return l4.ComputeSCRAMProof(target.Pass, salt, iter, authMessage)
+}
 
 // reauthFakeBroker embeds fakeBroker and additionally implements NeedsReauth,
 // the OPTIONAL broker capability GET /status picks up via type-assertion

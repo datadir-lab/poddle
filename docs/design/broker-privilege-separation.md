@@ -1,10 +1,15 @@
 # Broker privilege separation (Tier 2, roadmap)
 
-**Status:** roadmap / not yet implemented. Tier 0 and Tier 1 (below) have
-shipped. The **SCRAM handshake-delegation spike is done and passed** (the
-`scramAuthenticator` seam is in `src/internal/l4/scram.go` today), so Tier 2 is
-**unblocked** — what remains is the process split, not feasibility. This document
-scopes it so the design is settled before the work starts.
+**Status:** Tier 0 and Tier 1 (below) have shipped. The **SCRAM
+handshake-delegation spike is done and passed** (the `scramAuthenticator` seam
+is in `src/internal/l4/scram.go`). **Phase 1 of Tier 2 — the in-process keeper
+boundary — has now landed too** (see "Phase 1" below): every secret-touching
+operation, on both the HTTP path and the L4 Postgres SCRAM path, is already
+routed through a `Keeper` interface with exactly one in-process implementation
+today. What remains for Tier 2 is the **process split** (moving that same
+`Keeper` behind a socketpair into a separate vault process) — not feasibility,
+and no longer even the internal call-boundary refactor. This document scopes
+that remaining work so the design is settled before it starts.
 
 Extends [`security-design.md`](../security-design.md) and
 [`egress-lockdown-and-broker-placement.md`](./egress-lockdown-and-broker-placement.md).
@@ -61,6 +66,47 @@ Tier 2 is worth doing only on top of the cheaper wins, which are done:
 Tiers 0 and 1 shrink the probability and the OS-level blast radius of a parser
 bug. They do **not** change the fact that a successful in-process compromise
 still sits next to the plaintext vault. That is Tier 2's job.
+
+## Tier 2, Phase 1 — the in-process keeper boundary (landed)
+
+Before splitting into two processes, every secret-touching call was first
+pulled behind one interface, `broker.Keeper`, satisfied today by exactly one
+in-process implementation, `*broker.localKeeper`. This is the call-shape half
+of Tier 2 done ahead of the process-split half — Phase 2 below changes *where*
+`Keeper` runs, not its shape or callers.
+
+- **HTTP path.** `Gateway` (the reverse-proxy front) holds no `Credential`
+  field — only a `Keeper`. `Resolve`, `InjectAuth`, `ForceReinject`,
+  `RedactBody`, `FlagReauth`/`ClearReauth`/`NeedsReauth` are all `Keeper`
+  methods; the front deals only in a `credID`, a non-secret `PublicCred`, and
+  an opaque token fingerprint. `TestKeeper_FrontHoldsNoPlaintextSecret` pins
+  this at the type level (no `Credential`-shaped field on `Gateway`).
+- **L4 Postgres SCRAM path.** The L4 terminator (`l4.ServePostgres`) still
+  parses the untrusted Redis/Postgres wire bytes and — for cleartext/md5 auth,
+  which unavoidably send the password to the upstream socket the terminator
+  itself writes (see the spike section below) — still holds `Target.Pass`. But
+  for SCRAM, the one step that needs the password (`Proof(salt, iter,
+  authMessage)`) is delegated to `Keeper.SCRAMProof(handle, salt, iter,
+  authMessage)` via a `keeperSCRAMAuthenticator` adapter, reusing the exact
+  `newSCRAMWithAuth` seam the spike built — the `scramClient` state machine is
+  byte-for-byte unchanged, only the authenticator it's handed differs.
+  `broker.localKeeper.SCRAMProof` re-resolves the handle (same custody rule as
+  `InjectAuth`) and calls the shared RFC 7677 arithmetic in
+  `l4.ComputeSCRAMProof` — the same code `l4.localSCRAMAuthenticator.Proof`
+  uses in-process — so the password-bearing math exists in exactly one place.
+  `l4` has no import of `broker` (`SCRAMKeeper` is a small structural interface
+  declared in `l4` itself; `*broker.localKeeper` satisfies it without either
+  package depending on the other); `broker` importing `l4` for the shared
+  crypto helper is a one-directional, cycle-free dependency.
+  `TestServePostgres_SCRAM_ProofComesFromKeeperNotTargetPass` pins this
+  empirically: the terminator is wired with a decoy `Target.Pass` and a keeper
+  holding the real password, and the wire-level SCRAM proof is asserted to
+  match the keeper's password, not the decoy.
+
+What Phase 1 does **not** yet change: `Keeper` still runs in the same address
+space, same OS process, as the parsers that hand it untrusted bytes. A memory-
+safety or logic bug in the gateway or the L4 terminator still executes next to
+the vault. Closing that is Phase 2 — the process split described below.
 
 ## Tier 2 — separate custody from parsing (OpenSSH-style privsep)
 
@@ -215,23 +261,38 @@ This is a real re-architecture, not a flag. Scoped honestly:
 
 Tiers 0 and 1 are shipped. The **SCRAM handshake-delegation spike is done and the
 gate is passed** (section above): the password-bearing step delegates cleanly as
-one `Proof` RPC per exchange, proven in code and byte-identical to the current
-path. The interception-CA prerequisite is also fixed. Tier 2 is therefore
-**unblocked**.
+one `Proof`-shaped call per exchange, proven in code and byte-identical to the
+current path. The interception-CA prerequisite is also fixed. **Phase 1 — routing
+every secret-touching call through the in-process `Keeper` — has now landed too**
+(see the Phase 1 section above), for both the HTTP gateway and the L4 Postgres
+SCRAM step. Tier 2 is therefore unblocked, and its call-shape design is no longer
+speculative: `Keeper`'s existing method set (`Resolve`, `InjectAuth`,
+`ForceReinject`, `RedactBody`, `SCRAMProof`, …) already *is* the shape the vault
+protocol needs.
 
-The remaining work is the process split itself, not further feasibility. Next
+What remains is **Phase 2: the process split**, not further feasibility. Next
 concrete steps, in order:
 
-1. **Define the vault protocol** — the small typed message set: `SCRAMProof`,
-   `MD5Response`, HTTP `InjectAuth(request) → authorized-request`, `SignLeaf(host)
-   → cert`, and the redact-verify call. Each is a pure `(inputs) → result` shape
-   the spike validated for SCRAM.
+1. **Consolidate the per-request `Keeper` calls into one RPC.** Today a single
+   HTTP request crosses the `Keeper` boundary multiple times — `Resolve`, then
+   `InjectAuth`, then `RedactBody`, and on a reactive 401 retry `ForceReinject`
+   too. Each becomes a separate socketpair round-trip once `Keeper` moves to a
+   different process, so before the split these should collapse into one
+   `InjectAuth(request) → authorized-request` call: the worker hands the vault
+   the whole outbound request (headers + body, handle present, secrets absent)
+   and gets back an authorized-and-redacted request ready to write upstream, in
+   a single crossing. `SCRAMProof` needs no such consolidation — it is already
+   the one-RPC-per-exchange shape the spike validated.
 2. **Stand up the two-process model** — vault as PID 1 forking the worker (or a
    small supervisor), a socketpair between them, compatible with the Tier 1
    read-only, cap-dropped container and static-binary packaging.
-3. **Move custody behind the boundary** — the vault holds credentials, the CA
-   private key, and the redactor; the worker keeps the parsers and holds no
-   secret. The `scramAuthenticator` seam already in the code becomes the
-   worker-side RPC client with no state-machine changes.
-4. **Measure the added latency** — one socketpair round-trip per auth/injection
-   against the per-request budget, especially on the L4 splice path.
+3. **Move `Keeper` behind the boundary with no caller changes.** `Gateway` and
+   `l4.ServePostgres` already call only `Keeper`/`SCRAMKeeper` methods — Phase 1
+   was exactly this refactor, done in-process first so it could be verified
+   behavior-preserving before adding a process boundary. Phase 2 swaps
+   `*localKeeper` for a socketpair-backed RPC client satisfying the same
+   interface; also move the CA private key (`SignLeaf`) and the redactor behind
+   the same boundary, per the "redactor moves into the vault side" note above.
+4. **Measure the added latency** — one socketpair round-trip per (consolidated)
+   auth/injection call against the per-request budget, especially on the L4
+   splice path.

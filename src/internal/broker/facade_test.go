@@ -62,10 +62,12 @@ func TestBroker_AddrEmptyUntilServe(t *testing.T) {
 func TestBroker_StoreClearsNeedsReauthFlag(t *testing.T) {
 	b := NewBroker()
 	// White-box: flag "gh" directly, standing in for a prior failed refresh
-	// (TestGateway_FlagsNeedsReauthOnFailure covers how the flag gets set).
-	b.server.gw.reauthMu.Lock()
-	b.server.gw.needsReauth["gh"] = true
-	b.server.gw.reauthMu.Unlock()
+	// (TestGateway_FlagsNeedsReauthOnFailure covers how the flag gets set). The
+	// reauth set moved onto the in-process keeper in the Tier-2 privsep refactor.
+	k := localKeeperOf(b.server.gw)
+	k.reauthMu.Lock()
+	k.needsReauth["gh"] = true
+	k.reauthMu.Unlock()
 
 	if _, err := b.Store(Credential{Mode: ModeOAuthBearer, WriteBackKey: "gh", Secret: "x", RefreshToken: "y"}); err != nil {
 		t.Fatalf("store: %v", err)
