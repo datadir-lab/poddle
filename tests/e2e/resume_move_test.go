@@ -14,12 +14,14 @@ import (
 
 // resumeMoveCase is one harness with a real, non-empty ResumeCommand: claude-code
 // (claudecode.go's `claude -p ... --continue`), codex (codex.go's `codex exec
-// resume --last`), and aider (aider.go's `aider --message <nudge>
-// --restore-chat-history`). pi/gemini/opencode return "" from ResumeCommand (resume
-// unwired) and are deliberately excluded — moving one of them would only prove a
-// no-op shell recreate, not resume. Fields mirror taskCase/mcpCase's per-harness
-// quadruple (task_test.go / mcp_test.go) and are reused verbatim where a row
-// already exists there.
+// resume --last`), aider (aider.go's `aider --message <nudge>
+// --restore-chat-history`), opencode (opencode.go's `opencode run <nudge> ... -c`,
+// resuming via its StateDirs-persisted opencode.db), and pi (pi.go's `pi ... -p -c
+// <nudge>`, resuming via its ConfigDir-persisted /root/.pi). gemini returns "" from
+// ResumeCommand (its resume is interactive-REPL-only, unwired for headless) and is
+// deliberately excluded — moving it would only prove a no-op shell recreate, not
+// resume. Fields mirror taskCase/mcpCase's per-harness quadruple (task_test.go /
+// mcp_test.go) and are reused verbatim where a row already exists there.
 type resumeMoveCase struct {
 	name          string                                                               // subtest name / --harness
 	harness       string                                                               // --harness (== name here)
@@ -72,17 +74,47 @@ var resumeMoveCases = []resumeMoveCase{
 		modelMock:     mockOpenAIChatUp,
 		wantFirst:     aiderMarker,
 	},
+	{
+		// opencode always streams; --format json wraps the reply as a JSON event
+		// per SSE chunk, so opencodeMarker rides inside a JSON string value —
+		// Contains still finds it (taskCases' opencode row proves this exact
+		// TaskCommand shape reaches `poddle logs`). mockOpenAIStreamUpMarker
+		// (mcp_test.go) records auths, which the resume assertion needs.
+		name:          "opencode",
+		harness:       "opencode",
+		image:         "docker.io/library/node:22",
+		writeIdentity: writeOpenAIIdentity,
+		upstreamEnv:   "PODDLE_OPENAI_BASE_URL",
+		modelMock: func(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+			return mockOpenAIStreamUpMarker(t, auths, mu, opencodeMarker)
+		},
+		wantFirst: opencodeMarker,
+	},
+	{
+		// pi also always streams (same reason as opencode) and prints the
+		// assistant reply as plain text — piMarker surfaces unwrapped (taskCases'
+		// pi row proves this exact TaskCommand shape reaches `poddle logs`).
+		name:          "pi",
+		harness:       "pi",
+		image:         "docker.io/library/node:22",
+		writeIdentity: writeOpenAIIdentity,
+		upstreamEnv:   "PODDLE_OPENAI_BASE_URL",
+		modelMock: func(t *testing.T, auths *[]string, mu *sync.Mutex) *httptest.Server {
+			return mockOpenAIStreamUpMarker(t, auths, mu, piMarker)
+		},
+		wantFirst: piMarker,
+	},
 }
 
 // TestE2E_ResumeMove_Headless proves resume-on-move end to end, for every harness
-// with a real ResumeCommand (claude-code, codex, aider — see resumeMoveCase's doc
-// comment). Per row: a detached (headless) `poddle task` runs that harness's coding
-// agent whose conversation persists on a named state volume; `poddle move`
-// recreates the shell on the carried-over volumes and, seeing the pod's `headless`
-// mode, auto-resumes the agent — which reaches the mock upstream again through the
-// broker. We assert the move landed on a NEW container that kept the `headless`
-// label and the harness label, and that the resumed agent re-hit the upstream
-// (never leaking the handle).
+// with a real ResumeCommand (claude-code, codex, aider, opencode, pi — see
+// resumeMoveCase's doc comment). Per row: a detached (headless) `poddle task` runs
+// that harness's coding agent whose conversation persists on a named state volume;
+// `poddle move` recreates the shell on the carried-over volumes and, seeing the
+// pod's `headless` mode, auto-resumes the agent — which reaches the mock upstream
+// again through the broker. We assert the move landed on a NEW container that kept
+// the `headless` label and the harness label, and that the resumed agent re-hit the
+// upstream (never leaking the handle).
 func TestE2E_ResumeMove_Headless(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
