@@ -3,10 +3,16 @@
 package e2e
 
 import (
+	"encoding/json"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -178,4 +184,130 @@ func TestE2E_HarnessConfig_ClaudeOnboardingMerge(t *testing.T) {
 	if !strings.Contains(got, "hasCompletedOnboarding") {
 		t.Fatalf("onboarding flag not set:\n%s", got)
 	}
+}
+
+// aiderProjectMarker is the assistant reply text mockOpenAIChatUpRecordModel
+// returns — distinctive so a naive success check can't be satisfied by aider
+// echoing the prompt.
+const aiderProjectMarker = "PODDLEAIDERCFGOK"
+
+// mockOpenAIChatUpRecordModel is a model-recording variant of mockOpenAIChatUp
+// (tests/e2e/secretless_up_test.go): a minimal plain-JSON OpenAI chat.completions
+// mock (aider runs with --no-stream) that ALSO parses each request body's "model"
+// field into models, guarded by mu — mirrors the auths recording pattern. This is
+// the decisive observable for TestE2E_HarnessConfig_AiderProjectFile: the test
+// invokes aider WITHOUT --model, so whatever model rides on the wire came from
+// aider's own config resolution, not a flag. Binds 0.0.0.0 so the broker container
+// reaches it at host.containers.internal.
+func mockOpenAIChatUpRecordModel(t *testing.T, auths, models *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload struct {
+			Model string `json:"model"`
+		}
+		_ = json.Unmarshal(body, &payload)
+		mu.Lock()
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		*models = append(*models, payload.Model)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-mock","object":"chat.completion","created":1,"model":"` + payload.Model +
+			`","choices":[{"index":0,"message":{"role":"assistant","content":"` + aiderProjectMarker +
+			`"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`))
+	}))
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind 0.0.0.0: %v", err)
+	}
+	_ = srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestE2E_HarnessConfig_AiderProjectFile proves aider HONORS a user's
+// project-level config (.aider.conf.yml in the git workdir) even though poddle
+// seeds no aider ConfigDir. aider's user config is a PROJECT file, read from
+// $HOME/git-root/cwd, not a per-user dotfile; poddle's aider pod already uses
+// /workspace (a persisted volume) as the git workdir, and poddle writes no aider
+// config file at all — see aider.go's ConfigDir doc comment, which is the
+// resolved (not deferred) design this test backs up.
+//
+// The decisive proof: the project config sets the model, aider is invoked
+// WITHOUT --model, and the mock records the model that actually rode on the
+// wire. If /workspace/.aider.conf.yml were ignored, aider would fall back to
+// its own built-in default model — which is not gpt-4o-mini — so a match is
+// only possible if aider read the project file.
+func TestE2E_HarnessConfig_AiderProjectFile(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+
+	const sentinel = "SENTINEL-AIDER-PROJECT-CFG"
+	const projectModel = "gpt-4o-mini" // distinctive from aider's built-in default and from other e2e tests' gpt-4o
+	var mu sync.Mutex
+	var auths, models []string
+	mock := mockOpenAIChatUpRecordModel(t, &auths, &models, &mu)
+	mockURL := mockURLFor(t, mock)
+
+	cfg := t.TempDir()
+	writeOpenAIIdentity(t, cfg, sentinel)
+	env := append(os.Environ(), "XDG_CONFIG_HOME="+cfg, "PODDLE_OPENAI_BASE_URL="+mockURL)
+
+	pod := "poddle-cfg-aider-project"
+	_ = exec.Command("podman", "rm", "-f", pod).Run()
+	t.Cleanup(func() {
+		down := exec.Command(bin, "down", pod)
+		down.Env = env
+		_ = down.Run()
+		_ = exec.Command("podman", "rm", "-f", pod).Run()
+		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
+		_ = exec.Command("podman", "network", "rm", "poddle-lock-"+pod).Run()
+	})
+
+	// Bring the pod up (installs aider via the harness Provisions) and keep it.
+	up := exec.Command(bin, "up", pod, "--detach",
+		"--identity", "work", "--harness", "aider",
+		"--image", "docker.io/library/python:3.12")
+	up.Env = env
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("up --detach failed: %v\n%s", err, out)
+	}
+
+	// Seed the USER's project-level aider config directly in the git workdir
+	// (/workspace) — not a poddle-seeded ConfigDir; poddle never writes this file.
+	seed := exec.Command(bin, "run", pod,
+		"printf '%s' 'model: "+projectModel+"' > /workspace/.aider.conf.yml")
+	seed.Env = env
+	if out, err := seed.CombinedOutput(); err != nil {
+		t.Fatalf("seed /workspace/.aider.conf.yml failed: %v\n%s", err, out)
+	}
+
+	// Run aider headless, deliberately WITHOUT --model: a flag would override the
+	// project config and mask the very thing under test (aider flags win over
+	// config, so omitting --model is what makes the config the sole source).
+	runCmd := exec.Command(bin, "run", pod,
+		"cd /workspace && aider --message 'reply' --yes-always --no-stream --no-pretty --no-check-update --no-analytics")
+	runCmd.Env = env
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("aider run failed: %v\n%s", err, out)
+	}
+
+	mu.Lock()
+	gotModels := append([]string(nil), models...)
+	mu.Unlock()
+	found := false
+	for _, m := range gotModels {
+		if strings.Contains(m, projectModel) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("aider never sent model %q on the wire — project config /workspace/.aider.conf.yml was not honored; got models: %v", projectModel, gotModels)
+	}
+
+	assertSecretless(t, auths, sentinel, &mu)
 }
