@@ -182,11 +182,14 @@ there's nothing to wire); bearer-token / API-key servers work as above, and OAut
 servers are supported too — omit `--token` and poddle probes the URL, runs browser
 consent on the host (auto-discovery + Dynamic Client Registration, or
 `--client-id`/`--client-secret` when the server has no DCR), and the broker refreshes
-the access token automatically — tokens stay in the broker, never the pod
-(`poddle connect reauth <name>` recovers a revoked/expired grant). See
+the access token automatically - tokens stay in the broker, never the pod. If a
+provider rotates its refresh token, poddled writes the rotation back to disk and
+reconciles it on the next `poddle up`, so a restart no longer forces a reauth in the
+normal case; `poddle connect reauth <name>` is the fallback for a grant that's
+actually revoked, and `poddle daemon status` flags any connection that needs it. See
 [Configuration](https://poddle.dev/docs/configuration#brokered-mcp) for the full
-walkthrough, including the egress note for explicit policies and the v1
-refresh-token-rotation limitation.
+walkthrough, including the egress note for explicit policies and the OAuth
+write-back mechanics.
 
 ## Secret-safety
 
