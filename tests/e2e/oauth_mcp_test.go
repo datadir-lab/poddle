@@ -296,58 +296,65 @@ var oauthMCPCases = []oauthMCPCase{
 
 // TestE2E_OAuthMCP proves a pod reaches an OAuth-protected MCP server through the
 // broker SECRETLESSLY, including token refresh, against real podman. It reuses the
-// brokered-MCP e2e's codex harness (mcpCases' "codex" row: writeOpenAIIdentity +
-// the mockOpenAIUp model mock + the exact `codex exec` -c overrides) so the only
-// new surface is the OAuth credential leg: instead of a static mcp-token, the
-// connection carries an oauth.json (seeded directly on disk — the connect-add
-// browser flow is unit-tested in Task 5 and can't be injected into the poddle
-// BINARY driven here). When oauth.json is present, connector.Credential builds a
-// ModeOAuthBearer credential from it (ignoring any static token file), and the
-// gateway injects — and, for a stale token, refreshes — the OAuth access token on
-// the wire. The pod only ever holds the `poddle_` handle. Two isolated subtests:
-// a valid token (no refresh) and an already-expired token (broker refreshes
-// end-to-end against a mock AS). NOTE: the podman run is CI-only; locally this
-// skips (requirePodman) — it is written + compiled here, exercised on GitHub CI.
+// brokered-MCP e2e's harness rows (mcpCases: codex/claude-code/opencode/pi/gemini —
+// each row's writeIdentity + its own model mock + its exact in-pod invocation) so
+// the only new surface per row is the OAuth credential leg: instead of a static
+// mcp-token, the connection carries an oauth.json (seeded directly on disk — the
+// connect-add browser flow is unit-tested in Task 5 and can't be injected into the
+// poddle BINARY driven here). When oauth.json is present, connector.Credential
+// builds a ModeOAuthBearer credential from it (ignoring any static token file),
+// and the gateway injects — and, for a stale token, refreshes — the OAuth access
+// token on the wire. The pod only ever holds the `poddle_` handle. Every
+// MCP-capable harness is run against both oauthMCPCases (a valid token — no
+// refresh — and an already-expired token — broker refreshes end-to-end against a
+// mock AS), proving the refresh path is harness-agnostic, not just codex-shaped.
+// NOTE: the podman run is CI-only; locally this skips (requirePodman) — it is
+// written + compiled here, exercised on GitHub CI.
 func TestE2E_OAuthMCP(t *testing.T) {
 	requirePodman(t)
 	bin := buildBinary(t)
 
-	// Reuse the codex row's verified in-pod invocation by name (robust against
-	// reordering mcpCases) — its exact `codex exec` -c overrides + trivial prompt
-	// perform the MCP handshake eagerly at startup, before any model turn.
-	codexInPod := ""
-	for _, c := range mcpCases {
-		if c.name == "codex" {
-			codexInPod = c.inPod
-			break
+	for _, mc := range mcpCases {
+		for _, tc := range oauthMCPCases {
+			t.Run(mc.name+"/"+tc.name, func(t *testing.T) { runOAuthMCPCase(t, bin, mc, tc) })
 		}
-	}
-	if codexInPod == "" {
-		t.Fatal("codex mcpCase not found — its reuse target moved; update this test")
-	}
-
-	for _, tc := range oauthMCPCases {
-		t.Run(tc.name, func(t *testing.T) { runOAuthMCPCase(t, bin, codexInPod, tc) })
 	}
 
 	// Task 9: the two behaviors this branch introduced beyond #141's baseline —
 	// a rotated refresh token reconciled back to the host's oauth.json, and the
-	// broker's reactive (post-401) refresh-and-retry. Both run as t.Run
-	// subtests of TestE2E_OAuthMCP (not sibling top-level Test funcs) so the
-	// e2e-oauth-mcp Taskfile target's `-run TestE2E_OAuthMCP` keeps covering
-	// them without any CI-wiring change.
-	t.Run("write-back", func(t *testing.T) { runOAuthMCPWriteBack(t, bin, codexInPod) })
-	t.Run("reactive-retry", func(t *testing.T) { runOAuthMCPReactiveRetry(t, bin, codexInPod) })
+	// broker's reactive (post-401) refresh-and-retry. Both are harness-agnostic
+	// broker behavior, so they stay codex-only (looked up by name below, robust
+	// against reordering mcpCases) rather than parametrized like runOAuthMCPCase
+	// above. They run as t.Run subtests of TestE2E_OAuthMCP (not sibling
+	// top-level Test funcs) so the e2e-oauth-mcp Taskfile target's `-run
+	// TestE2E_OAuthMCP` keeps covering them without any CI-wiring change.
+	var codexMC mcpCase
+	foundCodex := false
+	for _, c := range mcpCases {
+		if c.name == "codex" {
+			codexMC = c
+			foundCodex = true
+			break
+		}
+	}
+	if !foundCodex {
+		t.Fatal("codex mcpCase not found — its reuse target moved; update this test")
+	}
+	t.Run("write-back", func(t *testing.T) { runOAuthMCPWriteBack(t, bin, codexMC) })
+	t.Run("reactive-retry", func(t *testing.T) { runOAuthMCPReactiveRetry(t, bin, codexMC) })
 }
 
-// runOAuthMCPCase drives one oauthMCPCase end to end. Everything is per-row and
-// isolated (a fresh MCP mock, a fresh mock AS, a fresh model mock, a fresh XDG
-// dir + project dir, a uniquely-named pod + a fresh broker) so one row's traffic
-// can never be mistaken for another's — the decisive assertions read only this
-// row's own mcpAuths and AS call count.
-func runOAuthMCPCase(t *testing.T, bin, codexInPod string, tc oauthMCPCase) {
+// runOAuthMCPCase drives one (mcpCase, oauthMCPCase) pair end to end. Everything
+// is per-row and isolated (a fresh MCP mock, a fresh mock AS, a fresh model mock,
+// a fresh XDG dir + project dir, a uniquely-named pod + a fresh broker) so one
+// row's traffic can never be mistaken for another's — the decisive assertions
+// read only this row's own mcpAuths and AS call count. mc supplies everything
+// harness-specific (identity writer, model mock, upstream env var, .poddle.toml
+// harness/image, in-pod invocation); the OAuth connector, the mock AS, and the
+// mock MCP server are harness-agnostic and identical across every mc.
+func runOAuthMCPCase(t *testing.T, bin string, mc mcpCase, tc oauthMCPCase) {
 	// The remote MCP server: records every request's Authorization (the secretless
-	// proof) and speaks the MCP handshake codex runs eagerly at startup.
+	// proof) and speaks the MCP handshake this row's harness runs eagerly at startup.
 	var mcpMu sync.Mutex
 	var mcpAuths []string
 	mcpMock := mockMCPServer(t, &mcpAuths, &mcpMu)
@@ -360,15 +367,15 @@ func runOAuthMCPCase(t *testing.T, bin, codexInPod string, tc oauthMCPCase) {
 	asMock := mockOAuthAS(t, oauthRefreshedSentinel, &asCalls, &asMu)
 	asURL := brokerURL(t, asMock)
 
-	// The codex model leg — a DIFFERENT upstream, under its own sentinel, so the
-	// MCP assertion can't be satisfied by the model token leaking onto the MCP wire.
+	// This row's own model leg — a DIFFERENT upstream, under its own sentinel, so
+	// the MCP assertion can't be satisfied by the model token leaking onto the MCP wire.
 	var modelMu sync.Mutex
 	var modelAuths []string
-	modelMock := mockOpenAIUp(t, &modelAuths, &modelMu)
+	modelMock := mc.modelMock(t, &modelAuths, &modelMu)
 	modelURL := brokerURL(t, modelMock)
 
 	xdg := t.TempDir()
-	writeOpenAIIdentity(t, xdg, oauthModelSentinel) // identity "work" -> codex's own provider + Provisions run
+	mc.writeIdentity(t, xdg, oauthModelSentinel) // identity "work" -> this agent's own provider + Provisions run
 
 	// Seed the MCP connection on disk exactly as connect-add would leave it, but
 	// WITHOUT running the browser flow: meta.toml (connector=mcp, base_url=<mock>,
@@ -390,30 +397,31 @@ func runOAuthMCPCase(t *testing.T, bin, codexInPod string, tc oauthMCPCase) {
 	writeFile(t, filepath.Join(connDir, "oauth.json"), string(oauthJSON)) // 0600 (writeFile)
 
 	proj := t.TempDir()
-	// harness=codex so Provisions installs the codex CLI; connectors=["oauthmcp"]
-	// wires the connection above (MCPWiring runs `codex mcp add` pointing at the
-	// broker gateway with the handle) — identical to the brokered-MCP e2e's codex row.
+	// harness=mc.harness so Provisions installs this agent's CLI; connectors=["oauthmcp"]
+	// wires the connection above (MCPWiring registers the mcpsrv connection pointing
+	// at the broker gateway with the handle) — identical to the brokered-MCP e2e's
+	// own row for this harness.
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
-		"image = \"docker.io/library/node:22\"\nharness = \"codex\"\nconnectors = [\"oauthmcp\"]\n")
+		fmt.Sprintf("image = %q\nharness = %q\nconnectors = [\"oauthmcp\"]\n", mc.image, mc.harness))
 
-	pod := "poddle-oauthmcp-" + tc.name
+	pod := "poddle-oauthmcp-" + mc.name + "-" + tc.name
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
 	t.Cleanup(func() {
 		_ = exec.Command("podman", "rm", "-f", pod).Run()
 		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run() // fresh broker per case (its state dir is this case's temp)
 	})
 
-	cmd := exec.Command(bin, "up", pod, "--identity", "work", "--exec", codexInPod)
+	cmd := exec.Command(bin, "up", pod, "--identity", "work", "--exec", mc.inPod)
 	cmd.Dir = proj
 	cmd.Env = append(os.Environ(),
 		"XDG_CONFIG_HOME="+xdg,
-		"PODDLE_OPENAI_BASE_URL="+modelURL,
+		mc.upstreamEnv+"="+modelURL,
 	)
 	out, err := cmd.CombinedOutput()
 	// A non-zero exit isn't fatal on its own: the model turn is a minimal scripted
-	// mock and may not satisfy codex's full loop. The MCP handshake happens eagerly
-	// at startup (before any model turn), so it is the decisive assertion below —
-	// but surface `err` in every failure message.
+	// mock and may not satisfy this harness's full loop. The MCP handshake happens
+	// eagerly at startup (before any model turn), so it is the decisive assertion
+	// below — but surface `err` in every failure message.
 	_ = err
 
 	mcpMu.Lock()
@@ -474,7 +482,7 @@ func runOAuthMCPCase(t *testing.T, bin, codexInPod string, tc oauthMCPCase) {
 //     on-disk r1's, adopts it, and writes it back to oauth.json.
 //  4. Read connections/oauthwb/oauth.json off disk and assert it now holds
 //     r2 and a RotatedAt strictly after the seeded OLD one.
-func runOAuthMCPWriteBack(t *testing.T, bin, codexInPod string) {
+func runOAuthMCPWriteBack(t *testing.T, bin string, mc mcpCase) {
 	var mcpMu sync.Mutex
 	var mcpAuths []string
 	mcpMock := mockMCPServer(t, &mcpAuths, &mcpMu)
@@ -488,11 +496,11 @@ func runOAuthMCPWriteBack(t *testing.T, bin, codexInPod string) {
 
 	var modelMu sync.Mutex
 	var modelAuths []string
-	modelMock := mockOpenAIUp(t, &modelAuths, &modelMu)
+	modelMock := mc.modelMock(t, &modelAuths, &modelMu)
 	modelURL := brokerURL(t, modelMock)
 
 	xdg := t.TempDir() // reused for BOTH `up` calls below — this IS the reconcile's shared state
-	writeOpenAIIdentity(t, xdg, oauthWBModelSentinel)
+	mc.writeIdentity(t, xdg, oauthWBModelSentinel)
 
 	connDir := filepath.Join(xdg, "poddle", "connections", "oauthwb")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
@@ -514,7 +522,7 @@ func runOAuthMCPWriteBack(t *testing.T, bin, codexInPod string) {
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
-		"image = \"docker.io/library/node:22\"\nharness = \"codex\"\nconnectors = [\"oauthwb\"]\n")
+		fmt.Sprintf("image = %q\nharness = %q\nconnectors = [\"oauthwb\"]\n", mc.image, mc.harness))
 
 	pod1 := "poddle-oauthmcp-writeback"
 	pod2 := "poddle-oauthmcp-writeback-drain"
@@ -528,12 +536,12 @@ func runOAuthMCPWriteBack(t *testing.T, bin, codexInPod string) {
 
 	env := append(os.Environ(),
 		"XDG_CONFIG_HOME="+xdg,
-		"PODDLE_OPENAI_BASE_URL="+modelURL,
+		mc.upstreamEnv+"="+modelURL,
 	)
 
 	// Step 1: the real MCP handshake — this is what rotates r1 -> r2 at the
 	// mock AS and mirrors it to poddled's state dir.
-	cmd1 := exec.Command(bin, "up", pod1, "--identity", "work", "--exec", codexInPod)
+	cmd1 := exec.Command(bin, "up", pod1, "--identity", "work", "--exec", mc.inPod)
 	cmd1.Dir = proj
 	cmd1.Env = env
 	out1, err1 := cmd1.CombinedOutput()
@@ -622,7 +630,7 @@ func runOAuthMCPWriteBack(t *testing.T, bin, codexInPod string) {
 // this e2e proves the observable end result — the retried request landing at
 // the mock MCP server under the refreshed bearer, and the pod's handshake
 // continuing past it.
-func runOAuthMCPReactiveRetry(t *testing.T, bin, codexInPod string) {
+func runOAuthMCPReactiveRetry(t *testing.T, bin string, mc mcpCase) {
 	var mcpMu sync.Mutex
 	var mcpAuths []string
 	mcpMock := mockMCPServerReactive401(t, &mcpAuths, &mcpMu)
@@ -635,11 +643,11 @@ func runOAuthMCPReactiveRetry(t *testing.T, bin, codexInPod string) {
 
 	var modelMu sync.Mutex
 	var modelAuths []string
-	modelMock := mockOpenAIUp(t, &modelAuths, &modelMu)
+	modelMock := mc.modelMock(t, &modelAuths, &modelMu)
 	modelURL := brokerURL(t, modelMock)
 
 	xdg := t.TempDir()
-	writeOpenAIIdentity(t, xdg, oauthRRModelSentinel)
+	mc.writeIdentity(t, xdg, oauthRRModelSentinel)
 
 	connDir := filepath.Join(xdg, "poddle", "connections", "oauthrr")
 	writeFile(t, filepath.Join(connDir, "meta.toml"),
@@ -658,7 +666,7 @@ func runOAuthMCPReactiveRetry(t *testing.T, bin, codexInPod string) {
 
 	proj := t.TempDir()
 	writeFile(t, filepath.Join(proj, ".poddle.toml"),
-		"image = \"docker.io/library/node:22\"\nharness = \"codex\"\nconnectors = [\"oauthrr\"]\n")
+		fmt.Sprintf("image = %q\nharness = %q\nconnectors = [\"oauthrr\"]\n", mc.image, mc.harness))
 
 	pod := "poddle-oauthmcp-reactive-retry"
 	_ = exec.Command("podman", "rm", "-f", pod).Run()
@@ -667,11 +675,11 @@ func runOAuthMCPReactiveRetry(t *testing.T, bin, codexInPod string) {
 		_ = exec.Command("podman", "rm", "-f", "poddle-broker").Run()
 	})
 
-	cmd := exec.Command(bin, "up", pod, "--identity", "work", "--exec", codexInPod)
+	cmd := exec.Command(bin, "up", pod, "--identity", "work", "--exec", mc.inPod)
 	cmd.Dir = proj
 	cmd.Env = append(os.Environ(),
 		"XDG_CONFIG_HOME="+xdg,
-		"PODDLE_OPENAI_BASE_URL="+modelURL,
+		mc.upstreamEnv+"="+modelURL,
 	)
 	out, err := cmd.CombinedOutput()
 	_ = err // non-fatal on its own — see runOAuthMCPCase's identical comment
