@@ -31,9 +31,10 @@ type Token struct {
 }
 
 type Metadata struct {
-	AuthorizationEndpoint string
-	TokenEndpoint         string
-	RegistrationEndpoint  string
+	AuthorizationEndpoint       string
+	TokenEndpoint               string
+	RegistrationEndpoint        string
+	DeviceAuthorizationEndpoint string
 }
 
 func PKCE() (verifier, challenge string, err error) {
@@ -82,6 +83,19 @@ func (tr tokenResp) token() Token {
 	return Token{AccessToken: tr.AccessToken, RefreshToken: tr.RefreshToken, Scope: tr.Scope, ExpiresAt: exp}
 }
 
+// parseTokenResponse decodes a 2xx token-endpoint body (shared shape between
+// authorization_code/refresh_token/device_code grants) into a Token.
+func parseTokenResponse(body []byte) (Token, error) {
+	var tr tokenResp
+	if err := json.Unmarshal(body, &tr); err != nil {
+		return Token{}, fmt.Errorf("oauth: decode token response: %w", err)
+	}
+	if tr.AccessToken == "" {
+		return Token{}, errors.New("oauth: token response had no access_token")
+	}
+	return tr.token(), nil
+}
+
 func postForm(ctx context.Context, hc *http.Client, endpoint string, form url.Values, clientID, clientSecret string) (Token, error) {
 	form.Set("client_id", clientID)
 	if clientSecret != "" {
@@ -102,14 +116,7 @@ func postForm(ctx context.Context, hc *http.Client, endpoint string, form url.Va
 	if resp.StatusCode/100 != 2 {
 		return Token{}, fmt.Errorf("oauth: token endpoint %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	var tr tokenResp
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return Token{}, fmt.Errorf("oauth: decode token response: %w", err)
-	}
-	if tr.AccessToken == "" {
-		return Token{}, errors.New("oauth: token response had no access_token")
-	}
-	return tr.token(), nil
+	return parseTokenResponse(body)
 }
 
 func Exchange(ctx context.Context, hc *http.Client, m Metadata, clientID, clientSecret, code, verifier, redirectURI string) (Token, error) {
@@ -181,9 +188,10 @@ func Discover(ctx context.Context, hc *http.Client, mcpURL string) (Metadata, er
 	as := strings.TrimRight(prm.AuthorizationServers[0], "/")
 	// 3. authorization-server metadata.
 	var asm struct {
-		AuthorizationEndpoint string `json:"authorization_endpoint"`
-		TokenEndpoint         string `json:"token_endpoint"`
-		RegistrationEndpoint  string `json:"registration_endpoint"`
+		AuthorizationEndpoint       string `json:"authorization_endpoint"`
+		TokenEndpoint               string `json:"token_endpoint"`
+		RegistrationEndpoint        string `json:"registration_endpoint"`
+		DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
 	}
 	if err := getJSON(ctx, hc, as+"/.well-known/oauth-authorization-server", &asm); err != nil {
 		if err2 := getJSON(ctx, hc, as+"/.well-known/openid-configuration", &asm); err2 != nil {
@@ -193,7 +201,12 @@ func Discover(ctx context.Context, hc *http.Client, mcpURL string) (Metadata, er
 	if asm.TokenEndpoint == "" || asm.AuthorizationEndpoint == "" {
 		return Metadata{}, errors.New("oauth: authorization-server metadata missing endpoints")
 	}
-	return Metadata{AuthorizationEndpoint: asm.AuthorizationEndpoint, TokenEndpoint: asm.TokenEndpoint, RegistrationEndpoint: asm.RegistrationEndpoint}, nil
+	return Metadata{
+		AuthorizationEndpoint:       asm.AuthorizationEndpoint,
+		TokenEndpoint:               asm.TokenEndpoint,
+		RegistrationEndpoint:        asm.RegistrationEndpoint,
+		DeviceAuthorizationEndpoint: asm.DeviceAuthorizationEndpoint,
+	}, nil
 }
 
 func Register(ctx context.Context, hc *http.Client, registrationEndpoint, redirectURI string) (clientID, clientSecret string, err error) {
@@ -203,7 +216,7 @@ func Register(ctx context.Context, hc *http.Client, registrationEndpoint, redire
 	body, _ := json.Marshal(map[string]any{
 		"client_name":                "poddle",
 		"redirect_uris":              []string{redirectURI},
-		"grant_types":                []string{"authorization_code", "refresh_token"},
+		"grant_types":                []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
 		"response_types":             []string{"code"},
 		"token_endpoint_auth_method": "none",
 	})
