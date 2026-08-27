@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -60,6 +61,12 @@ func gatewayWith(t *testing.T, cred Credential) (*Gateway, string) {
 	}
 	return NewGateway(h), handle.Value
 }
+
+// localKeeperOf returns the gateway's in-process keeper for white-box test
+// access to keeper-owned state — the refresh hook, the handle registry, the
+// per-credID refresh logic — that moved off the Gateway in the Tier-2 privsep
+// refactor (the tests used to reach these on the Gateway directly).
+func localKeeperOf(g *Gateway) *localKeeper { return g.keeper.(*localKeeper) }
 
 func serve(t *testing.T, g *Gateway) *httptest.Server {
 	t.Helper()
@@ -281,7 +288,7 @@ func TestGateway_RefreshesStaleOAuthToken(t *testing.T) {
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "r1",
 		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused"}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		c.Secret = "fresh"
 		c.ExpiresAt = time.Now().Add(time.Hour)
 		return c, nil
@@ -330,7 +337,7 @@ func TestGateway_PersistsOnRotation(t *testing.T) {
 		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused",
 		WriteBackKey: "gh"}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		c.Secret = "fresh"
 		c.RefreshToken = "r2" // rotated
 		c.ExpiresAt = time.Now().Add(time.Hour)
@@ -364,7 +371,7 @@ func TestGateway_NoPersistWithoutRotation(t *testing.T) {
 		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, TokenEndpoint: "http://unused",
 		WriteBackKey: "gh"}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		c.Secret = "fresh"
 		c.ExpiresAt = time.Now().Add(time.Hour) // RefreshToken left as "r1" — unrotated
 		return c, nil
@@ -389,7 +396,7 @@ func TestGateway_FlagsNeedsReauthOnFailure(t *testing.T) {
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "dead",
 		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL, WriteBackKey: "gh"}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(context.Context, Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(context.Context, Credential) (Credential, error) {
 		return Credential{}, errors.New("refresh failed")
 	}
 	gw := serve(t, g)
@@ -418,7 +425,7 @@ func TestGateway_RefreshFailureIsFailClosed401(t *testing.T) {
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "stale", RefreshToken: "dead",
 		ExpiresAt: time.Now().Add(-time.Minute), BaseURL: up.URL}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(context.Context, Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(context.Context, Credential) (Credential, error) {
 		return Credential{}, errors.New("refresh failed")
 	}
 	aud := &recAuditor{}
@@ -510,7 +517,7 @@ func TestGateway_ConcurrentRefreshCollapsesToOne(t *testing.T) {
 	g, handle := gatewayWith(t, cred)
 
 	var n int64
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		atomic.AddInt64(&n, 1)
 		c.Secret = "fresh"
 		c.ExpiresAt = time.Now().Add(time.Hour) // future: under-lock re-read sees this as fresh
@@ -618,7 +625,7 @@ func TestGateway_ReactiveRetryOnUpstream401(t *testing.T) {
 	g, handle := gatewayWith(t, cred)
 
 	var refreshes int64
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		atomic.AddInt64(&refreshes, 1)
 		c.Secret = "fresh"
 		c.ExpiresAt = time.Now().Add(time.Hour)
@@ -661,7 +668,7 @@ func TestGateway_ReactiveRetryStill401FailsClosed(t *testing.T) {
 	g, handle := gatewayWith(t, cred)
 
 	var refreshes int64
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		atomic.AddInt64(&refreshes, 1)
 		c.Secret = "fresh"
 		c.ExpiresAt = time.Now().Add(time.Hour)
@@ -740,7 +747,7 @@ func TestGateway_ReactiveRetryReplaysNonEmptyBody(t *testing.T) {
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
 		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL, TokenEndpoint: "http://unused"}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		c.Secret = "fresh"
 		c.ExpiresAt = time.Now().Add(time.Hour)
 		return c, nil
@@ -777,13 +784,13 @@ func TestGateway_ForceRefreshSkipsWhenPeerAlreadyRefreshed(t *testing.T) {
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
 		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL}
 	g, handle := gatewayWith(t, cred)
-	credID, _, err := g.handles.Resolve(handle)
+	credID, _, err := localKeeperOf(g).handles.Resolve(handle)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 
 	var refreshes int64
-	g.refresh = func(context.Context, Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(context.Context, Credential) (Credential, error) {
 		atomic.AddInt64(&refreshes, 1)
 		return Credential{}, errors.New("must not be called")
 	}
@@ -794,11 +801,13 @@ func TestGateway_ForceRefreshSkipsWhenPeerAlreadyRefreshed(t *testing.T) {
 	// were rejected on that stale token.
 	fresh := Credential{Mode: ModeOAuthBearer, Secret: "fresh", RefreshToken: "r2",
 		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL}
-	if err := g.handles.ReplaceCred(handle, fresh); err != nil {
+	if err := localKeeperOf(g).handles.ReplaceCred(handle, fresh); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 
-	got, err := g.forceRefresh(context.Background(), handle, credID, cred, "access-old")
+	// forceRefresh is keyed on the rejected token's fingerprint (never the raw
+	// token) after the privsep refactor; the compare-and-skip behavior is unchanged.
+	got, err := localKeeperOf(g).forceRefresh(context.Background(), handle, credID, cred, fingerprint("access-old"))
 	if err != nil {
 		t.Fatalf("forceRefresh: %v", err)
 	}
@@ -818,13 +827,13 @@ func TestGateway_ForceRefreshRefreshesWhenNobodyBeatUs(t *testing.T) {
 	cred := Credential{Mode: ModeOAuthBearer, Secret: "access-old", RefreshToken: "r1",
 		ExpiresAt: time.Now().Add(time.Hour), BaseURL: up.URL}
 	g, handle := gatewayWith(t, cred)
-	credID, _, err := g.handles.Resolve(handle)
+	credID, _, err := localKeeperOf(g).handles.Resolve(handle)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 
 	var refreshes int64
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		atomic.AddInt64(&refreshes, 1)
 		c.Secret = "fresh"
 		c.RefreshToken = "r2"
@@ -832,7 +841,7 @@ func TestGateway_ForceRefreshRefreshesWhenNobodyBeatUs(t *testing.T) {
 		return c, nil
 	}
 
-	got, err := g.forceRefresh(context.Background(), handle, credID, cred, "access-old")
+	got, err := localKeeperOf(g).forceRefresh(context.Background(), handle, credID, cred, fingerprint("access-old"))
 	if err != nil {
 		t.Fatalf("forceRefresh: %v", err)
 	}
@@ -860,7 +869,7 @@ func TestGateway_ForceRefreshCollapsesConcurrentEarlyRevocation(t *testing.T) {
 	g, handle := gatewayWith(t, cred)
 
 	var refreshes int64
-	g.refresh = func(_ context.Context, c Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(_ context.Context, c Credential) (Credential, error) {
 		atomic.AddInt64(&refreshes, 1)
 		c.Secret = "fresh"
 		c.RefreshToken = "r2"
@@ -919,7 +928,7 @@ func TestGateway_NonOAuth401NotRetriedNorStripped(t *testing.T) {
 	// ModeBasic secret is "user:token".
 	cred := Credential{Mode: ModeBasic, Vendor: "forgejo", Secret: "realuser:realtoken", BaseURL: up.URL}
 	g, handle := gatewayWith(t, cred)
-	g.refresh = func(context.Context, Credential) (Credential, error) {
+	localKeeperOf(g).refresh = func(context.Context, Credential) (Credential, error) {
 		t.Error("refresh must NOT be called for a non-OAuth upstream")
 		return Credential{}, errors.New("unexpected refresh")
 	}
@@ -934,5 +943,71 @@ func TestGateway_NonOAuth401NotRetriedNorStripped(t *testing.T) {
 	}
 	if n := atomic.LoadInt64(&hits); n != 1 {
 		t.Errorf("upstream hit %d times, want 1 (no retry for a non-OAuth upstream)", n)
+	}
+}
+
+// TestKeeper_FrontHoldsNoPlaintextSecret is the broker-side mirror of l4's
+// TestSCRAM_PrivsepBoundary_*: it pins the Tier-2 invariant that the gateway
+// FRONT never holds a plaintext credential. Two assertions:
+//
+//  1. Confinement (runtime) — the value InjectAuth hands the front is a
+//     fingerprint, NOT the injected token: it neither equals nor contains the
+//     real secret, while the real secret DID land in the request header (proving
+//     injection happens keeper-side, out of the front's hands).
+//  2. Structure — the Gateway struct carries no broker.Credential (or secret)
+//     field; its only credential-facing field is the Keeper interface. So a front
+//     compromise has no plaintext secret mapped into its address space.
+func TestKeeper_FrontHoldsNoPlaintextSecret(t *testing.T) {
+	const secret = "super-secret-access-token"
+	up, _ := upstreamRecording(t)
+	g, handle := gatewayWith(t, Credential{Mode: ModeSubscription, Secret: secret, BaseURL: up.URL})
+	credID, pub, err := g.keeper.Resolve(handle)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	// The public view carries no secret field at all (compile-time: PublicCred has
+	// only Mode/Vendor/BaseURL), and what it does carry isn't the secret.
+	if pub.BaseURL != up.URL {
+		t.Errorf("PublicCred.BaseURL = %q, want %q", pub.BaseURL, up.URL)
+	}
+
+	h := http.Header{"Authorization": []string{"Bearer " + handle}}
+	fp, err := g.keeper.InjectAuth(context.Background(), handle, credID, h)
+	if err != nil {
+		t.Fatalf("InjectAuth: %v", err)
+	}
+	// The real secret was injected into the header by the keeper...
+	if got := h.Get("Authorization"); got != "Bearer "+secret {
+		t.Fatalf("keeper did not inject the real secret: Authorization = %q", got)
+	}
+	// ...but the fingerprint the FRONT holds is not, and does not contain, the token.
+	if fp == "" {
+		t.Error("fingerprint is empty")
+	}
+	if fp == secret || strings.Contains(fp, secret) {
+		t.Errorf("fingerprint leaked the token: fp = %q", fp)
+	}
+
+	// Structural: the Gateway (front) struct holds no plaintext credential.
+	gt := reflect.TypeOf(Gateway{})
+	credType := reflect.TypeOf(Credential{})
+	sawKeeper := false
+	for i := 0; i < gt.NumField(); i++ {
+		f := gt.Field(i)
+		if f.Type == credType || f.Type == reflect.PointerTo(credType) {
+			t.Errorf("Gateway holds a plaintext Credential field %q — the front must not", f.Name)
+		}
+		if strings.Contains(strings.ToLower(f.Name), "secret") {
+			t.Errorf("Gateway has a secret-suggestive field %q — the front must hold no secret", f.Name)
+		}
+		if f.Name == "keeper" {
+			sawKeeper = true
+			if f.Type.Kind() != reflect.Interface {
+				t.Errorf("Gateway.keeper is %s, want an interface (the privsep boundary)", f.Type.Kind())
+			}
+		}
+	}
+	if !sawKeeper {
+		t.Error("Gateway has no keeper field — secret-touching ops must live behind the Keeper boundary")
 	}
 }
