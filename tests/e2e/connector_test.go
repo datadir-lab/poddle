@@ -142,7 +142,27 @@ func TestE2E_Connectors(t *testing.T) {
 	}
 }
 
-func runConnCase(t *testing.T, bin string, tc connCase) {
+// TestE2E_Privsep_TwoProcessBroker proves the Phase-2 two-process broker works in
+// the REAL locked distroless container (not just a golang dev image): with
+// PODDLE_BROKER_PRIVSEP=1, poddled forks a keeper subprocess (holding the vault)
+// over a socketpair inside the --read-only/--cap-drop=all/--no-new-privileges
+// container, and a full brokered request STILL swaps the handle for the real
+// secret. It exercises the control-plane (connect add -> Store, up -> IssueHandle)
+// and the request-path (Resolve + InjectAuth) across the process boundary; a Basic
+// (git) and a Bearer (CI-token) connector cover both injection modes.
+func TestE2E_Privsep_TwoProcessBroker(t *testing.T) {
+	requirePodman(t)
+	bin := buildBinary(t)
+	cases := []connCase{
+		{"github", "github", "me", nodeImg, gitClone, basicWant("me")},
+		{"woodpecker", "woodpecker", "", nodeImg, bearerEnv("WOODPECKER_SERVER", "WOODPECKER_TOKEN"), bearerWant()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { runConnCase(t, bin, tc, "PODDLE_BROKER_PRIVSEP=1") })
+	}
+}
+
+func runConnCase(t *testing.T, bin string, tc connCase, extraEnv ...string) {
 	var mu sync.Mutex
 	var auths []string
 	mock := mockService(t, &auths, &mu)
@@ -172,7 +192,7 @@ func runConnCase(t *testing.T, bin string, tc connCase) {
 
 	cmd := exec.Command(bin, "up", pod, "--exec", tc.inPod(mockAddr))
 	cmd.Dir = proj
-	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+xdg)
+	cmd.Env = append(append(os.Environ(), "XDG_CONFIG_HOME="+xdg), extraEnv...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("poddle up (%s) failed: %v\n%s", tc.connector, err, out)

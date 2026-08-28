@@ -159,6 +159,38 @@ func TestEnsureBroker_NoCoverMountWhenUnset(t *testing.T) {
 	}
 }
 
+func TestEnsureBroker_PrivsepEnvWhenSet(t *testing.T) {
+	// Privsep=true opts the containerized broker into the two-process keeper model.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x", Privsep: true,
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	if got := joinCalls(f); !strings.Contains(got, "-e PODDLE_BROKER_PRIVSEP=1") {
+		t.Errorf("missing PODDLE_BROKER_PRIVSEP env when Privsep set:\n%s", got)
+	}
+}
+
+func TestEnsureBroker_NoPrivsepEnvByDefault(t *testing.T) {
+	// Default (in-process) broker: the two-process env must not leak in.
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	if got := joinCalls(f); strings.Contains(got, "PODDLE_BROKER_PRIVSEP") {
+		t.Errorf("PODDLE_BROKER_PRIVSEP must not appear by default:\n%s", got)
+	}
+}
+
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
 	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
 	p := New(f, "")

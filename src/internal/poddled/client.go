@@ -106,6 +106,11 @@ func (c *Client) EnsureRunning() error {
 		// coverage-instrumented broker image writes its covdata to the shared dir
 		// alongside the host CLI's. Empty (and ignored) in every normal run.
 		CoverDir: os.Getenv("GOCOVERDIR"),
+		// Opt into the two-process broker (keeper subprocess holds the vault) via the
+		// host env. It's a deployment-level setting, not a per-pod flag: the broker is
+		// a singleton (EnsureBroker is idempotent — the first `up` creates it), so its
+		// privsep mode is fixed at broker-create time. Default off (in-process).
+		Privsep: os.Getenv("PODDLE_BROKER_PRIVSEP") == "1",
 	}
 	if err := l.EnsureBroker(cfg); err != nil {
 		return err
