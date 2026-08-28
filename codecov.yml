@@ -42,12 +42,16 @@ fixes:
   - "github.com/datadir-lab/poddle/::"
 
 # Files with no meaningful *unit*-test surface: the process entrypoint, the
-# OS-specific detach shims, and the in-tree test doubles. The real exec paths
-# these stand in for are covered by the e2e stream.
+# OS-specific detach shims, the broker's privsep fork/socketpair mechanism +
+# keeper-subprocess spawn (whose happy paths are covered by a real-subprocess
+# integration test and the e2e stream, and whose remainder is untestable
+# syscall-failure branches), and the in-tree test doubles.
 ignore:
   - "src/cli/main.go"
   - "src/internal/poddled/spawn_unix.go"
   - "src/internal/poddled/spawn_windows.go"
+  - "src/internal/privsep/socketpair.go"
+  - "src/internal/broker/keeperproc_linux.go"
   - "**/fake.go"
 
 comment:
