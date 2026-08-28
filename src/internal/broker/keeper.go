@@ -1,16 +1,13 @@
 package broker
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"io"
 	"log"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +32,30 @@ type PublicCred struct {
 	BaseURL string
 }
 
+// HeaderMutation is an auth-injection result expressed as serializable data
+// instead of an in-place mutation of a live http.Header (which cannot cross the
+// Phase-2 keeper/front process boundary). Apply performs the same Del-then-Set
+// the former applyAuth did directly on the request header: the front applies it
+// to the outbound request, so the real secret lands in the request header only
+// transiently — the front never holds a Credential. Delete is applied before
+// Set (a key that appears in both ends up Set — matching applyAuth's Del-then-Set
+// for X-Goog-Api-Key).
+type HeaderMutation struct {
+	Delete []string          // header keys to remove (handle + any stale auth key)
+	Set    map[string]string // header key -> real secret value to set
+}
+
+// Apply mutates h per the mutation: every Delete key removed, then every Set key
+// written. A zero HeaderMutation (both nil) is a no-op.
+func (m HeaderMutation) Apply(h http.Header) {
+	for _, k := range m.Delete {
+		h.Del(k)
+	}
+	for k, v := range m.Set {
+		h.Set(k, v)
+	}
+}
+
 // Keeper is the privilege boundary between the gateway FRONT (request parsing +
 // reverse proxy, which must never hold a plaintext Credential) and credential
 // custody + every secret-bearing operation. In Phase 1 it is satisfied in-process
@@ -52,34 +73,36 @@ type Keeper interface {
 	Resolve(handle string) (credID string, pub PublicCred, err error)
 
 	// InjectAuth refreshes a stale OAuth access token (persisting any rotation),
-	// then injects the REAL secret into h per the credential's mode — deleting the
-	// pod handle header first. It returns an opaque, non-secret fingerprint of the
-	// injected access token; the front holds that, never the token. A non-nil err
-	// (refresh failure) maps to the front's fail-closed bare 401.
-	InjectAuth(ctx context.Context, handle, credID string, h http.Header) (fingerprint string, err error)
+	// then returns the HeaderMutation that injects the REAL secret per the
+	// credential's mode (deleting the pod handle header first) for the front to
+	// Apply, plus an opaque, non-secret fingerprint of the injected access token;
+	// the front holds the fingerprint, never the token. A non-nil err (refresh
+	// failure) maps to the front's fail-closed bare 401.
+	InjectAuth(ctx context.Context, handle, credID string) (mut HeaderMutation, fingerprint string, err error)
 
 	// ForceReinject is the reactive-retry path (an upstream 401 on a token that
 	// wasn't yet stale). Under the per-credID lock it re-reads the live credential
 	// and, if a peer already rotated it (the live secret's fingerprint no longer
 	// matches the rejected one), reuses that peer's token WITHOUT a second rotation
 	// — preserving the refresh-token-family revocation collapse. Otherwise it
-	// force-refreshes. Either way it injects the resulting secret into h and returns
-	// the new fingerprint. A non-nil err maps to the front's fail-closed bare 401
-	// (reauth already flagged keeper-side).
-	ForceReinject(ctx context.Context, handle, credID, fingerprint string, h http.Header) (newFingerprint string, err error)
+	// force-refreshes. Either way it returns the HeaderMutation that injects the
+	// resulting secret for the front to Apply. A non-nil err maps to the front's
+	// fail-closed bare 401 (reauth already flagged keeper-side).
+	ForceReinject(ctx context.Context, handle, credID, rejectedFingerprint string) (mut HeaderMutation, err error)
 
-	// RedactBody scrubs managed secrets (and high-confidence patterns) from a
-	// textual egress body, rewriting r in place. It lives keeper-side because it
-	// needs the sealed managed secret to scan. It returns proceed=false (after
-	// writing a 403) when redaction is set to block and a secret is found;
-	// otherwise proceed=true and the number of secrets redacted.
+	// RedactBody scans a textual egress body (passed as bytes — no live http
+	// object, so it is boundary-safe) for the handle's managed secret(s) and
+	// returns the scrubbed body, whether egress must be BLOCKED (block mode + a
+	// hit), and the hit count. It lives keeper-side because it needs the sealed
+	// managed secret to scan; the front applies the non-secret textual/size gate
+	// before calling and turns blocked into a 403 (not forwarding) after.
 	//
 	// Call order is load-bearing: the caller must run InjectAuth (which calls
 	// refreshIfStale) for handle BEFORE RedactBody, so a just-rotated credential
 	// is already persisted to the vault when RedactBody re-resolves handle — the
 	// scan then targets the SAME secret that's about to hit the wire, not a
 	// stale pre-rotation one.
-	RedactBody(w http.ResponseWriter, r *http.Request, handle string) (proceed bool, hits int)
+	RedactBody(handle string, body []byte) (scrubbed []byte, blocked bool, hits int)
 
 	// NeedsReauth, ClearReauth, and FlagReauth manage the set of connections whose
 	// most recent OAuth refresh attempt failed (surfaced to operators via
@@ -192,48 +215,61 @@ func (k *localKeeper) Resolve(handle string) (string, PublicCred, error) {
 	return credID, PublicCred{Mode: cred.Mode, Vendor: cred.Vendor, BaseURL: cred.BaseURL}, nil
 }
 
-// InjectAuth = refreshIfStale + applyAuth. It re-resolves the handle (the front
-// holds no Credential), refreshes a stale OAuth token, injects the real secret
-// into h, and returns the injected token's fingerprint.
-func (k *localKeeper) InjectAuth(ctx context.Context, handle, credID string, h http.Header) (string, error) {
+// InjectAuth = refreshIfStale + authMutation. It re-resolves the handle (the front
+// holds no Credential), refreshes a stale OAuth token, and returns the header
+// mutation that injects the real secret (for the front to Apply) plus the injected
+// token's fingerprint.
+func (k *localKeeper) InjectAuth(ctx context.Context, handle, credID string) (HeaderMutation, string, error) {
 	_, cred, err := k.handles.Resolve(handle)
 	if err != nil {
-		return "", err
+		return HeaderMutation{}, "", err
 	}
 	cred, err = k.refreshIfStale(ctx, handle, credID, cred)
 	if err != nil {
-		return "", err
+		return HeaderMutation{}, "", err
 	}
-	applyAuth(h, cred)
-	return fingerprint(cred.Secret), nil
+	return authMutation(cred), fingerprint(cred.Secret), nil
 }
 
-// ForceReinject = forceRefresh + applyAuth, keyed on the rejected fingerprint.
+// ForceReinject = forceRefresh + authMutation, keyed on the rejected fingerprint.
 // It re-resolves the live credential to refresh from (the front holds none),
 // force-refreshes (or reuses a peer's already-rotated token — see forceRefresh),
-// injects the result into h, and returns the new fingerprint.
-func (k *localKeeper) ForceReinject(ctx context.Context, handle, credID, rejectedFingerprint string, h http.Header) (string, error) {
+// and returns the header mutation that injects the result (for the front to Apply).
+// The new fingerprint is not returned: the reactive retry is at-most-once, so no
+// caller needs it.
+func (k *localKeeper) ForceReinject(ctx context.Context, handle, credID, rejectedFingerprint string) (HeaderMutation, error) {
 	_, cred, err := k.handles.Resolve(handle)
 	if err != nil {
-		return "", err
+		return HeaderMutation{}, err
 	}
 	updated, err := k.forceRefresh(ctx, handle, credID, cred, rejectedFingerprint)
 	if err != nil {
-		return "", err
+		return HeaderMutation{}, err
 	}
-	applyAuth(h, updated)
-	return fingerprint(updated.Secret), nil
+	return authMutation(updated), nil
 }
 
-// RedactBody re-resolves the handle for its managed secret and scrubs the egress
-// body. A resolve failure here (the handle vanished mid-request — not reachable
-// in practice, since InjectAuth just resolved it) leaves the body untouched.
-func (k *localKeeper) RedactBody(w http.ResponseWriter, r *http.Request, handle string) (bool, int) {
+// RedactBody scans a textual egress body (handed in as bytes — no live http
+// object, so it is boundary-safe) for the handle's managed secret(s) and returns
+// the scrubbed body, whether egress must be BLOCKED (block mode + a hit), and the
+// hit count. It re-resolves the handle for its sealed secret (custody stays
+// keeper-side); a resolve failure or nil redactor leaves the body untouched. The
+// front applies the non-secret textual/size gate before calling, and turns a
+// blocked result into a 403 (not forwarding) after.
+func (k *localKeeper) RedactBody(handle string, body []byte) (scrubbed []byte, blocked bool, hits int) {
 	_, cred, err := k.handles.Resolve(handle)
-	if err != nil {
-		return true, 0
+	if err != nil || k.redactor == nil {
+		return body, false, 0
 	}
-	return k.redactBody(w, r, cred)
+	managed := []string{cred.Secret}
+	if _, tok, ok := strings.Cut(cred.Secret, ":"); ok {
+		managed = append(managed, tok) // basic: also scrub the token half of user:token
+	}
+	red, n, block := k.redactor.Scan(body, managed...)
+	if block {
+		return body, true, n // front writes 403; original body is not forwarded
+	}
+	return red, false, n
 }
 
 // FlagReauth resolves handle → WriteBackKey and marks the connection as needing
@@ -423,59 +459,33 @@ func (k *localKeeper) credLock(credID string) *sync.Mutex {
 	return lk
 }
 
-// redactBody scrubs secrets from a textual outbound body, rewriting r in place.
-// It returns proceed=false (after writing a 403) when redaction is set to block
-// and a secret is found; otherwise proceed=true and the number of secrets
-// redacted (0 when nothing was scanned or found).
-func (k *localKeeper) redactBody(w http.ResponseWriter, r *http.Request, cred Credential) (proceed bool, hits int) {
-	if k.redactor == nil || r.Body == nil || !isTextual(r.Header.Get("Content-Type")) || r.ContentLength > maxScanBytes {
-		return true, 0
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxScanBytes))
-	_ = r.Body.Close()
-	if err != nil {
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		return true, 0
-	}
-	managed := []string{cred.Secret}
-	if _, tok, ok := strings.Cut(cred.Secret, ":"); ok {
-		managed = append(managed, tok) // basic: also scrub the token half of user:token
-	}
-	red, n, block := k.redactor.Scan(body, managed...)
-	if block {
-		http.Error(w, "poddle: outbound request blocked — secret detected", http.StatusForbidden)
-		return false, n
-	}
-	r.Body = io.NopCloser(bytes.NewReader(red))
-	r.ContentLength = int64(len(red))
-	r.Header.Set("Content-Length", strconv.Itoa(len(red)))
-	return true, n
-}
-
-// applyAuth clears the incoming handle and injects the real secret in the header
-// the credential's mode expects. It runs keeper-side — the plaintext secret lives
-// in the request header only after this call, inside the vault-owned code path.
-func applyAuth(h http.Header, cred Credential) {
-	h.Del("Authorization")
-	h.Del("X-Api-Key")
+// authMutation computes the header mutation that injects cred's real secret in
+// the header its mode expects, always deleting the incoming handle's auth headers
+// first. Pure (no side effects) so it is boundary-safe: the front applies the
+// result. It is the value-returning form of the former applyAuth — same headers,
+// same values.
+func authMutation(cred Credential) HeaderMutation {
+	m := HeaderMutation{Delete: []string{"Authorization", "X-Api-Key"}, Set: map[string]string{}}
 	switch cred.Mode {
 	case ModeAPIKey:
-		h.Set("X-Api-Key", cred.Secret)
+		m.Set["X-Api-Key"] = cred.Secret
 	case ModeGoogleAPIKey:
 		// gemini-cli's SDK sends the handle in x-goog-api-key too (alongside the
-		// Bearer handleFromAuth read); drop it and inject the real key there.
-		h.Del("X-Goog-Api-Key")
-		h.Set("X-Goog-Api-Key", cred.Secret)
+		// Bearer handleFromAuth read); drop it and inject the real key there
+		// (Delete-before-Set nets to Set).
+		m.Delete = append(m.Delete, "X-Goog-Api-Key")
+		m.Set["X-Goog-Api-Key"] = cred.Secret
 	case ModeSubscription:
-		h.Set("Authorization", "Bearer "+cred.Secret)
+		m.Set["Authorization"] = "Bearer " + cred.Secret
 	case ModeOAuthBearer:
-		h.Set("Authorization", "Bearer "+cred.Secret)
+		m.Set["Authorization"] = "Bearer " + cred.Secret
 	case ModeBasic:
 		// Secret is "user:token".
-		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(cred.Secret)))
+		m.Set["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(cred.Secret))
 	case ModeEndpoint:
 		if cred.Secret != "" {
-			h.Set("Authorization", "Bearer "+cred.Secret)
+			m.Set["Authorization"] = "Bearer " + cred.Secret
 		}
 	}
+	return m
 }

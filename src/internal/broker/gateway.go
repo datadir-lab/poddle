@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -205,20 +206,38 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// auth rides r.Header, which the reverse proxy clones into the outbound
 	// request. Audited (secret-free) so operators see the credential needs
 	// `connect reauth`.
-	fp, err := g.keeper.InjectAuth(r.Context(), handle, credID, r.Header)
+	mut, fp, err := g.keeper.InjectAuth(r.Context(), handle, credID)
 	if err != nil {
 		g.audit(handle, up.Host, method, path, "deny", "oauth refresh failed — needs reauth", http.StatusUnauthorized)
 		http.Error(w, "poddle: MCP upstream authorization failed", http.StatusUnauthorized)
 		return
 	}
+	mut.Apply(r.Header)
 
-	// Egress redaction (keeper-side: it needs the managed secret to scan). Scrub
-	// secrets from textual bodies (LLM/API JSON). Git and other binary payloads
-	// are skipped so packfiles aren't buffered/mangled.
-	proceed, hits := g.keeper.RedactBody(w, r, handle)
-	if !proceed {
-		g.audit(handle, up.Host, method, path, "block", "egress blocked — secret detected", http.StatusForbidden)
-		return // blocked (403 already written)
+	// Egress redaction: the front applies the non-secret gate (body present +
+	// textual Content-Type + within scan size), reads the bytes, and hands them to
+	// the keeper — which holds the managed secret and returns the scrubbed body (or
+	// a block decision). Git and other binary payloads are skipped so packfiles
+	// aren't buffered/mangled. Runs AFTER InjectAuth so redaction targets the
+	// post-rotation secret already in the vault.
+	hits := 0
+	if r.Body != nil && isTextual(r.Header.Get("Content-Type")) && r.ContentLength <= maxScanBytes {
+		body, rerr := io.ReadAll(io.LimitReader(r.Body, maxScanBytes))
+		_ = r.Body.Close()
+		if rerr != nil {
+			r.Body = io.NopCloser(bytes.NewReader(body)) // restore partial; skip scan
+		} else {
+			scrubbed, blocked, n := g.keeper.RedactBody(handle, body)
+			if blocked {
+				g.audit(handle, up.Host, method, path, "block", "egress blocked — secret detected", http.StatusForbidden)
+				http.Error(w, "poddle: outbound request blocked — secret detected", http.StatusForbidden)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(scrubbed))
+			r.ContentLength = int64(len(scrubbed))
+			r.Header.Set("Content-Length", strconv.Itoa(len(scrubbed)))
+			hits = n
+		}
 	}
 
 	// For an OAuth upstream, buffer the request body so the reactive-retry path
@@ -283,9 +302,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// keyed on the fingerprint the front holds — never the token itself. On
 			// failure the keeper already flagged needs-reauth; leave the (already
 			// stripped) bare 401 for the pod.
-			if _, rerr := g.keeper.ForceReinject(res.Request.Context(), handle, credID, fp, req2.Header); rerr != nil {
+			reMut, rerr := g.keeper.ForceReinject(res.Request.Context(), handle, credID, fp)
+			if rerr != nil {
 				return nil
 			}
+			reMut.Apply(req2.Header)
 			res2, rterr := http.DefaultTransport.RoundTrip(req2)
 			if rterr != nil {
 				return nil // retry transport error: keep the stripped 401
