@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -51,6 +52,11 @@ func (f *fakeBroker) Serve(string) (string, error) {
 func (f *fakeBroker) Addr() string               { return f.addr }
 func (f *fakeBroker) SetEgressMode(m string)     { f.egress = m }
 func (f *fakeBroker) Stop(context.Context) error { return nil }
+
+// EnsureCA errors so the daemon's best-effort forward-proxy setup skips wiring a
+// LeafSource — these tests don't exercise TLS interception through the fake.
+func (f *fakeBroker) EnsureCA(string) error         { return errors.New("fake: no interception CA") }
+func (f *fakeBroker) LeafSource() broker.LeafSource { return nil }
 
 // SCRAMProof makes fakeBroker satisfy l4.SCRAMKeeper: it resolves handle via
 // Resolve (same as the real broker.Broker would) and derives the proof with

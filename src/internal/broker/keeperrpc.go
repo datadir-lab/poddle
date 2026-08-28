@@ -87,6 +87,8 @@ const (
 	mIssueHandle   = "issuehandle"
 	mRevoke        = "revoke"
 	mResolveCred   = "resolvecred"
+	mEnsureCA      = "ensureca"
+	mSignLeaf      = "signleaf"
 )
 
 // --- per-method payloads (gob-encoded into rpcRequest/rpcResponse Body) ---
@@ -144,6 +146,14 @@ type revokeReq struct{ Handle string }
 
 type resolveCredReq struct{ Handle string }
 type resolveCredResp struct{ Cred Credential }
+
+type ensureCAReq struct{ Dir string }
+
+type signLeafReq struct{ Host string }
+type signLeafResp struct {
+	CertDER []byte
+	KeyDER  []byte
+}
 
 // ============================ client (FRONT side) ============================
 
@@ -435,6 +445,23 @@ func (c *socketKeeperClient) ResolveCredential(handleValue string) (Credential, 
 	return r.Cred, nil
 }
 
+func (c *socketKeeperClient) EnsureCA(dir string) error {
+	_, err := c.callBG(mEnsureCA, ensureCAReq{Dir: dir})
+	return err
+}
+
+func (c *socketKeeperClient) SignLeaf(host string) ([]byte, []byte, error) {
+	body, err := c.callBG(mSignLeaf, signLeafReq{Host: host})
+	if err != nil {
+		return nil, nil, err
+	}
+	var r signLeafResp
+	if err := gobDecode(body, &r); err != nil {
+		return nil, nil, err
+	}
+	return r.CertDER, r.KeyDER, nil
+}
+
 // ============================ server (KEEPER side) ============================
 
 // serveKeeper reads framed requests from conn and dispatches each to k in its own
@@ -627,6 +654,25 @@ func dispatchKeeper(k Custody, req rpcRequest) ([]byte, error) {
 			return nil, err
 		}
 		return gobEncode(resolveCredResp{Cred: cred})
+	case mEnsureCA:
+		var a ensureCAReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		if err := k.EnsureCA(a.Dir); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	case mSignLeaf:
+		var a signLeafReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		certDER, keyDER, err := k.SignLeaf(a.Host)
+		if err != nil {
+			return nil, err
+		}
+		return gobEncode(signLeafResp{CertDER: certDER, KeyDER: keyDER})
 	default:
 		return nil, fmt.Errorf("broker keeper: unknown method %q", req.Method)
 	}

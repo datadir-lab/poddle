@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -41,6 +42,13 @@ type brokerAPI interface {
 	SetEgressMode(mode string)
 	Stop(ctx context.Context) error
 
+	// EnsureCA loads the egress-interception CA keeper-side (the CA private key
+	// stays in the keeper, not this front); LeafSource returns a forward-proxy
+	// LeafSource that mints leaves via the keeper. Wired when the forward proxy
+	// starts, if interception is available.
+	EnsureCA(dir string) error
+	LeafSource() broker.LeafSource
+
 	// SCRAMProof is the L4 Postgres SCRAM password-bearing step, delegated to
 	// the broker's keeper (see broker.Keeper.SCRAMProof); this method makes
 	// brokerAPI satisfy l4.SCRAMKeeper structurally, so d.broker itself can be
@@ -64,9 +72,8 @@ type Daemon struct {
 	l4PostgresAddr string
 	forward        net.Listener // egress forward proxy (arbitrary HTTP(S) egress)
 	forwardAddr    string
-	ca             *tlsca.Authority // egress-interception CA (nil until the forward proxy starts)
-	loopbackHost   string           // if set, a loopback upstream is dialed here (the host route); see broker.RewriteLoopbackHost
-	mirrorDir      string           // OAuthMirrorDir(): where the broker durably writes rotated OAuth material; GET /oauth/mirror reads it
+	loopbackHost   string // if set, a loopback upstream is dialed here (the host route); see broker.RewriteLoopbackHost
+	mirrorDir      string // OAuthMirrorDir(): where the broker durably writes rotated OAuth material; GET /oauth/mirror reads it
 
 	// Fresh-audit egress gate (opt-in via PODDLE_REQUIRE_FRESH_AUDIT). When on,
 	// Check denies egress unless the audit was acked within maxStaleness.
@@ -260,9 +267,15 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		if caDir == "" {
 			caDir = tlsca.DefaultDir()
 		}
-		if ca, err := tlsca.Load(caDir); err == nil {
-			d.ca = ca
-			fp.SetLeafSource(ca)
+		// Load the CA KEEPER-SIDE — the CA private key that signs every leaf lives in
+		// the keeper (in two-process mode, a separate process), never in this front —
+		// and mint leaves via the keeper's SignLeaf. Best-effort: on failure,
+		// interception is simply unavailable (opaque tunnel); log it (secret-free) so
+		// an operator can tell why an intercept-policy pod falls back to tunnelling.
+		if err := d.broker.EnsureCA(caDir); err == nil {
+			fp.SetLeafSource(d.broker.LeafSource())
+		} else {
+			log.Printf("poddled: egress-interception CA unavailable (%v); intercept policies fall back to opaque tunnel", err)
 		}
 		fsrv := &http.Server{Handler: fp, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = fsrv.Serve(ln) }()

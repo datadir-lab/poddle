@@ -185,6 +185,39 @@ func (a *Authority) LeafFor(host string) (*tls.Certificate, error) {
 	return lc, nil
 }
 
+// SignLeafDER mints (or returns from cache, via LeafFor) the leaf for host and
+// returns its DER certificate and PKCS#8-marshaled private key — the SERIALIZABLE
+// form for crossing the Tier-2 keeper/front process boundary. Only this per-host
+// leaf key crosses to the front (which must present it to complete the intercepted
+// TLS handshake); the CA private key that SIGNS every leaf never leaves the
+// Authority. The front reassembles a tls.Certificate with LeafFromDER.
+func (a *Authority) SignLeafDER(host string) (certDER, keyDER []byte, err error) {
+	lc, err := a.LeafFor(host)
+	if err != nil {
+		return nil, nil, err
+	}
+	keyDER, err = x509.MarshalPKCS8PrivateKey(lc.PrivateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal leaf key: %w", err)
+	}
+	return lc.Certificate[0], keyDER, nil
+}
+
+// LeafFromDER reassembles a tls.Certificate from the DER cert + PKCS#8 key
+// SignLeafDER returned across the process boundary. Used by the front's
+// keeper-backed LeafSource.
+func LeafFromDER(certDER, keyDER []byte) (*tls.Certificate, error) {
+	key, err := x509.ParsePKCS8PrivateKey(keyDER)
+	if err != nil {
+		return nil, fmt.Errorf("parse leaf key: %w", err)
+	}
+	leaf, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, fmt.Errorf("parse leaf cert: %w", err)
+	}
+	return &tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: key, Leaf: leaf}, nil
+}
+
 // CertPEM is the CA certificate in PEM form, for injecting into a pod's trust
 // store (mounted file + NODE_EXTRA_CA_CERTS/SSL_CERT_FILE/... env).
 func (a *Authority) CertPEM() []byte { return a.certPEM }

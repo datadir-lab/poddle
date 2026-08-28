@@ -94,6 +94,16 @@ func (b *Broker) SCRAMProof(handle string, salt []byte, iter int, authMessage st
 	return b.custody.SCRAMProof(handle, salt, iter, authMessage)
 }
 
+// EnsureCA loads (or creates) the egress-interception CA keeper-side, so the CA
+// private key that signs every leaf lives only in the keeper. Call before wiring
+// LeafSource into the forward proxy. See Custody.EnsureCA.
+func (b *Broker) EnsureCA(dir string) error { return b.custody.EnsureCA(dir) }
+
+// LeafSource returns a LeafSource that mints intercepted-TLS leaves via the keeper
+// (Custody.SignLeaf) — the front reassembles each leaf but never holds the CA key.
+// Wire it into the forward proxy after a successful EnsureCA.
+func (b *Broker) LeafSource() LeafSource { return newCustodyLeafSource(b.custody) }
+
 // Serve starts the injecting gateway and returns the bound address.
 func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr) }
 

@@ -76,6 +76,17 @@ func TestKeeperProcess_TwoProcessBrokerRoundTrip(t *testing.T) {
 		t.Errorf("fingerprint should be a non-secret digest, got %q", fp)
 	}
 
+	// TLS-interception CA across two processes: EnsureCA loads the CA in the KEEPER
+	// process (the CA private key never crosses); SignLeaf mints a per-host leaf,
+	// and only the leaf cert+key cross back.
+	if err := br.custody.EnsureCA(t.TempDir()); err != nil {
+		t.Fatalf("EnsureCA across processes: %v", err)
+	}
+	certDER, keyDER, err := br.custody.SignLeaf("mitm.example")
+	if err != nil || len(certDER) == 0 || len(keyDER) == 0 {
+		t.Fatalf("SignLeaf across processes: cert=%d key=%d err=%v", len(certDER), len(keyDER), err)
+	}
+
 	// The keeper is still alive after the round-trips.
 	select {
 	case err := <-death:
