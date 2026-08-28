@@ -1,9 +1,55 @@
 package broker
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"testing"
+
+	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
+
+// TestCustodyLeafSource_CompletesRealHandshake drives an actual TLS handshake using
+// a leaf minted via the keeper and reassembled by custodyLeafSource — proving the
+// reassembled PKCS#8 key can PROVE POSSESSION (complete a handshake), not merely
+// chain-verify. A client trusting the CA accepts the keeper-signed leaf.
+func TestCustodyLeafSource_CompletesRealHandshake(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := tlsca.Load(dir) // the client's trust root
+	if err != nil {
+		t.Fatalf("Load CA: %v", err)
+	}
+	k := newLocalKeeper(NewHandles(NewVault()))
+	if err := k.EnsureCA(dir); err != nil { // same dir -> the SAME CA signs leaves
+		t.Fatalf("EnsureCA: %v", err)
+	}
+	src := newCustodyLeafSource(k)
+
+	const host = "handshake.example"
+	serverTLS := &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		return src.LeafFor(host)
+	}}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca.Cert())
+	clientTLS := &tls.Config{RootCAs: roots, ServerName: host}
+
+	cliConn, srvConn := net.Pipe()
+	srv := tls.Server(srvConn, serverTLS)
+	cli := tls.Client(cliConn, clientTLS)
+	errc := make(chan error, 2)
+	go func() { errc <- srv.Handshake() }()
+	go func() { errc <- cli.Handshake() }()
+	for i := 0; i < 2; i++ {
+		if err := <-errc; err != nil {
+			t.Fatalf("TLS handshake with keeper-minted leaf failed: %v", err)
+		}
+	}
+	if got := cli.ConnectionState().PeerCertificates[0].Subject.CommonName; got != host {
+		t.Errorf("client saw leaf CN %q, want %q", got, host)
+	}
+	_ = cli.Close()
+	_ = srv.Close()
+}
 
 func TestKeeper_EnsureCAAndSignLeaf(t *testing.T) {
 	k := newLocalKeeper(NewHandles(NewVault()))

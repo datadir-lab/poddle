@@ -9,11 +9,19 @@ import (
 
 // custodyLeafSource is the front-side LeafSource for TLS interception: it mints a
 // per-host leaf via the keeper (Custody.SignLeaf) and reassembles a tls.Certificate
-// the forward proxy presents to the pod. The CA private key that SIGNS the leaves
-// lives keeper-side (a front RCE gets only per-host leaf keys, which it already
-// controls for hosts it intercepts, never the CA that can forge any host).
+// the forward proxy presents to the pod. The security win: the CA PRIVATE KEY that
+// signs the leaves never leaves the keeper. A compromised front can still ASK the
+// keeper to sign a leaf for any host (SignLeaf is an online, per-call signing oracle
+// with no keeper-side host allow-list — worth hardening later, e.g. an allow-list /
+// rate-limit, which would also bound the keeper's per-host leaf cache against a
+// unique-host flood), but it can never EXFILTRATE the CA key to mint leaves offline
+// or after it's evicted — killing the front ends its access. This is strictly
+// better than the old model, where the front held the CA key outright.
+//
 // Reassembled leaves are cached so a repeat handshake to the same host doesn't
 // re-RPC the keeper (the keeper caches the DER too; this caches the parsed form).
+// NOTE: this cache is not invalidated on a CA rotation (a second EnsureCA) — fine
+// today because nothing rotates the CA at runtime; revisit when rotation is wired.
 type custodyLeafSource struct {
 	custody Custody
 

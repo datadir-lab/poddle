@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -269,9 +270,12 @@ func (d *Daemon) Start(gatewayBind, egress, l4RedisBind, l4PostgresBind, forward
 		// Load the CA KEEPER-SIDE — the CA private key that signs every leaf lives in
 		// the keeper (in two-process mode, a separate process), never in this front —
 		// and mint leaves via the keeper's SignLeaf. Best-effort: on failure,
-		// interception is simply unavailable (opaque tunnel).
+		// interception is simply unavailable (opaque tunnel); log it (secret-free) so
+		// an operator can tell why an intercept-policy pod falls back to tunnelling.
 		if err := d.broker.EnsureCA(caDir); err == nil {
 			fp.SetLeafSource(d.broker.LeafSource())
+		} else {
+			log.Printf("poddled: egress-interception CA unavailable (%v); intercept policies fall back to opaque tunnel", err)
 		}
 		fsrv := &http.Server{Handler: fp, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = fsrv.Serve(ln) }()
