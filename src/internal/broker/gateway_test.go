@@ -972,11 +972,12 @@ func TestKeeper_FrontHoldsNoPlaintextSecret(t *testing.T) {
 	}
 
 	h := http.Header{"Authorization": []string{"Bearer " + handle}}
-	fp, err := g.keeper.InjectAuth(context.Background(), handle, credID, h)
+	mut, fp, err := g.keeper.InjectAuth(context.Background(), handle, credID)
 	if err != nil {
 		t.Fatalf("InjectAuth: %v", err)
 	}
-	// The real secret was injected into the header by the keeper...
+	mut.Apply(h)
+	// The real secret was injected into the header by applying the keeper's mutation...
 	if got := h.Get("Authorization"); got != "Bearer "+secret {
 		t.Fatalf("keeper did not inject the real secret: Authorization = %q", got)
 	}
