@@ -86,11 +86,19 @@ type Gateway struct {
 	loopbackHost string // if set, a loopback upstream is dialed here (the host); see RewriteLoopbackHost
 }
 
-// NewGateway returns a gateway backed by the handle registry, with an in-process
-// keeper that redacts egress by default (mode "redact") and installs the default
-// OAuth refresh function.
+// NewGateway returns a gateway backed by the handle registry, with a fresh
+// in-process keeper that redacts egress by default (mode "redact") and installs
+// the default OAuth refresh function.
 func NewGateway(h *Handles) *Gateway {
-	return &Gateway{keeper: newLocalKeeper(h)}
+	return newGateway(newLocalKeeper(h))
+}
+
+// newGateway builds a gateway over an existing keeper, so the Broker facade can
+// share ONE custody object between the gateway's request path and its own
+// control-plane calls (in-process a *localKeeper; in two-process mode the
+// socketKeeperClient). The keeper is the Tier-2 privilege boundary.
+func newGateway(k Keeper) *Gateway {
+	return &Gateway{keeper: k}
 }
 
 // SetEgressMode configures egress redaction: "redact" (default), "block", "off".
@@ -117,10 +125,6 @@ func (g *Gateway) SetOAuthPersister(p OAuthPersister) { g.keeper.SetOAuthPersist
 // refresh attempt failed, sorted for stable output. A key clears once the host
 // re-stores a fresh credential for it (Broker.Store).
 func (g *Gateway) NeedsReauth() []string { return g.keeper.NeedsReauth() }
-
-// clearReauth clears the needs-reauth flag for key, if any is set (delegated to
-// the keeper). Called by the facade when the host re-stores a credential.
-func (g *Gateway) clearReauth(key string) { g.keeper.ClearReauth(key) }
 
 // dialURL returns the URL the gateway should dial for upstream up: up itself,
 // or a copy with a loopback host rewritten to g.loopbackHost (scheme, port, and
