@@ -132,6 +132,70 @@ type Keeper interface {
 	SetOAuthPersister(p OAuthPersister)
 }
 
+// Custody is the FULL secret-custody boundary the keeper process owns: the
+// per-request Keeper interface (the gateway path) PLUS the control-plane mutations
+// the Broker facade performs when the host stores/issues/revokes credentials, and
+// the full-credential resolve the L4 datastore path needs. In Phase-2 two-process
+// mode this whole interface crosses the socketpair to the keeper process (which
+// then holds the ONLY copy of the vault); in-process it is one *localKeeper. The
+// per-request Keeper subset is what the Gateway alone consumes.
+type Custody interface {
+	Keeper
+
+	// Store seals a credential in the vault and returns its id, also clearing any
+	// needs-reauth flag for its WriteBackKey (re-storing a fresh credential resolves
+	// whatever made a prior refresh fail). The credential (with its secret) crosses
+	// FROM the host-facing front TO the keeper here — the front does not retain it;
+	// the vault copy lives only keeper-side.
+	Store(c Credential) (credID string, err error)
+
+	// IssueHandle mints a pod-facing handle for a stored credential.
+	IssueHandle(credID, scope string, ttl time.Duration) (Handle, error)
+
+	// Revoke invalidates a handle immediately.
+	Revoke(handleValue string)
+
+	// ResolveCredential returns the full credential a handle maps to, for the L4
+	// datastore path (which sends the real secret on the wire itself, unlike the
+	// SCRAM path that delegates the proof). Distinct from Keeper.Resolve, which
+	// returns only the non-secret PublicCred for the HTTP gateway.
+	ResolveCredential(handleValue string) (Credential, error)
+}
+
+// Store seals a credential in the vault (single "local" tenant) and clears any
+// needs-reauth flag for its WriteBackKey. Moved from the Broker facade so that in
+// two-process mode the seal + the reauth-clear both happen keeper-side, where the
+// vault and the needs-reauth set live.
+func (k *localKeeper) Store(c Credential) (string, error) {
+	id, err := k.handles.vault.Store(localTenant, c)
+	if err != nil {
+		return "", err
+	}
+	if c.WriteBackKey != "" {
+		k.ClearReauth(c.WriteBackKey)
+	}
+	return id, nil
+}
+
+// IssueHandle mints a pod-facing handle for a stored credential (single "local"
+// tenant).
+func (k *localKeeper) IssueHandle(credID, scope string, ttl time.Duration) (Handle, error) {
+	return k.handles.IssueHandle(localTenant, credID, scope, ttl)
+}
+
+// Revoke invalidates a handle immediately.
+func (k *localKeeper) Revoke(handleValue string) { k.handles.Revoke(handleValue) }
+
+// ResolveCredential returns the full credential a handle maps to (the L4 datastore
+// path); the plaintext crosses to the caller, unlike the HTTP-path Resolve which
+// returns only a PublicCred.
+func (k *localKeeper) ResolveCredential(handleValue string) (Credential, error) {
+	_, c, err := k.handles.Resolve(handleValue)
+	return c, err
+}
+
+var _ Custody = (*localKeeper)(nil)
+
 // localKeeper satisfies Keeper in-process. It owns the handle registry (the vault
 // access path), the OAuth refresh hook and its per-credID serialization, the
 // egress redactor, the write-back persister, and the needs-reauth set — i.e. all
