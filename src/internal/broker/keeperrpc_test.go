@@ -399,6 +399,55 @@ func TestKeeperRPC_DeadKeeperFailsClosed(t *testing.T) {
 	c.SetEgressMode("off")
 }
 
+// garbageBodyServer answers every request with a well-formed response envelope
+// (correct ID, so the client routes it) whose Body is not valid gob for the
+// method's result type — exercising each client method's response-decode-error
+// branch (the keeper is trusted so this "can't happen", but the client handles it).
+func garbageBodyServer(conn net.Conn) {
+	for {
+		frame, err := readFrameConn(conn)
+		if err != nil {
+			return
+		}
+		var req rpcRequest
+		if gobDecode(frame, &req) != nil {
+			return
+		}
+		resp, _ := gobEncode(rpcResponse{ID: req.ID, Body: []byte("not-valid-gob")})
+		if writeFrameConn(conn, resp) != nil {
+			return
+		}
+	}
+}
+
+func TestKeeperRPC_MalformedResponseBody(t *testing.T) {
+	cliConn, srvConn := net.Pipe()
+	go garbageBodyServer(srvConn)
+	c := newSocketKeeperClient(cliConn)
+	t.Cleanup(func() { _ = c.Close(); _ = srvConn.Close() })
+
+	if _, _, err := c.Resolve("h"); err == nil {
+		t.Error("Resolve should error on an undecodable response body")
+	}
+	if _, _, err := c.InjectAuth(context.Background(), "h", "c"); err == nil {
+		t.Error("InjectAuth should error on an undecodable response body")
+	}
+	if _, err := c.ForceReinject(context.Background(), "h", "c", "fp"); err == nil {
+		t.Error("ForceReinject should error on an undecodable response body")
+	}
+	if _, err := c.SCRAMProof("h", []byte("s"), 4096, "m"); err == nil {
+		t.Error("SCRAMProof should error on an undecodable response body")
+	}
+	// RedactBody fails closed (blocks) when it can't decode the response.
+	if _, blocked, _ := c.RedactBody("h", []byte("body")); !blocked {
+		t.Error("RedactBody should fail closed on an undecodable response body")
+	}
+	// NeedsReauth returns nil when it can't decode the response.
+	if got := c.NeedsReauth(); got != nil {
+		t.Errorf("NeedsReauth on undecodable response = %v, want nil", got)
+	}
+}
+
 func TestKeeperRPC_CallAfterCloseErrors(t *testing.T) {
 	c, _, handle, _ := rpcPair(t, Credential{Mode: ModeSubscription, Secret: "s", BaseURL: "https://x"})
 	if _, _, err := c.Resolve(handle); err != nil {
