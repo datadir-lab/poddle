@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"log"
 	"net/http"
 	"sort"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/datadir-lab/poddle/src/internal/l4"
 	"github.com/datadir-lab/poddle/src/internal/oauth"
+	"github.com/datadir-lab/poddle/src/internal/tlsca"
 )
 
 // refreshSkew is how far before an OAuth access token's ExpiresAt the keeper
@@ -160,6 +162,20 @@ type Custody interface {
 	// SCRAM path that delegates the proof). Distinct from Keeper.Resolve, which
 	// returns only the non-secret PublicCred for the HTTP gateway.
 	ResolveCredential(handleValue string) (Credential, error)
+
+	// EnsureCA loads (or creates + persists) the egress-interception CA under dir,
+	// keeper-side — so the CA PRIVATE KEY that signs every leaf lives only in the
+	// keeper, never the front. Eager: the daemon calls it when the forward proxy
+	// starts, so the CA cert file exists before `up` injects it into a pod's trust
+	// store. Idempotent.
+	EnsureCA(dir string) error
+
+	// SignLeaf mints a per-host leaf certificate signed by the keeper's CA and
+	// returns it as a serializable DER cert + PKCS#8 key; the front reassembles a
+	// tls.Certificate (tlsca.LeafFromDER) to terminate the intercepted TLS
+	// handshake. Only the per-host leaf key crosses the boundary — the CA key that
+	// signs it stays keeper-side. Errors if EnsureCA has not run.
+	SignLeaf(host string) (certDER, keyDER []byte, err error)
 }
 
 // Store seals a credential in the vault (single "local" tenant) and clears any
@@ -194,6 +210,27 @@ func (k *localKeeper) ResolveCredential(handleValue string) (Credential, error) 
 	return c, err
 }
 
+// EnsureCA loads (or creates + persists) the egress-interception CA under dir and
+// holds it keeper-side. Idempotent — a later call reloads (e.g. after a rotation).
+func (k *localKeeper) EnsureCA(dir string) error {
+	a, err := tlsca.Load(dir)
+	if err != nil {
+		return err
+	}
+	k.caAuth.Store(a)
+	return nil
+}
+
+// SignLeaf mints a per-host leaf signed by the keeper's CA. Errors if EnsureCA has
+// not populated the CA.
+func (k *localKeeper) SignLeaf(host string) ([]byte, []byte, error) {
+	a := k.caAuth.Load()
+	if a == nil {
+		return nil, nil, errors.New("keeper: egress CA not loaded")
+	}
+	return a.SignLeafDER(host)
+}
+
 var _ Custody = (*localKeeper)(nil)
 
 // localKeeper satisfies Keeper in-process. It owns the handle registry (the vault
@@ -225,6 +262,11 @@ type localKeeper struct {
 	persister   OAuthPersister
 	reauthMu    sync.Mutex
 	needsReauth map[string]bool
+
+	// caAuth is the egress-interception CA (holds the CA private key that signs
+	// every leaf). An atomic.Pointer because EnsureCA stores it while concurrent
+	// SignLeaf calls load it. nil until EnsureCA runs (interception unavailable).
+	caAuth atomic.Pointer[tlsca.Authority]
 }
 
 // newLocalKeeper builds the in-process keeper over the handle registry, redacting

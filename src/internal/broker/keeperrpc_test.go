@@ -428,7 +428,7 @@ func FuzzKeeperServer(f *testing.F) {
 	f.Add([]byte(nil))
 	f.Add([]byte("garbage"))
 	f.Add(bytes.Repeat([]byte{0xff}, 64))
-	for _, m := range []string{mResolve, mInjectAuth, mForceReinject, mRedactBody, mSCRAMProof, mNeedsReauth, mClearReauth, mFlagReauth, mSetEgressMode, mStore, mIssueHandle, mRevoke, mResolveCred, "bogus"} {
+	for _, m := range []string{mResolve, mInjectAuth, mForceReinject, mRedactBody, mSCRAMProof, mNeedsReauth, mClearReauth, mFlagReauth, mSetEgressMode, mStore, mIssueHandle, mRevoke, mResolveCred, mEnsureCA, mSignLeaf, "bogus"} {
 		payload, _ := gobEncode(rpcRequest{ID: 1, Method: m})
 		f.Add(payload)
 	}
