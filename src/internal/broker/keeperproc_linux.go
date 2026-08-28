@@ -64,11 +64,3 @@ func spawnKeeperBroker(mirrorDir string) (*Broker, <-chan error, error) {
 	client := newSocketKeeperClient(conn)
 	return newBrokerOverKeeper(client), privsep.Supervise(cmd), nil
 }
-
-// closeCustody shuts down a two-process Broker's socket client (closing the conn,
-// which the keeper observes as EOF and exits). A no-op for an in-process Broker.
-func (b *Broker) closeCustody() {
-	if c, ok := b.custody.(*socketKeeperClient); ok {
-		_ = c.Close()
-	}
-}

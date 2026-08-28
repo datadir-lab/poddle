@@ -48,6 +48,8 @@ fixes:
 # syscall-failure branches), and the in-tree test doubles.
 ignore:
   - "src/cli/main.go"
+  - "src/cli/keeperentry_linux.go"
+  - "src/cli/keeperentry_other.go"
   - "src/internal/poddled/spawn_unix.go"
   - "src/internal/poddled/spawn_windows.go"
   - "src/internal/privsep/socketpair.go"

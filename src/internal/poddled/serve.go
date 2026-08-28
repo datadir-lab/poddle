@@ -3,6 +3,7 @@ package poddled
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -74,7 +75,11 @@ func SocketPath() string {
 // gateway (pods reach it over TCP), the L4 Redis listener, and serves the
 // control API on an owner-only Unix socket at sockPath. A stale socket is
 // replaced.
-func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind string) error {
+func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind string) (retErr error) {
+	// Cancellable so a keeper-subprocess death can trigger the shutdown path below.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	dbPath := AuditDBPath()
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return err
@@ -84,9 +89,31 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 		return fmt.Errorf("open audit log: %w", err)
 	}
 
-	br := broker.NewBroker()
-	br.EnableOAuthWriteBack(OAuthMirrorDir())
+	// In two-process (privsep) mode this forks a keeper subprocess holding the vault
+	// and returns a channel that fires when it dies; in the default in-process mode
+	// keeperDeath is nil.
+	br, keeperDeath, err := broker.NewBrokerFromEnv(OAuthMirrorDir())
+	if err != nil {
+		return fmt.Errorf("start broker: %w", err)
+	}
+	// Reap the keeper on any ERROR return (the graceful-shutdown path below reaps it
+	// via d.Stop; the early error returns run before that goroutine exists). A no-op
+	// for the in-process broker.
+	defer func() {
+		if retErr != nil {
+			_ = br.Stop(context.WithoutCancel(ctx))
+		}
+	}()
 	d := New(br, store)
+
+	// If the keeper subprocess dies UNEXPECTEDLY, the broker is already fail-closed
+	// (every custody RPC errors); tear the daemon down and surface a non-nil error so
+	// poddled exits non-zero and its supervisor (systemd/container restartPolicy)
+	// restarts it — a graceful shutdown must stay distinguishable from a vault crash.
+	keeperDied := make(chan error, 1)
+	if keeperDeath != nil {
+		go superviseKeeper(ctx, cancel, keeperDeath, keeperDied)
+	}
 	// A containerized broker sets PODDLE_LOOPBACK_HOST=host.containers.internal so
 	// a pod's loopback upstream (a local Postgres/Redis, or a local HTTP service)
 	// reaches the host, not the broker container's own empty loopback. Unset on a
@@ -123,5 +150,30 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
 	}
-	return nil
+	// If the serve loop ended because the keeper died (not a graceful ctx cancel),
+	// surface that as the error so poddled exits non-zero.
+	select {
+	case err := <-keeperDied:
+		return err
+	default:
+		return nil
+	}
+}
+
+// superviseKeeper watches the keeper subprocess and, if it dies UNEXPECTEDLY (while
+// the daemon isn't already shutting down), cancels the serve context to tear the
+// daemon down fail-closed and reports the death on keeperDied so Serve can exit
+// non-zero. On a normal shutdown the ctx.Done arm wins (or the ctx.Err guard fires
+// if the keeper's close races the cancel), so it exits quietly with nothing on
+// keeperDied. Exits in both arms — no goroutine leak.
+func superviseKeeper(ctx context.Context, cancel context.CancelFunc, keeperDeath <-chan error, keeperDied chan<- error) {
+	select {
+	case err := <-keeperDeath:
+		if ctx.Err() == nil {
+			log.Printf("poddled: broker keeper process exited unexpectedly (%v); shutting down fail-closed", err)
+			keeperDied <- fmt.Errorf("broker keeper process exited unexpectedly: %v", err)
+			cancel()
+		}
+	case <-ctx.Done():
+	}
 }

@@ -72,6 +72,27 @@ func TestBroker_OverKeeperClient(t *testing.T) {
 	}
 }
 
+// TestNewBrokerFromEnv_InProcessDefault confirms the default (opt-out) path: with
+// PODDLE_BROKER_PRIVSEP unset, NewBrokerFromEnv returns an in-process broker and a
+// nil keeper-death channel (nothing to supervise), serving the lifecycle directly.
+func TestNewBrokerFromEnv_InProcessDefault(t *testing.T) {
+	t.Setenv("PODDLE_BROKER_PRIVSEP", "") // not "1" -> in-process
+	b, death, err := NewBrokerFromEnv("")
+	if err != nil {
+		t.Fatalf("NewBrokerFromEnv: %v", err)
+	}
+	if death != nil {
+		t.Error("in-process broker should have a nil keeper-death channel")
+	}
+	credID, err := b.Store(Credential{Mode: ModeSubscription, Secret: "s", BaseURL: "https://x"})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	if _, err := b.IssueHandle(credID, "box", time.Hour); err != nil {
+		t.Fatalf("IssueHandle: %v", err)
+	}
+}
+
 func TestBroker_AddrEmptyUntilServe(t *testing.T) {
 	b := NewBroker()
 	if b.Addr() != "" {
