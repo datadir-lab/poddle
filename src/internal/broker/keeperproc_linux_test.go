@@ -84,6 +84,39 @@ func TestKeeperProcess_TwoProcessBrokerRoundTrip(t *testing.T) {
 	}
 }
 
+// TestNewBrokerFromEnv_TwoProcess proves the opt-in path end to end: with
+// PODDLE_BROKER_PRIVSEP=1, NewBrokerFromEnv forks a keeper subprocess and returns a
+// non-nil death channel, and the resulting Broker serves the lifecycle across two
+// real processes (its vault living only in the keeper).
+func TestNewBrokerFromEnv_TwoProcess(t *testing.T) {
+	t.Setenv("PODDLE_BROKER_PRIVSEP", "1")
+	br, death, err := NewBrokerFromEnv("")
+	if err != nil {
+		t.Fatalf("NewBrokerFromEnv (two-process): %v", err)
+	}
+	if death == nil {
+		t.Fatal("two-process broker must return a non-nil keeper-death channel")
+	}
+	t.Cleanup(func() { br.closeCustody(); <-death })
+
+	const secret = "opt-in-two-process-secret"
+	credID, err := br.Store(Credential{Mode: ModeSubscription, Secret: secret, BaseURL: "https://x"})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	h, err := br.IssueHandle(credID, "box", time.Hour)
+	if err != nil {
+		t.Fatalf("IssueHandle: %v", err)
+	}
+	got, err := br.Resolve(h.Value)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.Secret != secret {
+		t.Errorf("resolved secret = %q, want %q", got.Secret, secret)
+	}
+}
+
 // TestKeeperProcess_DeadKeeperFailsClosed proves the front fails closed when the
 // keeper process dies: after the client is closed (which the keeper observes as EOF
 // and exits), a request-path call errors rather than hanging or proceeding.

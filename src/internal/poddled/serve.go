@@ -3,6 +3,7 @@ package poddled
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -75,6 +76,10 @@ func SocketPath() string {
 // control API on an owner-only Unix socket at sockPath. A stale socket is
 // replaced.
 func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4PostgresBind, forwardBind string) error {
+	// Cancellable so a keeper-subprocess death can trigger the shutdown path below.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	dbPath := AuditDBPath()
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return err
@@ -84,9 +89,30 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 		return fmt.Errorf("open audit log: %w", err)
 	}
 
-	br := broker.NewBroker()
-	br.EnableOAuthWriteBack(OAuthMirrorDir())
+	// In two-process (privsep) mode this forks a keeper subprocess holding the vault
+	// and returns a channel that fires when it dies; in the default in-process mode
+	// keeperDeath is nil.
+	br, keeperDeath, err := broker.NewBrokerFromEnv(OAuthMirrorDir())
+	if err != nil {
+		return fmt.Errorf("start broker: %w", err)
+	}
 	d := New(br, store)
+	// If the keeper subprocess dies UNEXPECTEDLY, the broker is already fail-closed
+	// (every custody RPC errors); tear the daemon down too rather than run a vaultless
+	// front. On a normal shutdown the keeper is closed by d.Stop -> Broker.Stop, so
+	// the select's ctx.Done arm wins first and we don't log a spurious fail-closed.
+	if keeperDeath != nil {
+		go func() {
+			select {
+			case err := <-keeperDeath:
+				if ctx.Err() == nil {
+					log.Printf("poddled: broker keeper process exited unexpectedly (%v); shutting down fail-closed", err)
+					cancel()
+				}
+			case <-ctx.Done():
+			}
+		}()
+	}
 	// A containerized broker sets PODDLE_LOOPBACK_HOST=host.containers.internal so
 	// a pod's loopback upstream (a local Postgres/Redis, or a local HTTP service)
 	// reaches the host, not the broker container's own empty loopback. Unset on a

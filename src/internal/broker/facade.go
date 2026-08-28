@@ -100,5 +100,22 @@ func (b *Broker) Serve(addr string) (string, error) { return b.server.Serve(addr
 // Addr returns the gateway's bound address (empty until Serve).
 func (b *Broker) Addr() string { return b.server.Addr() }
 
-// Stop gracefully shuts the gateway down.
-func (b *Broker) Stop(ctx context.Context) error { return b.server.Stop(ctx) }
+// Stop gracefully shuts the gateway down and, in two-process mode, closes the
+// keeper socket (which the keeper observes as EOF and exits — so the subprocess
+// is terminated on a clean shutdown, not left to the Pdeathsig/EOF-at-exit
+// backstop). closeCustody is a no-op for an in-process broker.
+func (b *Broker) Stop(ctx context.Context) error {
+	err := b.server.Stop(ctx)
+	b.closeCustody()
+	return err
+}
+
+// closeCustody shuts down a two-process Broker's socket client (closing the conn,
+// which the keeper observes as EOF and exits). A no-op for an in-process Broker
+// (whose custody is a *localKeeper, not a *socketKeeperClient). Platform-agnostic:
+// the socketKeeperClient type exists everywhere; only its spawner is Linux-only.
+func (b *Broker) closeCustody() {
+	if c, ok := b.custody.(*socketKeeperClient); ok {
+		_ = c.Close()
+	}
+}
