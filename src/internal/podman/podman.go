@@ -135,6 +135,11 @@ type BrokerConfig struct {
 	// coverage-instrumented broker image writes its coverage on graceful shutdown.
 	// Empty in production — no mount, no env.
 	CoverDir string
+	// Privsep opts the broker into the Phase-2 two-process model (the daemon forks a
+	// keeper subprocess that holds the vault; a data-plane parser bug in the front
+	// then can't read it). Default false — the in-process broker. Set via
+	// `up --broker-privsep`.
+	Privsep bool
 }
 
 // EnsureEgressNetwork creates the shared network the broker uses to reach the
@@ -220,6 +225,13 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		// writable bind mount, like /state. Only meaningful for a -cover broker
 		// image; a normal binary ignores GOCOVERDIR.
 		args = append(args, "-e", "GOCOVERDIR=/covdata", "-v", cfg.CoverDir+":/covdata")
+	}
+	if cfg.Privsep {
+		// Two-process broker: the daemon forks a keeper subprocess (holding the vault)
+		// over a socketpair. Re-exec + fork + socketpair all work under the
+		// --read-only/--cap-drop=all/--no-new-privileges lockdown above (proven by the
+		// privsep spike); no capability or writable rootfs is needed.
+		args = append(args, "-e", "PODDLE_BROKER_PRIVSEP=1")
 	}
 	args = append(args, cfg.Image)
 
