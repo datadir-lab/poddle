@@ -33,6 +33,27 @@ const maxKeeperFrameLen = 32 << 20
 // can't hang the front forever. InjectAuth/ForceReinject honor the caller's ctx.
 const defaultKeeperCallTimeout = 30 * time.Second
 
+// keeperInflightLimit bounds concurrent request dispatch on the keeper so a hostile
+// front flooding requests can't spawn unbounded goroutines (each pinning up to a
+// maxKeeperFrameLen body). The read loop blocks on the semaphore past this many
+// in-flight requests, applying natural socket backpressure to the front. It is a var
+// only so a test can lower it to exercise the backpressure path cheaply.
+var keeperInflightLimit = 256
+
+const (
+	// keeperOpTimeout bounds a keeper-side op that would otherwise inherit the
+	// caller's context (which can't cross the wire) — notably the OAuth refresh in
+	// InjectAuth/ForceReinject — so a slow or hostile token endpoint can't wedge a
+	// keeper goroutine forever (which would leak a goroutine + a connection).
+	keeperOpTimeout = 30 * time.Second
+
+	// maxSCRAMIter caps the attacker-controllable PBKDF2 iteration count a front can
+	// pass over the wire, so a compromised front can't pin a keeper core with a huge
+	// count. Legitimate Postgres SCRAM iteration counts are far below this (the
+	// server default is 4096).
+	maxSCRAMIter = 1 << 20
+)
+
 // rpcRequest is a framed keeper request. ID correlates the response; Method selects
 // the handler; Body is the gob-encoded per-method argument struct.
 type rpcRequest struct {
@@ -369,6 +390,9 @@ func serveKeeper(conn net.Conn, k Keeper) error {
 		wmu.Unlock()
 	}
 
+	// sem bounds concurrent dispatch; the read loop blocks past keeperInflightLimit so
+	// a request flood applies socket backpressure instead of unbounded goroutines.
+	sem := make(chan struct{}, keeperInflightLimit)
 	for {
 		frame, err := readFrameConn(conn)
 		if err != nil {
@@ -381,15 +405,35 @@ func serveKeeper(conn net.Conn, k Keeper) error {
 		if err := gobDecode(frame, &req); err != nil {
 			return fmt.Errorf("broker keeper: request decode: %w", err)
 		}
+		sem <- struct{}{}
 		go func() {
-			respBody, herr := dispatchKeeper(k, req)
-			resp := rpcResponse{ID: req.ID, Body: respBody}
-			if herr != nil {
-				resp.Err = herr.Error()
-			}
-			writeResp(resp)
+			defer func() { <-sem }()
+			writeResp(handleKeeperRequest(k, req))
 		}()
 	}
+}
+
+// handleKeeperRequest dispatches one request and CONTAINS any panic to just this
+// request — returning a fail-closed error to the single offending caller rather
+// than letting the panic unwind the keeper's goroutine and crash the whole vault
+// process. The untrusted front could otherwise turn one hostile-but-valid-framed
+// request into a keeper-wide DoS (the in-process keeper got this recovery for free
+// from net/http's per-request serve loop; serveKeeper must provide it itself).
+func handleKeeperRequest(k Keeper, req rpcRequest) (resp rpcResponse) {
+	resp.ID = req.ID
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("broker keeper: recovered panic handling %q: %v", req.Method, r)
+			resp.Body = nil
+			resp.Err = "keeper: internal error handling " + req.Method // no internal detail to the front
+		}
+	}()
+	body, err := dispatchKeeper(k, req)
+	resp.Body = body
+	if err != nil {
+		resp.Err = err.Error()
+	}
+	return resp
 }
 
 // dispatchKeeper decodes a request's per-method payload, invokes k, and returns the
@@ -411,7 +455,11 @@ func dispatchKeeper(k Keeper, req rpcRequest) ([]byte, error) {
 		if err := gobDecode(req.Body, &a); err != nil {
 			return nil, err
 		}
-		mut, fp, err := k.InjectAuth(context.Background(), a.Handle, a.CredID)
+		// The caller's context can't cross the wire; bound the keeper-side op (the
+		// OAuth refresh) so a slow/hostile token endpoint can't wedge this goroutine.
+		ctx, cancel := context.WithTimeout(context.Background(), keeperOpTimeout)
+		defer cancel()
+		mut, fp, err := k.InjectAuth(ctx, a.Handle, a.CredID)
 		if err != nil {
 			return nil, err
 		}
@@ -421,7 +469,9 @@ func dispatchKeeper(k Keeper, req rpcRequest) ([]byte, error) {
 		if err := gobDecode(req.Body, &a); err != nil {
 			return nil, err
 		}
-		mut, err := k.ForceReinject(context.Background(), a.Handle, a.CredID, a.RejectedFingerprint)
+		ctx, cancel := context.WithTimeout(context.Background(), keeperOpTimeout)
+		defer cancel()
+		mut, err := k.ForceReinject(ctx, a.Handle, a.CredID, a.RejectedFingerprint)
 		if err != nil {
 			return nil, err
 		}
@@ -437,6 +487,12 @@ func dispatchKeeper(k Keeper, req rpcRequest) ([]byte, error) {
 		var a scramReq
 		if err := gobDecode(req.Body, &a); err != nil {
 			return nil, err
+		}
+		// iter is attacker-controllable over the wire (in-process it comes from the
+		// trusted upstream DB); cap it so a compromised front can't pin a core with a
+		// huge PBKDF2 count.
+		if a.Iter < 1 || a.Iter > maxSCRAMIter {
+			return nil, fmt.Errorf("keeper: SCRAM iteration count %d out of range", a.Iter)
 		}
 		proof, err := k.SCRAMProof(a.Handle, a.Salt, a.Iter, a.AuthMessage)
 		if err != nil {
@@ -483,8 +539,9 @@ func gobEncode(v any) ([]byte, error) {
 
 // gobDecode decodes a framed payload into v. The keeper decodes REQUEST payloads
 // from the (post-RCE untrusted) front here, so this is untrusted deserialization —
-// mitigated by: (1) a bounded frame length (readFrameConn caps at maxKeeperFrameLen)
-// so decode can't be driven to unbounded allocation; (2) decoding only into FIXED
+// mitigated by: (1) a bounded frame length (readFrameConn caps at maxKeeperFrameLen),
+// so decode allocation is bounded to a finite multiple of the frame size rather than
+// unbounded; (2) decoding only into FIXED
 // concrete structs (never an interface), so gob can't be steered to instantiate an
 // arbitrary type; (3) a decode error is handled fail-closed (serveKeeper returns and
 // the keeper exits — no vaultless front proceeds). FuzzKeeperServer exercises this

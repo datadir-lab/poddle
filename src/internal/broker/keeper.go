@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/datadir-lab/poddle/src/internal/l4"
@@ -138,8 +139,12 @@ type Keeper interface {
 // Every refresh/rotate/redact/reauth behavior below is moved verbatim from the
 // former Gateway; the fingerprint hashing is the only logic new to the refactor.
 type localKeeper struct {
-	handles  *Handles
-	redactor *Redactor
+	handles *Handles
+	// redactor is an atomic.Pointer because SetEgressMode swaps it while RedactBody
+	// reads it, and under Tier-2 the keeper serves both concurrently (serveKeeper
+	// dispatches every method in its own goroutine) — the old plain-pointer field
+	// assumed single-threaded config-before-serve, which no longer holds.
+	redactor atomic.Pointer[Redactor]
 
 	// refresh mints a fresh Credential from a stale ModeOAuthBearer one (default
 	// calls oauth.Refresh; tests override it). refMu guards refLocks, a per-credID
@@ -166,10 +171,10 @@ type localKeeper struct {
 func newLocalKeeper(h *Handles) *localKeeper {
 	k := &localKeeper{
 		handles:     h,
-		redactor:    NewRedactor("redact"),
 		refLocks:    map[string]*sync.Mutex{},
 		needsReauth: map[string]bool{},
 	}
+	k.redactor.Store(NewRedactor("redact")) // redact egress by default
 	k.refresh = func(ctx context.Context, cred Credential) (Credential, error) {
 		tok, err := oauth.Refresh(ctx, http.DefaultClient, cred.TokenEndpoint, cred.RefreshToken, cred.ClientID, cred.ClientSecret)
 		if err != nil {
@@ -188,7 +193,7 @@ func newLocalKeeper(h *Handles) *localKeeper {
 }
 
 // SetEgressMode configures egress redaction: "redact" (default), "block", "off".
-func (k *localKeeper) SetEgressMode(mode string) { k.redactor = NewRedactor(mode) }
+func (k *localKeeper) SetEgressMode(mode string) { k.redactor.Store(NewRedactor(mode)) }
 
 // SetOAuthPersister wires the sink that durably mirrors a connection's rotated
 // OAuth refresh token to disk. Nil (the default) disables write-back.
@@ -258,14 +263,15 @@ func (k *localKeeper) ForceReinject(ctx context.Context, handle, credID, rejecte
 // blocked result into a 403 (not forwarding) after.
 func (k *localKeeper) RedactBody(handle string, body []byte) (scrubbed []byte, blocked bool, hits int) {
 	_, cred, err := k.handles.Resolve(handle)
-	if err != nil || k.redactor == nil {
+	redactor := k.redactor.Load()
+	if err != nil || redactor == nil {
 		return body, false, 0
 	}
 	managed := []string{cred.Secret}
 	if _, tok, ok := strings.Cut(cred.Secret, ":"); ok {
 		managed = append(managed, tok) // basic: also scrub the token half of user:token
 	}
-	red, n, block := k.redactor.Scan(body, managed...)
+	red, n, block := redactor.Scan(body, managed...)
 	if block {
 		return body, true, n // front writes 403; original body is not forwarded
 	}

@@ -211,6 +211,73 @@ func TestKeeperRPC_SetEgressMode(t *testing.T) {
 	t.Error("SetEgressMode(off) not observed: RedactBody still reporting hits")
 }
 
+// panicKeeper wraps a real Keeper but panics on Resolve, to prove serveKeeper
+// contains a per-request panic instead of crashing the whole keeper.
+type panicKeeper struct{ Keeper }
+
+func (panicKeeper) Resolve(string) (string, PublicCred, error) { panic("boom in Resolve") }
+
+func TestKeeperRPC_PanicIsContained(t *testing.T) {
+	k, handle, _ := keeperWith(t, Credential{Mode: ModeEndpoint, BaseURL: "postgres://scott:tiger@localhost:5432/db"})
+	cliConn, srvConn := net.Pipe()
+	go func() { _ = serveKeeper(srvConn, panicKeeper{Keeper: k}) }()
+	c := newSocketKeeperClient(cliConn)
+	t.Cleanup(func() { _ = c.Close(); _ = srvConn.Close() })
+
+	// The panicking method returns a fail-closed error to just this caller...
+	if _, _, err := c.Resolve(handle); err == nil {
+		t.Fatal("want error from a panicking keeper method, got nil")
+	}
+	// ...and the keeper SURVIVED: a subsequent request on a non-panicking method
+	// (SCRAMProof delegates to the embedded keeper, bypassing panicKeeper.Resolve)
+	// still gets served. A crashed keeper would fail this RPC instead.
+	if _, err := c.SCRAMProof(handle, []byte("saltsalt"), 4096, "n=x,r=y"); err != nil {
+		t.Fatalf("keeper did not survive the contained panic: SCRAMProof failed: %v", err)
+	}
+}
+
+func TestKeeperRPC_BackpressureNoDeadlock(t *testing.T) {
+	// Lower the in-flight cap so more requests contend than there are slots, exercising
+	// the semaphore backpressure path: every request must still complete (no deadlock)
+	// and correlate correctly.
+	saved := keeperInflightLimit
+	keeperInflightLimit = 4
+	t.Cleanup(func() { keeperInflightLimit = saved })
+
+	c, _, handle, wantID := rpcPair(t, Credential{Mode: ModeSubscription, Secret: "s", BaseURL: "https://x"})
+	const n = 40
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			id, _, err := c.Resolve(handle)
+			if err != nil {
+				errs <- err
+			} else if id != wantID {
+				errs <- errWrongID(id, wantID)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("backpressure call: %v", err)
+	}
+}
+
+func TestKeeperRPC_SCRAMIterCapped(t *testing.T) {
+	c, _, handle, _ := rpcPair(t, Credential{Mode: ModeEndpoint, BaseURL: "postgres://scott:tiger@localhost:5432/db"})
+	if _, err := c.SCRAMProof(handle, []byte("saltsalt"), maxSCRAMIter+1, "n=x,r=y"); err == nil {
+		t.Fatal("want error for a SCRAM iteration count over the cap, got nil")
+	}
+	// A sane count still works.
+	if _, err := c.SCRAMProof(handle, []byte("saltsalt"), 4096, "n=x,r=y"); err != nil {
+		t.Fatalf("legit iter rejected: %v", err)
+	}
+}
+
 func TestKeeperRPC_ConcurrentCallsMultiplex(t *testing.T) {
 	c, _, handle, wantID := rpcPair(t, Credential{Mode: ModeSubscription, Secret: "s", BaseURL: "https://x"})
 	credID, _, _ := c.Resolve(handle)
