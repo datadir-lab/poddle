@@ -83,6 +83,10 @@ const (
 	mClearReauth   = "clearreauth"
 	mFlagReauth    = "flagreauth"
 	mSetEgressMode = "setegress"
+	mStore         = "store"
+	mIssueHandle   = "issuehandle"
+	mRevoke        = "revoke"
+	mResolveCred   = "resolvecred"
 )
 
 // --- per-method payloads (gob-encoded into rpcRequest/rpcResponse Body) ---
@@ -125,6 +129,22 @@ type clearReauthReq struct{ Key string }
 type flagReauthReq struct{ Handle string }
 type setEgressReq struct{ Mode string }
 
+// control-plane payloads (the Custody superset beyond the request-path Keeper).
+type storeReq struct{ Cred Credential }
+type storeResp struct{ CredID string }
+
+type issueHandleReq struct {
+	CredID string
+	Scope  string
+	TTL    time.Duration
+}
+type issueHandleResp struct{ Handle Handle }
+
+type revokeReq struct{ Handle string }
+
+type resolveCredReq struct{ Handle string }
+type resolveCredResp struct{ Cred Credential }
+
 // ============================ client (FRONT side) ============================
 
 // socketKeeperClient is the FRONT-side stub: it implements broker.Keeper by
@@ -143,7 +163,7 @@ type socketKeeperClient struct {
 	closedErr error
 }
 
-var _ Keeper = (*socketKeeperClient)(nil)
+var _ Custody = (*socketKeeperClient)(nil)
 
 // newSocketKeeperClient wraps conn and starts the response-demux reader. The
 // caller owns conn's lifetime; Close stops the reader and fails in-flight calls.
@@ -367,6 +387,54 @@ func (c *socketKeeperClient) SetEgressMode(mode string) {
 // method exists only to satisfy broker.Keeper.
 func (c *socketKeeperClient) SetOAuthPersister(OAuthPersister) {}
 
+// --- control-plane (Custody superset) ---
+
+func (c *socketKeeperClient) Store(cred Credential) (string, error) {
+	body, err := c.callBG(mStore, storeReq{Cred: cred})
+	if err != nil {
+		return "", err
+	}
+	var r storeResp
+	if err := gobDecode(body, &r); err != nil {
+		return "", err
+	}
+	return r.CredID, nil
+}
+
+func (c *socketKeeperClient) IssueHandle(credID, scope string, ttl time.Duration) (Handle, error) {
+	body, err := c.callBG(mIssueHandle, issueHandleReq{CredID: credID, Scope: scope, TTL: ttl})
+	if err != nil {
+		return Handle{}, err
+	}
+	var r issueHandleResp
+	if err := gobDecode(body, &r); err != nil {
+		return Handle{}, err
+	}
+	return r.Handle, nil
+}
+
+// Revoke is fire-and-forget like the facade's: a failure is logged, not returned. A
+// lost Revoke to a LIVE keeper is the only real risk — but a dead keeper loses its
+// whole in-memory vault on restart (every handle implicitly revoked), so the handle
+// can't survive keeper death anyway.
+func (c *socketKeeperClient) Revoke(handleValue string) {
+	if _, err := c.callBG(mRevoke, revokeReq{Handle: handleValue}); err != nil {
+		log.Printf("broker: keeper Revoke failed: %v", err)
+	}
+}
+
+func (c *socketKeeperClient) ResolveCredential(handleValue string) (Credential, error) {
+	body, err := c.callBG(mResolveCred, resolveCredReq{Handle: handleValue})
+	if err != nil {
+		return Credential{}, err
+	}
+	var r resolveCredResp
+	if err := gobDecode(body, &r); err != nil {
+		return Credential{}, err
+	}
+	return r.Cred, nil
+}
+
 // ============================ server (KEEPER side) ============================
 
 // serveKeeper reads framed requests from conn and dispatches each to k in its own
@@ -374,7 +442,7 @@ func (c *socketKeeperClient) SetOAuthPersister(OAuthPersister) {}
 // response back. It returns nil on a clean EOF (front gone — fail closed, the
 // keeper exits) and the error on any framing failure. Concurrent responses are
 // serialized onto conn by an internal write mutex.
-func serveKeeper(conn net.Conn, k Keeper) error {
+func serveKeeper(conn net.Conn, k Custody) error {
 	var wmu sync.Mutex
 	writeResp := func(resp rpcResponse) {
 		frame, err := gobEncode(resp)
@@ -419,7 +487,7 @@ func serveKeeper(conn net.Conn, k Keeper) error {
 // process. The untrusted front could otherwise turn one hostile-but-valid-framed
 // request into a keeper-wide DoS (the in-process keeper got this recovery for free
 // from net/http's per-request serve loop; serveKeeper must provide it itself).
-func handleKeeperRequest(k Keeper, req rpcRequest) (resp rpcResponse) {
+func handleKeeperRequest(k Custody, req rpcRequest) (resp rpcResponse) {
 	resp.ID = req.ID
 	defer func() {
 		if r := recover(); r != nil {
@@ -438,7 +506,7 @@ func handleKeeperRequest(k Keeper, req rpcRequest) (resp rpcResponse) {
 
 // dispatchKeeper decodes a request's per-method payload, invokes k, and returns the
 // gob-encoded result payload (or an error). An unknown method is a clean error.
-func dispatchKeeper(k Keeper, req rpcRequest) ([]byte, error) {
+func dispatchKeeper(k Custody, req rpcRequest) ([]byte, error) {
 	switch req.Method {
 	case mResolve:
 		var a resolveReq
@@ -522,6 +590,43 @@ func dispatchKeeper(k Keeper, req rpcRequest) ([]byte, error) {
 		}
 		k.SetEgressMode(a.Mode)
 		return nil, nil
+	case mStore:
+		var a storeReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		id, err := k.Store(a.Cred)
+		if err != nil {
+			return nil, err
+		}
+		return gobEncode(storeResp{CredID: id})
+	case mIssueHandle:
+		var a issueHandleReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		h, err := k.IssueHandle(a.CredID, a.Scope, a.TTL)
+		if err != nil {
+			return nil, err
+		}
+		return gobEncode(issueHandleResp{Handle: h})
+	case mRevoke:
+		var a revokeReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		k.Revoke(a.Handle)
+		return nil, nil
+	case mResolveCred:
+		var a resolveCredReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		cred, err := k.ResolveCredential(a.Handle)
+		if err != nil {
+			return nil, err
+		}
+		return gobEncode(resolveCredResp{Cred: cred})
 	default:
 		return nil, fmt.Errorf("broker keeper: unknown method %q", req.Method)
 	}

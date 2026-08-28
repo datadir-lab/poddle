@@ -25,6 +25,105 @@ func rpcPair(t *testing.T, cred Credential) (*socketKeeperClient, *localKeeper, 
 	return c, k, handle, credID
 }
 
+// rpcPairEmpty wires a client to a keeper serving an EMPTY vault (no pre-stored
+// credential), for exercising the control-plane lifecycle (Store -> IssueHandle ->
+// Resolve/ResolveCredential -> Revoke) entirely over the wire.
+func rpcPairEmpty(t *testing.T) *socketKeeperClient {
+	t.Helper()
+	k := newLocalKeeper(NewHandles(NewVault()))
+	cliConn, srvConn := net.Pipe()
+	go func() { _ = serveKeeper(srvConn, k) }()
+	c := newSocketKeeperClient(cliConn)
+	t.Cleanup(func() { _ = c.Close(); _ = srvConn.Close() })
+	return c
+}
+
+func TestKeeperRPC_ControlPlaneLifecycle(t *testing.T) {
+	c := rpcPairEmpty(t)
+	const secret = "redis-real-password"
+	// Store a credential over the wire (secret crosses front->keeper here).
+	credID, err := c.Store(Credential{Mode: ModeEndpoint, Secret: secret, Vendor: "redis", BaseURL: "redis://:" + secret + "@h:6379"})
+	if err != nil || credID == "" {
+		t.Fatalf("Store: id=%q err=%v", credID, err)
+	}
+	// Issue a handle for it.
+	h, err := c.IssueHandle(credID, "box", 0)
+	if err != nil || h.Value == "" {
+		t.Fatalf("IssueHandle: %+v err=%v", h, err)
+	}
+	if h.CredID != credID || h.Scope != "box" {
+		t.Errorf("issued handle = %+v, want CredID=%q Scope=box", h, credID)
+	}
+	// The gateway-path Resolve returns the non-secret PublicCred...
+	gotID, pub, err := c.Resolve(h.Value)
+	if err != nil || gotID != credID {
+		t.Fatalf("Resolve: id=%q err=%v", gotID, err)
+	}
+	if pub.Vendor != "redis" {
+		t.Errorf("PublicCred.Vendor = %q, want redis", pub.Vendor)
+	}
+	// ...the L4-path ResolveCredential returns the FULL credential (secret crosses back).
+	full, err := c.ResolveCredential(h.Value)
+	if err != nil {
+		t.Fatalf("ResolveCredential: %v", err)
+	}
+	if full.Secret != secret {
+		t.Errorf("ResolveCredential secret = %q, want %q", full.Secret, secret)
+	}
+	// Revoke invalidates the handle: a subsequent resolve fails.
+	c.Revoke(h.Value)
+	deadline := time.Now().Add(2 * time.Second) // Revoke is fire-and-forget; poll for it
+	for time.Now().Before(deadline) {
+		if _, _, err := c.Resolve(h.Value); err != nil {
+			return // revoked
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Error("handle still resolves after Revoke")
+}
+
+func TestKeeperRPC_StoreClearsReauth(t *testing.T) {
+	c := rpcPairEmpty(t)
+	// Store a credential with a WriteBackKey, then flag reauth for a handle to it,
+	// then re-store: the re-store must clear the reauth flag keeper-side.
+	credID, err := c.Store(Credential{Mode: ModeOAuthBearer, Secret: "a", BaseURL: "https://x", WriteBackKey: "gh"})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	h, err := c.IssueHandle(credID, "box", 0)
+	if err != nil {
+		t.Fatalf("IssueHandle: %v", err)
+	}
+	c.FlagReauth(h.Value)
+	waitFor(t, func() bool { return contains(c.NeedsReauth(), "gh") }, "reauth to be flagged")
+	// Re-store a fresh credential for the same connection (WriteBackKey gh).
+	if _, err := c.Store(Credential{Mode: ModeOAuthBearer, Secret: "b", BaseURL: "https://x", WriteBackKey: "gh"}); err != nil {
+		t.Fatalf("re-Store: %v", err)
+	}
+	waitFor(t, func() bool { return !contains(c.NeedsReauth(), "gh") }, "reauth to clear on re-Store")
+}
+
+func waitFor(t *testing.T, cond func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+func contains(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestKeeperRPC_Resolve(t *testing.T) {
 	c, k, handle, _ := rpcPair(t, Credential{Mode: ModeSubscription, Secret: "s", Vendor: "anthropic", BaseURL: "https://api.example"})
 	wantID, wantPub, err := k.Resolve(handle)
@@ -211,16 +310,16 @@ func TestKeeperRPC_SetEgressMode(t *testing.T) {
 	t.Error("SetEgressMode(off) not observed: RedactBody still reporting hits")
 }
 
-// panicKeeper wraps a real Keeper but panics on Resolve, to prove serveKeeper
+// panicKeeper wraps a real Custody but panics on Resolve, to prove serveKeeper
 // contains a per-request panic instead of crashing the whole keeper.
-type panicKeeper struct{ Keeper }
+type panicKeeper struct{ Custody }
 
 func (panicKeeper) Resolve(string) (string, PublicCred, error) { panic("boom in Resolve") }
 
 func TestKeeperRPC_PanicIsContained(t *testing.T) {
 	k, handle, _ := keeperWith(t, Credential{Mode: ModeEndpoint, BaseURL: "postgres://scott:tiger@localhost:5432/db"})
 	cliConn, srvConn := net.Pipe()
-	go func() { _ = serveKeeper(srvConn, panicKeeper{Keeper: k}) }()
+	go func() { _ = serveKeeper(srvConn, panicKeeper{Custody: k}) }()
 	c := newSocketKeeperClient(cliConn)
 	t.Cleanup(func() { _ = c.Close(); _ = srvConn.Close() })
 
@@ -329,7 +428,7 @@ func FuzzKeeperServer(f *testing.F) {
 	f.Add([]byte(nil))
 	f.Add([]byte("garbage"))
 	f.Add(bytes.Repeat([]byte{0xff}, 64))
-	for _, m := range []string{mResolve, mInjectAuth, mForceReinject, mRedactBody, mSCRAMProof, mNeedsReauth, mClearReauth, mFlagReauth, mSetEgressMode, "bogus"} {
+	for _, m := range []string{mResolve, mInjectAuth, mForceReinject, mRedactBody, mSCRAMProof, mNeedsReauth, mClearReauth, mFlagReauth, mSetEgressMode, mStore, mIssueHandle, mRevoke, mResolveCred, "bogus"} {
 		payload, _ := gobEncode(rpcRequest{ID: 1, Method: m})
 		f.Add(payload)
 	}
