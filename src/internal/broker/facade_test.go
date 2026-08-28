@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestBroker_StoreIssueResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	_, got, err := b.handles.Resolve(h.Value) // white-box: the handle maps back to the cred
+	got, err := b.Resolve(h.Value) // the handle maps back to the full credential
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -36,8 +37,38 @@ func TestBroker_Revoke(t *testing.T) {
 	h, _ := b.IssueHandle(credID, "box", time.Hour)
 
 	b.Revoke(h.Value)
-	if _, _, err := b.handles.Resolve(h.Value); !errors.Is(err, ErrNotFound) {
+	if _, err := b.Resolve(h.Value); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoked handle should be ErrNotFound, got %v", err)
+	}
+}
+
+// TestBroker_OverKeeperClient proves the facade refactor enables two-process mode:
+// a Broker whose Custody is a socketKeeperClient (not a local vault) serves the
+// full store/issue/resolve lifecycle through its PUBLIC API over the wire to a
+// keeper. This is the same composition B2b's spawn path uses, minus the subprocess.
+func TestBroker_OverKeeperClient(t *testing.T) {
+	keeper := newLocalKeeper(NewHandles(NewVault()))
+	cliConn, srvConn := net.Pipe()
+	go func() { _ = serveKeeper(srvConn, keeper) }()
+	client := newSocketKeeperClient(cliConn)
+	t.Cleanup(func() { _ = client.Close(); _ = srvConn.Close() })
+
+	b := newBrokerOverKeeper(client) // the front holds no vault — only the socket
+	const secret = "over-the-wire-token"
+	credID, err := b.Store(Credential{Mode: ModeSubscription, Secret: secret, BaseURL: "https://x"})
+	if err != nil {
+		t.Fatalf("Store over keeper: %v", err)
+	}
+	h, err := b.IssueHandle(credID, "box", time.Hour)
+	if err != nil {
+		t.Fatalf("IssueHandle over keeper: %v", err)
+	}
+	got, err := b.Resolve(h.Value)
+	if err != nil {
+		t.Fatalf("Resolve over keeper: %v", err)
+	}
+	if got.Secret != secret {
+		t.Errorf("resolved secret = %q, want %q", got.Secret, secret)
 	}
 }
 
