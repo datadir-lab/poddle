@@ -359,6 +359,59 @@ func mustGob(tb testing.TB, v any) []byte {
 	return b
 }
 
+func TestKeeperRPC_DeadKeeperFailsClosed(t *testing.T) {
+	k, handle, credID := keeperWith(t, Credential{Mode: ModeSubscription, Secret: "s", BaseURL: "https://x"})
+	cliConn, srvConn := net.Pipe()
+	done := make(chan struct{})
+	go func() { _ = serveKeeper(srvConn, k); close(done) }()
+	c := newSocketKeeperClient(cliConn)
+	t.Cleanup(func() { _ = c.Close() })
+
+	// Kill the keeper: closing the server end makes the client's writes and its
+	// readLoop fail, so every subsequent call must fail (not hang).
+	_ = srvConn.Close()
+	<-done
+
+	// Request-path methods return an error (the gateway maps these to 401/block).
+	if _, _, err := c.Resolve(handle); err == nil {
+		t.Error("Resolve should error on a dead keeper")
+	}
+	if _, _, err := c.InjectAuth(context.Background(), handle, credID); err == nil {
+		t.Error("InjectAuth should error on a dead keeper")
+	}
+	if _, err := c.ForceReinject(context.Background(), handle, credID, "fp"); err == nil {
+		t.Error("ForceReinject should error on a dead keeper")
+	}
+	if _, err := c.SCRAMProof(handle, []byte("salt"), 4096, "m"); err == nil {
+		t.Error("SCRAMProof should error on a dead keeper")
+	}
+	// RedactBody has no error return — it fails CLOSED by blocking (the gateway turns
+	// blocked into a 403), never forwarding an unscanned body.
+	if _, blocked, _ := c.RedactBody(handle, []byte("body")); !blocked {
+		t.Error("RedactBody should fail closed (block) on a dead keeper")
+	}
+	// Management methods are best-effort: no hang, no panic; NeedsReauth returns nil.
+	if got := c.NeedsReauth(); got != nil {
+		t.Errorf("NeedsReauth on a dead keeper = %v, want nil", got)
+	}
+	c.ClearReauth("key")
+	c.FlagReauth(handle)
+	c.SetEgressMode("off")
+}
+
+func TestKeeperRPC_CallAfterCloseErrors(t *testing.T) {
+	c, _, handle, _ := rpcPair(t, Credential{Mode: ModeSubscription, Secret: "s", BaseURL: "https://x"})
+	if _, _, err := c.Resolve(handle); err != nil {
+		t.Fatalf("resolve before close: %v", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, _, err := c.Resolve(handle); err == nil {
+		t.Error("Resolve after Close should error")
+	}
+}
+
 func errWrongID(got, want string) error {
 	return &wrongIDError{got: got, want: want}
 }
