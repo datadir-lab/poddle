@@ -15,6 +15,11 @@ import (
 // run before cobra parses args — the keeper child carries a marker argv cobra would
 // reject — so main() calls it first. In a normal front invocation it returns
 // immediately and the CLI runs as usual.
+//
+// PODDLE_PRIVSEP_KEEPER is a RESERVED, internal env var: only broker's Spawn sets it
+// (on the child's env), never the front on itself. Do not set it in poddled's ambient
+// environment — an invocation that inherits it routes into keeper mode and exits 1
+// when fd 3 isn't the inherited socketpair (fail-closed, but a misconfiguration).
 func maybeRunKeeper() {
 	if !privsep.IsKeeperMode() {
 		return
