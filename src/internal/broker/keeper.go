@@ -25,6 +25,16 @@ import (
 // that expires mid-flight.
 const refreshSkew = 60 * time.Second
 
+// minForcedRefreshInterval rate-limits reactive (forced) OAuth rotation per
+// credential. A legitimate reactive-retry forces at most one refresh per request
+// (and genuine repeat early-revocations of one credential seconds apart are
+// implausible — the provider just issued the token), so this never bites real
+// traffic; it caps a compromised FRONT that loops ForceReinject to churn the
+// refresh token and hammer the provider's token endpoint (privsep audit I1). The
+// proactive path (refreshIfStale) needs no such cap: it only rotates a token that
+// is actually near expiry, so it can't be looped.
+const minForcedRefreshInterval = 30 * time.Second
+
 // PublicCred is the non-secret view of a credential the gateway FRONT is allowed
 // to hold: the auth mode (to decide whether to buffer the body and run the OAuth
 // reactive-retry path), the vendor label, and the upstream base URL (to dial and
@@ -274,6 +284,10 @@ type localKeeper struct {
 	refresh  func(context.Context, Credential) (Credential, error)
 	refMu    sync.Mutex
 	refLocks map[string]*sync.Mutex
+	// lastForced records the last reactive (forced) rotation time per credID, so
+	// forceRefresh can rate-limit it (minForcedRefreshInterval) against a compromised
+	// front looping ForceReinject. Guarded by refMu.
+	lastForced map[string]time.Time
 
 	// persister durably mirrors a connection's rotated OAuth refresh token to disk
 	// (nil = no write-back). reauthMu guards needsReauth, the set of WriteBackKeys
@@ -298,6 +312,7 @@ func newLocalKeeper(h *Handles) *localKeeper {
 	k := &localKeeper{
 		handles:     h,
 		refLocks:    map[string]*sync.Mutex{},
+		lastForced:  map[string]time.Time{},
 		needsReauth: map[string]bool{},
 	}
 	k.redactor.Store(NewRedactor("redact")) // redact egress by default
@@ -521,6 +536,17 @@ func (k *localKeeper) forceRefresh(ctx context.Context, handle, credID string, c
 	if _, live, err := k.handles.Resolve(handle); err == nil && fingerprint(live.Secret) != rejectedFingerprint {
 		return live, nil // a peer already refreshed this credential; reuse it
 	}
+	// Rate-limit forced rotation per credID (audit I1): a compromised front could
+	// otherwise loop ForceReinject to churn the refresh token and hammer the token
+	// endpoint. Within the window, reuse the current (already-just-rotated) token
+	// rather than rotating again — rotating a fresh token achieves nothing, and a
+	// legitimate reactive-retry forces at most once per request.
+	if k.forcedRecently(credID) {
+		if _, live, err := k.handles.Resolve(handle); err == nil {
+			return live, nil
+		}
+	}
+	k.markForced(credID)
 	return k.rotate(ctx, handle, cred)
 }
 
@@ -589,6 +615,23 @@ func (k *localKeeper) credLock(credID string) *sync.Mutex {
 		k.refLocks[credID] = lk
 	}
 	return lk
+}
+
+// forcedRecently reports whether a reactive (forced) rotation of credID happened
+// within minForcedRefreshInterval — the rate-limit forceRefresh applies against a
+// looping compromised front (audit I1).
+func (k *localKeeper) forcedRecently(credID string) bool {
+	k.refMu.Lock()
+	defer k.refMu.Unlock()
+	last, ok := k.lastForced[credID]
+	return ok && time.Since(last) < minForcedRefreshInterval
+}
+
+// markForced records that a forced rotation was attempted for credID now.
+func (k *localKeeper) markForced(credID string) {
+	k.refMu.Lock()
+	k.lastForced[credID] = time.Now()
+	k.refMu.Unlock()
 }
 
 // authMutation computes the header mutation that injects cred's real secret in

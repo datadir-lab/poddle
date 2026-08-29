@@ -77,6 +77,38 @@ func TestKeeper_ForceReinject_RefreshError(t *testing.T) {
 	}
 }
 
+// TestKeeper_ForceRefresh_RateLimited is the regression guard for audit I1: a
+// compromised front looping ForceReinject with the current fingerprint each time
+// must NOT be able to churn the refresh token — only one forced rotation happens
+// per credID within minForcedRefreshInterval; the rest reuse the just-rotated token.
+func TestKeeper_ForceRefresh_RateLimited(t *testing.T) {
+	k, handle, credID := keeperWith(t, Credential{
+		Mode: ModeOAuthBearer, Secret: "tok", RefreshToken: "r0",
+		ExpiresAt: time.Now().Add(time.Hour), BaseURL: "https://x", TokenEndpoint: "http://unused",
+	})
+	rotations := 0
+	k.refresh = func(_ context.Context, c Credential) (Credential, error) {
+		rotations++
+		c.Secret += "+" // distinct after each rotation, so the fingerprint changes
+		c.ExpiresAt = time.Now().Add(time.Hour)
+		return c, nil
+	}
+	// The attacker re-reads the current fingerprint before each forced call (as it
+	// would via InjectAuth) and hammers ForceReinject.
+	for i := 0; i < 5; i++ {
+		_, cur, err := k.handles.Resolve(handle)
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if _, err := k.ForceReinject(context.Background(), handle, credID, fingerprint(cur.Secret)); err != nil {
+			t.Fatalf("ForceReinject: %v", err)
+		}
+	}
+	if rotations != 1 {
+		t.Errorf("forced-refresh rate limit: %d rotations in a tight loop, want 1", rotations)
+	}
+}
+
 func TestKeeper_ForceReinject_Success(t *testing.T) {
 	k, handle, credID := keeperWith(t, Credential{
 		Mode: ModeOAuthBearer, Secret: "cur", RefreshToken: "r1",
