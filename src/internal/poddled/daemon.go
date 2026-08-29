@@ -36,7 +36,7 @@ type brokerAPI interface {
 	Store(broker.Credential) (string, error)
 	IssueHandle(credID, scope string, ttl time.Duration) (broker.Handle, error)
 	Revoke(handleValue string)
-	Resolve(handleValue string) (broker.Credential, error)
+	ResolveDatastore(handleValue string) (l4.Target, error)
 	Serve(addr string) (string, error)
 	Addr() string
 	SetEgressMode(mode string)
@@ -302,22 +302,21 @@ func (d *Daemon) accept(ln net.Listener, serve func(net.Conn, l4.Resolver) error
 // Resolve implements l4.Resolver: a pod-presented handle → its real datastore
 // Target (parsed from the credential's DSN).
 func (d *Daemon) Resolve(handle string) (l4.Target, error) {
-	cred, err := d.broker.Resolve(handle)
+	// The broker resolves the handle to a datastore Target keeper-side (parsing the
+	// DSN there), so an OAuth handle's refresh token never crosses into this front.
+	t, err := d.broker.ResolveDatastore(handle)
 	if err != nil {
 		return l4.Target{}, err
 	}
-	t, err := l4.TargetFromDSN(cred.BaseURL)
-	if err == nil {
-		// A loopback datastore (127.0.0.1/localhost) means the host's loopback,
-		// not this container's; dial it at the host route. Governance is unchanged
-		// (L4 has no host allow-list); the audit records the actually-dialed addr.
-		t.Addr = broker.RewriteLoopbackHost(t.Addr, d.loopbackHost)
-		d.mu.Lock()
-		pod := d.handlePod[handle]
-		d.mu.Unlock()
-		d.rec(audit.Event{Pod: pod, Kind: audit.KindL4Connect, Upstream: t.Addr, Decision: audit.DecisionAllow})
-	}
-	return t, err
+	// A loopback datastore (127.0.0.1/localhost) means the host's loopback, not this
+	// container's; dial it at the host route. Governance is unchanged (L4 has no host
+	// allow-list); the audit records the actually-dialed addr.
+	t.Addr = broker.RewriteLoopbackHost(t.Addr, d.loopbackHost)
+	d.mu.Lock()
+	pod := d.handlePod[handle]
+	d.mu.Unlock()
+	d.rec(audit.Event{Pod: pod, Kind: audit.KindL4Connect, Upstream: t.Addr, Decision: audit.DecisionAllow})
+	return t, nil
 }
 
 // Stop shuts the gateway, L4, and forward-proxy listeners down.

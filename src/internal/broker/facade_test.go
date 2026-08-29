@@ -12,9 +12,9 @@ import (
 
 func TestBroker_StoreIssueResolve(t *testing.T) {
 	b := NewBroker()
-	cred := Credential{Mode: ModeSubscription, Vendor: "anthropic", Secret: "tok", BaseURL: "https://api.anthropic.com"}
-
-	credID, err := b.Store(cred)
+	// A datastore credential: ResolveDatastore returns its connection target (never
+	// a full Credential — an OAuth handle's refresh token can't be pulled this way).
+	credID, err := b.Store(Credential{Mode: ModeEndpoint, Vendor: "redis", BaseURL: "redis://:tok@127.0.0.1:6379"})
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
@@ -22,12 +22,12 @@ func TestBroker_StoreIssueResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	got, err := b.Resolve(h.Value) // the handle maps back to the full credential
+	got, err := b.ResolveDatastore(h.Value) // the handle maps back to its datastore target
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if got != cred {
-		t.Errorf("resolved %+v, want %+v", got, cred)
+	if got.Addr != "127.0.0.1:6379" || got.Pass != "tok" {
+		t.Errorf("resolved target = %+v, want Addr=127.0.0.1:6379 Pass=tok", got)
 	}
 }
 
@@ -37,7 +37,7 @@ func TestBroker_Revoke(t *testing.T) {
 	h, _ := b.IssueHandle(credID, "box", time.Hour)
 
 	b.Revoke(h.Value)
-	if _, err := b.Resolve(h.Value); !errors.Is(err, ErrNotFound) {
+	if _, err := b.ResolveDatastore(h.Value); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoked handle should be ErrNotFound, got %v", err)
 	}
 }
@@ -54,8 +54,8 @@ func TestBroker_OverKeeperClient(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close(); _ = srvConn.Close() })
 
 	b := newBrokerOverKeeper(client) // the front holds no vault — only the socket
-	const secret = "over-the-wire-token"
-	credID, err := b.Store(Credential{Mode: ModeSubscription, Secret: secret, BaseURL: "https://x"})
+	const pass = "over-the-wire-pass"
+	credID, err := b.Store(Credential{Mode: ModeEndpoint, Vendor: "redis", BaseURL: "redis://:" + pass + "@127.0.0.1:6379"})
 	if err != nil {
 		t.Fatalf("Store over keeper: %v", err)
 	}
@@ -63,12 +63,12 @@ func TestBroker_OverKeeperClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueHandle over keeper: %v", err)
 	}
-	got, err := b.Resolve(h.Value)
+	got, err := b.ResolveDatastore(h.Value)
 	if err != nil {
-		t.Fatalf("Resolve over keeper: %v", err)
+		t.Fatalf("ResolveDatastore over keeper: %v", err)
 	}
-	if got.Secret != secret {
-		t.Errorf("resolved secret = %q, want %q", got.Secret, secret)
+	if got.Pass != pass {
+		t.Errorf("resolved datastore pass = %q, want %q", got.Pass, pass)
 	}
 }
 

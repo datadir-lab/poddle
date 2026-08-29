@@ -157,11 +157,17 @@ type Custody interface {
 	// Revoke invalidates a handle immediately.
 	Revoke(handleValue string)
 
-	// ResolveCredential returns the full credential a handle maps to, for the L4
-	// datastore path (which sends the real secret on the wire itself, unlike the
-	// SCRAM path that delegates the proof). Distinct from Keeper.Resolve, which
-	// returns only the non-secret PublicCred for the HTTP gateway.
-	ResolveCredential(handleValue string) (Credential, error)
+	// ResolveDatastore resolves a handle to its L4 datastore connection target
+	// (address + user + password + db), parsed from the credential's DSN
+	// KEEPER-SIDE. It returns ONLY those datastore fields — never the full
+	// Credential — so an OAuth credential's refresh token and client secret can
+	// never cross to the untrusted front (only the datastore password does, which
+	// the L4 front needs to make the connection). A non-datastore credential (whose
+	// BaseURL is not a datastore DSN) yields an error, so a compromised front can't
+	// use this to read the OAuth material of an HTTP credential either. Distinct
+	// from Keeper.Resolve, which returns only the non-secret PublicCred for the HTTP
+	// gateway.
+	ResolveDatastore(handleValue string) (l4.Target, error)
 
 	// EnsureCA loads (or creates + persists) the egress-interception CA under dir,
 	// keeper-side — so the CA PRIVATE KEY that signs every leaf lives only in the
@@ -202,12 +208,24 @@ func (k *localKeeper) IssueHandle(credID, scope string, ttl time.Duration) (Hand
 // Revoke invalidates a handle immediately.
 func (k *localKeeper) Revoke(handleValue string) { k.handles.Revoke(handleValue) }
 
-// ResolveCredential returns the full credential a handle maps to (the L4 datastore
-// path); the plaintext crosses to the caller, unlike the HTTP-path Resolve which
-// returns only a PublicCred.
-func (k *localKeeper) ResolveCredential(handleValue string) (Credential, error) {
+// ResolveDatastore resolves a handle to its L4 datastore Target, parsing the DSN
+// keeper-side so only {Addr,User,Pass,DB} — not the OAuth refresh token / client
+// secret — can cross to the front. A non-datastore credential's BaseURL fails the
+// DSN parse and errors, so this can't be used to read HTTP/OAuth credentials.
+func (k *localKeeper) ResolveDatastore(handleValue string) (l4.Target, error) {
 	_, c, err := k.handles.Resolve(handleValue)
-	return c, err
+	if err != nil {
+		return l4.Target{}, err
+	}
+	// Only datastore credentials (redis://, postgres://, …) resolve to a target.
+	// Refuse an HTTP/OAuth credential (http(s):// BaseURL) so a compromised front
+	// can't use this path to probe HTTP-credential state — the OAuth refresh token /
+	// client secret live in the Credential's own fields (never in BaseURL) and can't
+	// be reached through l4.Target anyway, but this makes the boundary explicit.
+	if strings.HasPrefix(c.BaseURL, "http://") || strings.HasPrefix(c.BaseURL, "https://") {
+		return l4.Target{}, errors.New("resolve-datastore: not a datastore credential")
+	}
+	return l4.TargetFromDSN(c.BaseURL)
 }
 
 // EnsureCA loads (or creates + persists) the egress-interception CA under dir and

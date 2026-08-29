@@ -12,6 +12,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/datadir-lab/poddle/src/internal/l4"
 )
 
 // This file carries the Stage-A value-shaped Keeper interface over a stream conn,
@@ -74,21 +76,21 @@ type rpcResponse struct {
 // Method tags. Kept as short strings for legible wire dumps and forward-compatible
 // dispatch (an unknown method is a clean error, not a panic).
 const (
-	mResolve       = "resolve"
-	mInjectAuth    = "inject"
-	mForceReinject = "forcereinject"
-	mRedactBody    = "redact"
-	mSCRAMProof    = "scram"
-	mNeedsReauth   = "needsreauth"
-	mClearReauth   = "clearreauth"
-	mFlagReauth    = "flagreauth"
-	mSetEgressMode = "setegress"
-	mStore         = "store"
-	mIssueHandle   = "issuehandle"
-	mRevoke        = "revoke"
-	mResolveCred   = "resolvecred"
-	mEnsureCA      = "ensureca"
-	mSignLeaf      = "signleaf"
+	mResolve          = "resolve"
+	mInjectAuth       = "inject"
+	mForceReinject    = "forcereinject"
+	mRedactBody       = "redact"
+	mSCRAMProof       = "scram"
+	mNeedsReauth      = "needsreauth"
+	mClearReauth      = "clearreauth"
+	mFlagReauth       = "flagreauth"
+	mSetEgressMode    = "setegress"
+	mStore            = "store"
+	mIssueHandle      = "issuehandle"
+	mRevoke           = "revoke"
+	mResolveDatastore = "resolvedatastore"
+	mEnsureCA         = "ensureca"
+	mSignLeaf         = "signleaf"
 )
 
 // --- per-method payloads (gob-encoded into rpcRequest/rpcResponse Body) ---
@@ -144,8 +146,8 @@ type issueHandleResp struct{ Handle Handle }
 
 type revokeReq struct{ Handle string }
 
-type resolveCredReq struct{ Handle string }
-type resolveCredResp struct{ Cred Credential }
+type resolveDatastoreReq struct{ Handle string }
+type resolveDatastoreResp struct{ Target l4.Target }
 
 type ensureCAReq struct{ Dir string }
 
@@ -433,16 +435,16 @@ func (c *socketKeeperClient) Revoke(handleValue string) {
 	}
 }
 
-func (c *socketKeeperClient) ResolveCredential(handleValue string) (Credential, error) {
-	body, err := c.callBG(mResolveCred, resolveCredReq{Handle: handleValue})
+func (c *socketKeeperClient) ResolveDatastore(handleValue string) (l4.Target, error) {
+	body, err := c.callBG(mResolveDatastore, resolveDatastoreReq{Handle: handleValue})
 	if err != nil {
-		return Credential{}, err
+		return l4.Target{}, err
 	}
-	var r resolveCredResp
+	var r resolveDatastoreResp
 	if err := gobDecode(body, &r); err != nil {
-		return Credential{}, err
+		return l4.Target{}, err
 	}
-	return r.Cred, nil
+	return r.Target, nil
 }
 
 func (c *socketKeeperClient) EnsureCA(dir string) error {
@@ -644,16 +646,16 @@ func dispatchKeeper(k Custody, req rpcRequest) ([]byte, error) {
 		}
 		k.Revoke(a.Handle)
 		return nil, nil
-	case mResolveCred:
-		var a resolveCredReq
+	case mResolveDatastore:
+		var a resolveDatastoreReq
 		if err := gobDecode(req.Body, &a); err != nil {
 			return nil, err
 		}
-		cred, err := k.ResolveCredential(a.Handle)
+		t, err := k.ResolveDatastore(a.Handle)
 		if err != nil {
 			return nil, err
 		}
-		return gobEncode(resolveCredResp{Cred: cred})
+		return gobEncode(resolveDatastoreResp{Target: t})
 	case mEnsureCA:
 		var a ensureCAReq
 		if err := gobDecode(req.Body, &a); err != nil {

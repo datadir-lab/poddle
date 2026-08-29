@@ -3,6 +3,8 @@ package broker
 import (
 	"context"
 	"time"
+
+	"github.com/datadir-lab/poddle/src/internal/l4"
 )
 
 // localTenant is the single tenant used in Phase 1. Multi-tenant is Phase 4.
@@ -48,12 +50,13 @@ func (b *Broker) IssueHandle(credID, scope string, ttl time.Duration) (Handle, e
 // Revoke invalidates a handle immediately.
 func (b *Broker) Revoke(handleValue string) { b.custody.Revoke(handleValue) }
 
-// Resolve returns the credential a handle maps to (used by the L4 broker, which
-// reads the handle from a datastore auth exchange rather than an HTTP header).
-// The underlying credID is not exposed here — L4 datastore creds are not
-// OAuth-refreshed, so callers only need the credential itself.
-func (b *Broker) Resolve(handleValue string) (Credential, error) {
-	return b.custody.ResolveCredential(handleValue)
+// ResolveDatastore returns the L4 datastore connection target a handle maps to
+// (used by the L4 broker, which reads the handle from a datastore auth exchange
+// rather than an HTTP header). The DSN is parsed keeper-side and only the datastore
+// fields cross — never a full Credential, so an OAuth handle's refresh token /
+// client secret can't be pulled through this path. See Custody.ResolveDatastore.
+func (b *Broker) ResolveDatastore(handleValue string) (l4.Target, error) {
+	return b.custody.ResolveDatastore(handleValue)
 }
 
 // SetEgressMode configures egress redaction on the gateway: "redact" (default),

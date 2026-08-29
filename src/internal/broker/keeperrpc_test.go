@@ -62,13 +62,14 @@ func TestKeeperRPC_ControlPlaneLifecycle(t *testing.T) {
 	if pub.Vendor != "redis" {
 		t.Errorf("PublicCred.Vendor = %q, want redis", pub.Vendor)
 	}
-	// ...the L4-path ResolveCredential returns the FULL credential (secret crosses back).
-	full, err := c.ResolveCredential(h.Value)
+	// ...the L4-path ResolveDatastore returns only the datastore target (the DSN
+	// password), never a full Credential — so OAuth material can't be pulled here.
+	tgt, err := c.ResolveDatastore(h.Value)
 	if err != nil {
-		t.Fatalf("ResolveCredential: %v", err)
+		t.Fatalf("ResolveDatastore: %v", err)
 	}
-	if full.Secret != secret {
-		t.Errorf("ResolveCredential secret = %q, want %q", full.Secret, secret)
+	if tgt.Pass != secret {
+		t.Errorf("ResolveDatastore password = %q, want %q", tgt.Pass, secret)
 	}
 	// Revoke invalidates the handle: a subsequent resolve fails.
 	c.Revoke(h.Value)
@@ -80,6 +81,30 @@ func TestKeeperRPC_ControlPlaneLifecycle(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Error("handle still resolves after Revoke")
+}
+
+// TestKeeperRPC_ResolveDatastore_RefusesOAuthCredential is the regression guard for
+// privsep C1: a compromised front must NOT be able to pull an OAuth credential's
+// refresh token / client secret via ResolveDatastore. An OAuth handle's BaseURL is
+// an HTTPS URL, not a datastore DSN, so the keeper-side parse fails and nothing
+// crosses — and l4.Target (the only thing this method can return) structurally
+// cannot carry a refresh token.
+func TestKeeperRPC_ResolveDatastore_RefusesOAuthCredential(t *testing.T) {
+	c := rpcPairEmpty(t)
+	credID, err := c.Store(Credential{
+		Mode: ModeOAuthBearer, Secret: "access", RefreshToken: "REFRESH-SECRET",
+		ClientSecret: "CLIENT-SECRET", BaseURL: "https://mcp.example.com", TokenEndpoint: "https://auth/token",
+	})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	h, err := c.IssueHandle(credID, "box", 0)
+	if err != nil {
+		t.Fatalf("IssueHandle: %v", err)
+	}
+	if tgt, err := c.ResolveDatastore(h.Value); err == nil {
+		t.Fatalf("ResolveDatastore must refuse an OAuth credential (got target %+v) so its refresh token can't be pulled", tgt)
+	}
 }
 
 func TestKeeperRPC_StoreClearsReauth(t *testing.T) {
@@ -428,7 +453,7 @@ func FuzzKeeperServer(f *testing.F) {
 	f.Add([]byte(nil))
 	f.Add([]byte("garbage"))
 	f.Add(bytes.Repeat([]byte{0xff}, 64))
-	for _, m := range []string{mResolve, mInjectAuth, mForceReinject, mRedactBody, mSCRAMProof, mNeedsReauth, mClearReauth, mFlagReauth, mSetEgressMode, mStore, mIssueHandle, mRevoke, mResolveCred, mEnsureCA, mSignLeaf, "bogus"} {
+	for _, m := range []string{mResolve, mInjectAuth, mForceReinject, mRedactBody, mSCRAMProof, mNeedsReauth, mClearReauth, mFlagReauth, mSetEgressMode, mStore, mIssueHandle, mRevoke, mResolveDatastore, mEnsureCA, mSignLeaf, "bogus"} {
 		payload, _ := gobEncode(rpcRequest{ID: 1, Method: m})
 		f.Add(payload)
 	}

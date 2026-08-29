@@ -42,8 +42,8 @@ func (f *fakeBroker) IssueHandle(credID, scope string, _ time.Duration) (broker.
 	return broker.Handle{Value: "poddle_" + credID, Scope: scope}, nil
 }
 func (f *fakeBroker) Revoke(v string) { f.revoked = append(f.revoked, v) }
-func (f *fakeBroker) Resolve(string) (broker.Credential, error) {
-	return broker.Credential{BaseURL: "redis://:realpass@127.0.0.1:6379"}, nil
+func (f *fakeBroker) ResolveDatastore(string) (l4.Target, error) {
+	return l4.TargetFromDSN("redis://:realpass@127.0.0.1:6379")
 }
 func (f *fakeBroker) Serve(string) (string, error) {
 	f.addr = "0.0.0.0:9999"
@@ -59,15 +59,11 @@ func (f *fakeBroker) EnsureCA(string) error         { return errors.New("fake: n
 func (f *fakeBroker) LeafSource() broker.LeafSource { return nil }
 
 // SCRAMProof makes fakeBroker satisfy l4.SCRAMKeeper: it resolves handle via
-// Resolve (same as the real broker.Broker would) and derives the proof with
-// l4's shared RFC 7677 math, so a test wiring the L4 Postgres listener through
+// ResolveDatastore (same as the real broker.Broker would) and derives the proof
+// with l4's shared RFC 7677 math, so a test wiring the L4 Postgres listener through
 // this fake gets a functionally real keeper, not a stub.
 func (f *fakeBroker) SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error) {
-	cred, err := f.Resolve(handle)
-	if err != nil {
-		return nil, err
-	}
-	target, err := l4.TargetFromDSN(cred.BaseURL)
+	target, err := f.ResolveDatastore(handle)
 	if err != nil {
 		return nil, err
 	}
