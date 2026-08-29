@@ -15,6 +15,9 @@ credentials. The design assumptions:
   may be adversarial. It must never obtain a real credential.
 - **The broker is trusted** and runs on the user's own host. It holds the real
   credentials, injects them per request, and stays outside the pod's reach.
+  (Defense in depth: `PODDLE_BROKER_PRIVSEP` further splits the broker so a bug in
+  its untrusted-byte-parsing surface cannot reach the credential custody — see
+  *Privilege separation* below.)
 - **The network is hostile.** All brokered upstreams are reached over TLS; the
   pod holds only opaque, revocable *handles*, never secrets.
 
@@ -39,6 +42,18 @@ e2e-*`; see [TESTING.md](../TESTING.md)).
   a tamper-evident audit log.
 - **Revocation.** `poddle down` revokes a pod's handles; access dies immediately
   because the broker stops honoring them.
+- **Privilege separation (opt-in).** The broker's container is already hardened
+  (`--cap-drop=all`, `no-new-privileges`, read-only rootfs, distroless static
+  binary). Beyond that, `PODDLE_BROKER_PRIVSEP=1` splits the broker into two
+  processes: an untrusted *front* that parses pod and upstream bytes (the gateway,
+  forward proxy, and L4 terminators) and a privileged *keeper* subprocess that
+  holds the only copy of the credential custody — the memguard-sealed vault, OAuth
+  refresh tokens, and the TLS-interception CA key — reached over an `AF_UNIX`
+  socketpair. A memory-disclosure bug in the parsing front then cannot read the
+  custody; the front holds only revocable handles and per-request injected material.
+  It is opt-in and default-off, fail-closed on keeper death, and Linux-only. Design:
+  [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md);
+  operator-facing summary in [`architecture.md`](./architecture.md).
 
 ## Cryptography inventory
 
@@ -49,6 +64,7 @@ standard protocols implemented with Go's standard library and
 | Concern | What poddle uses | Where |
 |---|---|---|
 | Transport / MITM resistance | TLS via Go `net/http` + `crypto/tls` (TLS 1.2+ by default), to HTTPS-only upstreams; no `InsecureSkipVerify` | `src/internal/broker`, `src/internal/connector` |
+| Egress-interception CA (opt-in) | Self-signed ECDSA P-256 CA minting short-lived per-host x509 leaves for policy-opted-in TLS interception; the CA key stays broker-side (keeper-side under privsep), never in the pod | `src/internal/tlsca/tlsca.go` |
 | Database auth (Postgres) | SCRAM-SHA-256 (RFC 5802 / RFC 7677), PBKDF2-SHA-256, HMAC-SHA-256 | `src/internal/l4/scram.go`, `postgres.go` |
 | Database auth (Redis) | Redis `AUTH` over the broker-terminated connection | `src/internal/l4/redis.go` |
 | Secure randomness | `crypto/rand` for handles and SCRAM client nonces | `src/internal/broker/handles.go`, `src/internal/l4/postgres.go`, `src/internal/poddled/daemon.go` |
