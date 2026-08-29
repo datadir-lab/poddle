@@ -27,7 +27,7 @@ func rpcPair(t *testing.T, cred Credential) (*socketKeeperClient, *localKeeper, 
 
 // rpcPairEmpty wires a client to a keeper serving an EMPTY vault (no pre-stored
 // credential), for exercising the control-plane lifecycle (Store -> IssueHandle ->
-// Resolve/ResolveCredential -> Revoke) entirely over the wire.
+// Resolve/ResolveDatastore -> Revoke) entirely over the wire.
 func rpcPairEmpty(t *testing.T) *socketKeeperClient {
 	t.Helper()
 	k := newLocalKeeper(NewHandles(NewVault()))
@@ -104,6 +104,19 @@ func TestKeeperRPC_ResolveDatastore_RefusesOAuthCredential(t *testing.T) {
 	}
 	if tgt, err := c.ResolveDatastore(h.Value); err == nil {
 		t.Fatalf("ResolveDatastore must refuse an OAuth credential (got target %+v) so its refresh token can't be pulled", tgt)
+	}
+
+	// The refusal is case-insensitive: an uppercase scheme must not bypass it.
+	upID, err := c.Store(Credential{Mode: ModeOAuthBearer, RefreshToken: "R", BaseURL: "HTTPS://mcp.example.com"})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	upH, err := c.IssueHandle(upID, "box", 0)
+	if err != nil {
+		t.Fatalf("IssueHandle: %v", err)
+	}
+	if _, err := c.ResolveDatastore(upH.Value); err == nil {
+		t.Fatal("ResolveDatastore must refuse an uppercase HTTPS:// scheme too")
 	}
 }
 

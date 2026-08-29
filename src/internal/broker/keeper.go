@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -218,11 +219,12 @@ func (k *localKeeper) ResolveDatastore(handleValue string) (l4.Target, error) {
 		return l4.Target{}, err
 	}
 	// Only datastore credentials (redis://, postgres://, …) resolve to a target.
-	// Refuse an HTTP/OAuth credential (http(s):// BaseURL) so a compromised front
-	// can't use this path to probe HTTP-credential state — the OAuth refresh token /
-	// client secret live in the Credential's own fields (never in BaseURL) and can't
-	// be reached through l4.Target anyway, but this makes the boundary explicit.
-	if strings.HasPrefix(c.BaseURL, "http://") || strings.HasPrefix(c.BaseURL, "https://") {
+	// Refuse an HTTP/OAuth credential so a compromised front can't use this path to
+	// probe HTTP-credential state — the OAuth refresh token / client secret live in
+	// the Credential's own fields (never in BaseURL) and can't be reached through
+	// l4.Target anyway, but this makes the boundary explicit. url.Parse lowercases
+	// the scheme, so the check is case-insensitive (HTTPS:// too).
+	if u, perr := url.Parse(c.BaseURL); perr != nil || u.Scheme == "" || u.Scheme == "http" || u.Scheme == "https" {
 		return l4.Target{}, errors.New("resolve-datastore: not a datastore credential")
 	}
 	return l4.TargetFromDSN(c.BaseURL)
