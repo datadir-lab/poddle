@@ -214,8 +214,9 @@ work under the Tier-1 hardened container (`--read-only --cap-drop=all
 --no-new-privileges`, distroless static binary) — none of that lockdown blocks
 them. The split is **fail-closed**: if the keeper dies, every custody call errors
 (so requests fail closed and egress bodies block rather than forward unscanned),
-`poddled` exits non-zero, and its supervisor restarts it. Full design and the
-per-stage record are in
+`poddled` exits non-zero, and its supervisor restarts it. Confirm it's active with
+`poddle daemon status` (it reports `broker: two-process` when the keeper is running).
+Full design and the per-stage record are in
 [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md).
 
 ---

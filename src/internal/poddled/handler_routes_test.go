@@ -35,6 +35,35 @@ func TestDaemon_Status(t *testing.T) {
 	if len(s.NeedsReauth) != 0 {
 		t.Errorf("needs_reauth = %v, want empty (fakeBroker doesn't implement NeedsReauth)", s.NeedsReauth)
 	}
+	if s.BrokerPrivsep {
+		t.Error("broker_privsep should default to false (in-process broker)")
+	}
+}
+
+// TestDaemon_Status_BrokerPrivsep: a daemon told it's running the two-process
+// broker reports broker_privsep=true over /status, so an operator who set
+// PODDLE_BROKER_PRIVSEP=1 can confirm the keeper is active.
+func TestDaemon_Status_BrokerPrivsep(t *testing.T) {
+	d := New(&fakeBroker{}, nil)
+	d.SetBrokerPrivsep(true)
+	if _, err := d.Start("0.0.0.0:0", "redact", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(d.Handler())
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var s Status
+	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+		t.Fatal(err)
+	}
+	if !s.BrokerPrivsep {
+		t.Error("broker_privsep should be true after SetBrokerPrivsep(true)")
+	}
 }
 
 // TestDaemon_Status_NeedsReauth exercises the positive case: a broker that

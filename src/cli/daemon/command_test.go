@@ -43,3 +43,26 @@ func TestRenderStatus_NoReauthNeeded(t *testing.T) {
 		t.Errorf("output should omit the needs-reauth section when nothing is flagged:\n%s", buf.String())
 	}
 }
+
+func TestRenderStatus_BrokerPrivsep(t *testing.T) {
+	var buf bytes.Buffer
+	renderStatus(&buf, poddled.Status{
+		Gateway:       "0.0.0.0:1234",
+		Pods:          map[string]int{},
+		BrokerPrivsep: true,
+	})
+	if !strings.Contains(buf.String(), "two-process") {
+		t.Errorf("privsep mode should be reported when active:\n%s", buf.String())
+	}
+}
+
+func TestRenderStatus_NoBrokerPrivsepLineByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	renderStatus(&buf, poddled.Status{
+		Gateway: "0.0.0.0:1234",
+		Pods:    map[string]int{},
+	})
+	if strings.Contains(buf.String(), "two-process") {
+		t.Errorf("the in-process (default) broker should not print a privsep line:\n%s", buf.String())
+	}
+}
