@@ -187,6 +187,37 @@ the container mounts no podman socket. Pod creation/teardown/autoscale run on th
 host, not in the broker — a deliberate split (broker = secrets/gateway/audit;
 host = lifecycle).
 
+### Privilege separation (opt-in two-process broker)
+
+By default the broker is a single process: the code that parses untrusted pod and
+upstream bytes (the gateway, forward proxy, and L4 terminators) shares an address
+space with the credential custody (the memguard vault, OAuth refresh tokens, and
+the egress-interception CA key). A memory-disclosure bug in a parser could in
+principle read that custody.
+
+Setting **`PODDLE_BROKER_PRIVSEP=1`** on the broker splits the two: `poddled` (the
+untrusted *front*) forks a **keeper** subprocess over an inherited `AF_UNIX`
+socketpair, and the keeper holds the **only** copy of the vault, the refresh
+tokens, and the CA private key. The front holds no plaintext credential — only
+opaque handles, a non-secret public view of each credential, and a fingerprint of
+the injected token — and delegates every secret-touching operation (resolve,
+auth-injection, egress redaction, OAuth refresh, the L4 SCRAM proof, and TLS-leaf
+signing) to the keeper as a request over the socketpair. So a front RCE can no
+longer *dump* the vault; its blast radius shrinks to the access tokens for handles
+it can replay, one injection at a time, plus per-host leaves it can ask the keeper
+to mint online — never the durable custody itself.
+
+It is **opt-in and default-off** (the same cautious posture as TLS interception):
+the shipped single-process broker stays the default until you enable it, and it is
+Linux-only (the fork/socketpair mechanism). Fork, `exec`, and the socketpair all
+work under the Tier-1 hardened container (`--read-only --cap-drop=all
+--no-new-privileges`, distroless static binary) — none of that lockdown blocks
+them. The split is **fail-closed**: if the keeper dies, every custody call errors
+(so requests fail closed and egress bodies block rather than forward unscanned),
+`poddled` exits non-zero, and its supervisor restarts it. Full design and the
+per-stage record are in
+[`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md).
+
 ---
 
 ## Governance: policies
@@ -255,9 +286,12 @@ sequenceDiagram
 ```
 
 - The **CA** (`tlsca`) is long-lived and self-signed; it mints short-lived
-  per-host leaves cached in memory. The CA **cert** is injected into the pod's
-  trust store (`up` mounts it + sets `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`/…); the
-  CA **key stays on the broker's side** — the pod only ever receives the cert.
+  per-host leaves held in a bounded in-memory LRU (re-minted near expiry). The CA
+  **cert** is injected into the pod's trust store (`up` mounts it + sets
+  `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`/…); the CA **key stays on the broker's
+  side** — the pod only ever receives the cert. Under `PODDLE_BROKER_PRIVSEP` the
+  CA key and the leaf-signing live entirely in the keeper subprocess (the front
+  gets only the per-host leaf it presents), see *Privilege separation* above.
 - **Shared CA across the container boundary.** The pod's trusted CA and the
   broker's signing CA must be the *same* CA. The broker **generates and persists**
   it on its bind-mounted state dir (`PODDLE_EGRESS_CA_DIR=/state/egress-ca`), so it
@@ -357,16 +391,16 @@ short; close items, don't let them rot.
 
 - **`poddle-broker` image visibility.** The image is published but private; an
   unauthenticated `poddle up` can't pull it until the package is made public.
-- **Broker privilege separation (custody vs. parsing).** The broker holds every
-  plaintext secret in the *same* process that parses untrusted pod/upstream bytes.
-  Tier 0 (fuzz the redactor + proxy-auth parser, enforce the no-secret-egress
-  invariant) and Tier 1 (run the broker container `--cap-drop=all`,
-  `no-new-privileges`, read-only rootfs) have shipped; Tier 2 — an OpenSSH-style
-  split of custody from parsing — is scoped in
+- **Broker privilege separation (custody vs. parsing) — shipped, opt-in.** All
+  three tiers have landed: Tier 0 (fuzz the redactor + proxy-auth parser, enforce
+  the no-secret-egress invariant), Tier 1 (broker container `--cap-drop=all`,
+  `no-new-privileges`, read-only rootfs), and Tier 2 — the OpenSSH-style split of
+  custody from parsing into a keeper subprocess, enabled with
+  `PODDLE_BROKER_PRIVSEP=1` (see *Privilege separation* above). Tier 2 is **opt-in
+  and default-off**: the single-process broker remains the shipped default, so this
+  is no longer a gap in the default posture but a hardening operators can turn on.
+  Design and the per-stage record are in
   [`design/broker-privilege-separation.md`](./design/broker-privilege-separation.md).
-  Its gating **SCRAM handshake-delegation spike is done** (the delegation seam is
-  in `l4/scram.go`, behavior-identical), so Tier 2 is unblocked; the process split
-  itself is not yet implemented.
 - **Single-broker blast radius (by design).** One shared broker per host holds
   every pod's vault and audit chain, so a full vault compromise reaches all
   co-located pods. This is a deliberate MVP trade-off (one surface to harden, one
