@@ -156,6 +156,9 @@ func statusCmd() *cobra.Command {
 func renderStatus(out io.Writer, s poddled.Status) {
 	fmt.Fprintln(out, "poddled: running")
 	fmt.Fprintf(out, "  gateway:  %s\n", s.Gateway)
+	if s.BrokerPrivsep {
+		fmt.Fprintln(out, "  broker:   two-process (privilege-separated keeper)")
+	}
 	if s.Redis != "" {
 		fmt.Fprintf(out, "  redis:    %s\n", s.Redis)
 	}

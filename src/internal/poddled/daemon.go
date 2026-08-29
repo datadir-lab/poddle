@@ -74,6 +74,7 @@ type Daemon struct {
 	forwardAddr    string
 	loopbackHost   string // if set, a loopback upstream is dialed here (the host route); see broker.RewriteLoopbackHost
 	mirrorDir      string // OAuthMirrorDir(): where the broker durably writes rotated OAuth material; GET /oauth/mirror reads it
+	brokerPrivsep  bool   // broker running two-process (PODDLE_BROKER_PRIVSEP); surfaced in `daemon status`
 
 	// Fresh-audit egress gate (opt-in via PODDLE_REQUIRE_FRESH_AUDIT). When on,
 	// Check denies egress unless the audit was acked within maxStaleness.
@@ -118,6 +119,10 @@ func New(b brokerAPI, aud *audit.Store) *Daemon {
 // service) reaches the *host* rather than the broker container's own loopback.
 // Empty (the default) disables the rewrite. Call before Start.
 func (d *Daemon) SetLoopbackHost(h string) { d.loopbackHost = h }
+
+// SetBrokerPrivsep records whether the broker is running two-process (Tier-2
+// privilege separation), so `daemon status` can report it. Call before Start.
+func (d *Daemon) SetBrokerPrivsep(v bool) { d.brokerPrivsep = v }
 
 // Check implements broker.PolicyChecker: resolve the pod holding handle and
 // evaluate its policy for (host, method). No policy = allow.
@@ -351,6 +356,11 @@ type Status struct {
 	Pods        map[string]int `json:"pods"`
 	Events      []string       `json:"events"`       // recent autoscale activity (grows, warnings)
 	NeedsReauth []string       `json:"needs_reauth"` // connection names whose OAuth refresh failed (broker.Broker.NeedsReauth) — secretless, names only
+	// BrokerPrivsep reports whether the broker is running two-process (Tier-2
+	// privilege separation, PODDLE_BROKER_PRIVSEP=1): a keeper subprocess holds the
+	// vault while this front parses untrusted bytes. A running daemon reporting true
+	// inherently means the keeper is live — if it died, the daemon would have exited.
+	BrokerPrivsep bool `json:"broker_privsep"`
 }
 
 // Handler returns the control API:
@@ -390,6 +400,7 @@ func (d *Daemon) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, Status{
 			Gateway: d.broker.Addr(), Redis: d.l4RedisAddr, Postgres: d.l4PostgresAddr,
 			Pods: pods, Events: events, NeedsReauth: needsReauth,
+			BrokerPrivsep: d.brokerPrivsep,
 		})
 	})
 	mux.HandleFunc("POST /pods/{pod}/handles", func(w http.ResponseWriter, r *http.Request) {

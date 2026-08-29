@@ -105,6 +105,7 @@ func Serve(ctx context.Context, sockPath, gatewayBind, egress, l4RedisBind, l4Po
 		}
 	}()
 	d := New(br, store)
+	d.SetBrokerPrivsep(keeperDeath != nil) // two-process mode iff a keeper is being supervised
 
 	// If the keeper subprocess dies UNEXPECTEDLY, the broker is already fail-closed
 	// (every custody RPC errors); tear the daemon down and surface a non-nil error so
