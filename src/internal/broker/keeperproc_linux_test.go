@@ -41,8 +41,9 @@ func TestKeeperProcess_TwoProcessBrokerRoundTrip(t *testing.T) {
 	}
 	t.Cleanup(func() { br.closeCustody(); <-death })
 
-	// Control-plane across two real processes: store a secret (crosses front->keeper),
-	// issue a handle, resolve the full credential back (crosses keeper->front).
+	// Control-plane across two real processes: store an HTTP secret (crosses
+	// front->keeper) and issue a handle; the secret staying keeper-side is proven by
+	// the InjectAuth below.
 	const secret = "two-process-real-secret"
 	credID, err := br.Store(Credential{Mode: ModeSubscription, Secret: secret, BaseURL: "https://x"})
 	if err != nil {
@@ -52,12 +53,20 @@ func TestKeeperProcess_TwoProcessBrokerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueHandle: %v", err)
 	}
-	got, err := br.Resolve(h.Value)
+
+	// ResolveDatastore across two processes returns ONLY the datastore target — not
+	// the full Credential — so an OAuth handle's refresh token can never be pulled
+	// through it.
+	dsID, err := br.Store(Credential{Mode: ModeEndpoint, Vendor: "redis", BaseURL: "redis://:dbpass@127.0.0.1:6379"})
 	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+		t.Fatalf("Store datastore: %v", err)
 	}
-	if got.Secret != secret {
-		t.Errorf("resolved secret = %q, want %q", got.Secret, secret)
+	dsH, err := br.IssueHandle(dsID, "box", time.Hour)
+	if err != nil {
+		t.Fatalf("IssueHandle datastore: %v", err)
+	}
+	if tgt, err := br.ResolveDatastore(dsH.Value); err != nil || tgt.Pass != "dbpass" {
+		t.Fatalf("ResolveDatastore across processes: target=%+v err=%v", tgt, err)
 	}
 
 	// Request-path across two real processes: InjectAuth returns a mutation that
@@ -119,12 +128,16 @@ func TestNewBrokerFromEnv_TwoProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueHandle: %v", err)
 	}
-	got, err := br.Resolve(h.Value)
+	// The stored secret round-trips through the two-process broker: InjectAuth
+	// returns a mutation carrying it (the secret lives only in the keeper process).
+	mut, _, err := br.custody.InjectAuth(context.Background(), h.Value, credID)
 	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+		t.Fatalf("InjectAuth: %v", err)
 	}
-	if got.Secret != secret {
-		t.Errorf("resolved secret = %q, want %q", got.Secret, secret)
+	hdr := http.Header{}
+	mut.Apply(hdr)
+	if hdr.Get("Authorization") != "Bearer "+secret {
+		t.Errorf("injected Authorization = %q, want %q", hdr.Get("Authorization"), "Bearer "+secret)
 	}
 }
 
