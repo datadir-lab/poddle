@@ -35,13 +35,15 @@ const (
 	leafTTL  = 7 * 24 * time.Hour        // leaves are short-lived (cached in memory)
 )
 
-// Authority is a loaded CA plus an in-memory per-host leaf cache.
+// Authority is a loaded CA plus a bounded in-memory per-host leaf cache. mu
+// serializes both the cache and leaf minting (so concurrent misses for one host
+// don't each keygen); leaves is only ever touched under mu.
 type Authority struct {
 	cert    *x509.Certificate
 	key     *ecdsa.PrivateKey
 	certPEM []byte
 	mu      sync.Mutex
-	leaves  map[string]*tls.Certificate
+	leaves  *leafLRU
 }
 
 // DefaultDir is the FALLBACK egress-CA location for a bare-host daemon and
@@ -95,7 +97,7 @@ func fromPEM(certPEM, keyPEM []byte) (*Authority, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse CA key: %w", err)
 	}
-	return &Authority{cert: cert, key: key, certPEM: certPEM, leaves: map[string]*tls.Certificate{}}, nil
+	return &Authority{cert: cert, key: key, certPEM: certPEM, leaves: newLeafLRU(maxLeafCache)}, nil
 }
 
 // generate creates a fresh CA and persists it.
@@ -144,7 +146,7 @@ func generate(dir, certPath, keyPath string) (*Authority, error) {
 	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
 		return nil, fmt.Errorf("write CA key: %w", err)
 	}
-	return &Authority{cert: cert, key: key, certPEM: certPEM, leaves: map[string]*tls.Certificate{}}, nil
+	return &Authority{cert: cert, key: key, certPEM: certPEM, leaves: newLeafLRU(maxLeafCache)}, nil
 }
 
 // LeafFor mints (and caches) a leaf certificate for host, signed by the CA — the
@@ -152,7 +154,8 @@ func generate(dir, certPath, keyPath string) (*Authority, error) {
 func (a *Authority) LeafFor(host string) (*tls.Certificate, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if lc, ok := a.leaves[host]; ok {
+	now := time.Now()
+	if lc, ok := a.leaves.get(host, now); ok {
 		return lc, nil
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -181,7 +184,7 @@ func (a *Authority) LeafFor(host string) (*tls.Certificate, error) {
 		return nil, fmt.Errorf("create leaf cert: %w", err)
 	}
 	lc := &tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: mustParse(der)}
-	a.leaves[host] = lc
+	a.leaves.put(host, lc)
 	return lc, nil
 }
 
