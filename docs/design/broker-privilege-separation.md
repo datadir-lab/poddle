@@ -296,3 +296,41 @@ concrete steps, in order:
 4. **Measure the added latency** — one socketpair round-trip per (consolidated)
    auth/injection call against the per-request budget, especially on the L4
    splice path.
+
+## Phase 2 outcome and latency (B4)
+
+Phase 2 shipped as an opt-in, default-off two-process broker
+(`PODDLE_BROKER_PRIVSEP=1`): `poddled` (the untrusted front — gateway, proxy,
+L4) forks a keeper subprocess over a socketpair, and the keeper holds the
+*entire* durable custody — the memguard vault, OAuth refresh tokens, and the
+egress-interception CA private key. A front RCE can no longer dump any of it;
+its blast radius is the access tokens for handles it can replay (one injection
+at a time) plus per-host leaves it can mint *online* (never the CA key). It is
+proven end-to-end in the real distroless container by `TestE2E_Privsep` and
+`TestE2E_Intercept` on podman.
+
+**Latency.** `internal/broker/keeperbench_linux_test.go` benchmarks each keeper
+op in-process (a direct call) vs across the socketpair to a real keeper
+subprocess. The measured privsep tax (Docker-on-Windows VM, so absolute µs are
+noisy and inflated by VM syscall latency + memguard mlock, which is present in
+BOTH paths — read the *relative* numbers, not the absolute):
+
+- **InjectAuth** (the hottest per-request op): two-process ≈ 1.6–5× the
+  in-process call; the stable machine-independent cost is the gob round-trip
+  overhead — **~414 allocs / ~20 KB per call** vs 12 allocs / ~1 KB in-process.
+- **Full request path** (Resolve + InjectAuth + RedactBody, the three keeper
+  hops one brokered HTTP request makes today): ~1183 allocs / ~60 KB
+  two-process. This is the obvious optimization target — consolidating the three
+  crossings into one `InjectAuth(request)→authorized-request` RPC (see step 1
+  above) would cut it to a single round-trip.
+- **Concurrency amortizes the hop**: parallel InjectAuth against the multiplexed
+  client runs *faster per op* than the serial two-process call — the background
+  demux keeps many requests in flight, so under the gateway's real concurrent
+  load the per-request tax is well below the serial round-trip latency.
+
+Conclusion: the per-request privsep tax is sub-millisecond-to-low-millisecond
+and is dominated in production by upstream network + inference latency (hundreds
+of ms to seconds per brokered LLM/API request), so it is a negligible fraction
+of end-to-end request time. The three-hop request path is the one place worth
+consolidating into a single RPC if the allocation cost ever matters; `SCRAMProof`
+and the control-plane ops are already one-crossing-per-operation.
