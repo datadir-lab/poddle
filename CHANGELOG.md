@@ -9,6 +9,40 @@ heading with their advisory IDs, per [SECURITY.md](./SECURITY.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Brokered remote MCP servers.** `poddle connect add <name> --connector mcp
+  --url <endpoint> --token <PAT>` seals the token in the broker vault; a pod with
+  that connector reaches the MCP server *through* the broker (which swaps the
+  handle for the real token and relays Streamable HTTP), so the token never enters
+  the pod and `poddle down` revokes it. Wired for codex, claude-code, opencode, pi,
+  and gemini.
+- **OAuth 2.1 MCP servers.** For MCP servers that require OAuth, the broker
+  *terminates* the OAuth flow so the pod stays secretless: a one-time consent at
+  `connect add` — in a browser, or headless with `--device` (RFC 8628 device
+  authorization) for a remote/CI host — seals the refresh token in the vault, and
+  the broker lazily refreshes the access token per request. `connect reauth`
+  recovers a revoked grant.
+- **Opt-in two-process broker** (`PODDLE_BROKER_PRIVSEP=1`, Linux). The broker can
+  run the credential custody (the vault, OAuth refresh tokens, and the
+  TLS-interception CA key) in a separate *keeper* subprocess from the code that
+  parses untrusted pod and upstream bytes, so a parser bug can't read the custody.
+  Opt-in and default-off; see [docs/architecture.md](./docs/architecture.md).
+
+### Security
+
+- **Broker privilege separation (Tier 2).** Completes the broker-hardening arc
+  (Tier 0 parser fuzzing + no-secret-egress invariant, Tier 1 `--cap-drop=all` /
+  `no-new-privileges` / read-only container): an OpenSSH-style split of secret
+  custody from byte-parsing into a keeper subprocess over an `AF_UNIX` socketpair,
+  behind `PODDLE_BROKER_PRIVSEP`. Fail-closed — if the keeper dies, custody calls
+  error, egress bodies block rather than forward unscanned, and `poddled` exits
+  non-zero so its supervisor restarts it.
+- **OAuth refresh-token resilience.** A rotated MCP refresh token now survives a
+  broker restart (durable, best-effort write-back), and the broker strips an
+  upstream OAuth challenge and retries once under a freshly refreshed token on an
+  early revocation, so a pod's MCP client never sees a spurious `401`.
+
 ## [0.1.2] - 2026-08-20
 
 ### Added
