@@ -271,67 +271,28 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req.Host = up.Host // match the REAL upstream Host header, not the dial host
 		// The real auth was injected into r.Header by InjectAuth above and cloned
 		// into req by the reverse proxy — no secret is applied here on the front.
+		//
+		// Strip the pod-supplied Accept-Encoding so the RESPONSE reflection scrub
+		// (scrubResponse, audit I-1) always sees PLAINTEXT: with no explicit
+		// Accept-Encoding, Go's transport advertises only gzip and TRANSPARENTLY
+		// decodes it (clearing Content-Encoding), so the upstream can't hand back a
+		// compressed body that hides the injected secret from an exact-match scan.
+		// The broker<->upstream wire still gzips (the transport negotiates it); only
+		// the (local, bandwidth-free) broker->pod leg becomes identity.
+		req.Header.Del("Accept-Encoding")
 	}
-	// OAuth upstreams only (§4): the pod's MCP client must NEVER see an upstream
-	// WWW-Authenticate — a `Bearer resource_metadata=` challenge would send it off
-	// to run its own OAuth handshake against the broker — so strip it always. And
-	// on a 401 against a token that wasn't yet stale (an early revocation inside
-	// the refresh skew, so no proactive refresh ran), force exactly one refresh
-	// and replay the request before surfacing the failure. Non-OAuth upstreams are
-	// left byte-for-byte unchanged (no ModifyResponse, no buffering).
-	if pub.Mode == ModeOAuthBearer {
-		retried := false
-		proxy.ModifyResponse = func(res *http.Response) error {
-			res.Header.Del("WWW-Authenticate")
-			if res.StatusCode != http.StatusUnauthorized || retried {
-				return nil
-			}
-			retried = true // retry AT MOST once per request
-			// res.Request is the outbound request the Director built (URL already
-			// the dial target, Host == up.Host, carrying the injected bearer the
-			// upstream just rejected); clone it and reset the body from the replay
-			// buffer.
-			req2 := res.Request.Clone(res.Request.Context())
-			if r.GetBody != nil {
-				rc, gerr := r.GetBody()
-				if gerr != nil {
-					return nil // keep the stripped 401
-				}
-				req2.Body = rc
-			} else {
-				req2.Body = nil
-			}
-			req2.ContentLength = int64(len(bodyBytes))
-			// Reactive re-inject under a force-refreshed (or peer-refreshed) token,
-			// keyed on the fingerprint the front holds — never the token itself. On
-			// failure the keeper already flagged needs-reauth; leave the (already
-			// stripped) bare 401 for the pod.
-			reMut, rerr := g.keeper.ForceReinject(res.Request.Context(), handle, credID, fp)
-			if rerr != nil {
-				return nil
-			}
-			reMut.Apply(req2.Header)
-			res2, rterr := http.DefaultTransport.RoundTrip(req2)
-			if rterr != nil {
-				return nil // retry transport error: keep the stripped 401
-			}
-			_ = res.Body.Close()
-			res.StatusCode = res2.StatusCode
-			res.Status = res2.Status
-			res.Header = res2.Header
-			res.Body = res2.Body
-			res.ContentLength = res2.ContentLength
-			// The stdlib's reverse proxy runs removeHopByHopHeaders on the ORIGINAL
-			// response before ModifyResponse, but res2 (the retry response) never went
-			// through that — strip it here too, or a retry upstream's
-			// Connection/Keep-Alive/etc. reach the pod.
-			stripHopByHop(res.Header)
-			res.Header.Del("WWW-Authenticate") // the retry response may carry one too
-			if res2.StatusCode == http.StatusUnauthorized {
-				g.keeper.FlagReauth(handle) // even the refreshed token was rejected — the grant is dead
-			}
-			return nil
+	// Every response passes through ModifyResponse so the reflection scrub (audit
+	// I-1) runs for ALL modes. For an OAuth upstream it ALSO strips the upstream
+	// WWW-Authenticate and runs the reactive-retry FIRST, so the scrub operates on
+	// the FINAL body (post-retry). Non-OAuth upstreams skip the OAuth step. The
+	// scrub buffers only COMPLETE textual bodies; SSE, chunked streams, binary, and
+	// oversized responses pass through untouched (see scrubResponse).
+	retried := false
+	proxy.ModifyResponse = func(res *http.Response) error {
+		if pub.Mode == ModeOAuthBearer {
+			g.oauthReactiveRetry(res, r, handle, credID, fp, bodyBytes, &retried)
 		}
+		return g.scrubResponse(handle, res)
 	}
 	sc := &statusCapture{ResponseWriter: w, code: http.StatusOK}
 	proxy.ServeHTTP(sc, r)
@@ -344,6 +305,174 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		decision, detail = "monitor", "would deny: "+monitored
 	}
 	g.audit(handle, up.Host, method, path, decision, detail, sc.code)
+}
+
+// oauthReactiveRetry handles an OAuth upstream's response (§4). It always strips
+// the upstream WWW-Authenticate (a `Bearer resource_metadata=` challenge would
+// send the pod's MCP client off to run its own OAuth handshake against the
+// broker), and on a 401 against a token that wasn't yet stale (an early
+// revocation inside the refresh skew, so no proactive refresh ran) it force-
+// refreshes under the fingerprint the front holds — never the token — and
+// replays the request exactly once before surfacing the failure. It mutates res
+// in place; *retried caps the replay at once per request. Every failure path
+// keeps the already-stripped bare 401 (fail-closed), so it returns nothing.
+// Called only for ModeOAuthBearer; non-OAuth responses are left byte-for-byte
+// unchanged by the caller. This is the former in-line ModifyResponse closure,
+// extracted verbatim so the reflection scrub can run for every mode after it.
+func (g *Gateway) oauthReactiveRetry(res *http.Response, orig *http.Request, handle, credID, fp string, bodyBytes []byte, retried *bool) {
+	res.Header.Del("WWW-Authenticate")
+	if res.StatusCode != http.StatusUnauthorized || *retried {
+		return
+	}
+	*retried = true // retry AT MOST once per request
+	// res.Request is the outbound request the Director built (URL already the dial
+	// target, Host == up.Host, carrying the injected bearer the upstream just
+	// rejected); clone it and reset the body from the replay buffer.
+	req2 := res.Request.Clone(res.Request.Context())
+	if orig.GetBody != nil {
+		rc, gerr := orig.GetBody()
+		if gerr != nil {
+			return // keep the stripped 401
+		}
+		req2.Body = rc
+	} else {
+		req2.Body = nil
+	}
+	req2.ContentLength = int64(len(bodyBytes))
+	// Reactive re-inject under a force-refreshed (or peer-refreshed) token, keyed
+	// on the fingerprint the front holds — never the token itself. On failure the
+	// keeper already flagged needs-reauth; leave the (already stripped) bare 401.
+	reMut, rerr := g.keeper.ForceReinject(res.Request.Context(), handle, credID, fp)
+	if rerr != nil {
+		return
+	}
+	reMut.Apply(req2.Header)
+	res2, rterr := http.DefaultTransport.RoundTrip(req2)
+	if rterr != nil {
+		return // retry transport error: keep the stripped 401
+	}
+	_ = res.Body.Close()
+	res.StatusCode = res2.StatusCode
+	res.Status = res2.Status
+	res.Header = res2.Header
+	res.Body = res2.Body
+	res.ContentLength = res2.ContentLength
+	// Carry res2's decompression flag: req2 was cloned from the Accept-Encoding-
+	// stripped outbound request, so the retry round-trip transparently gunzips too
+	// (res2.Uncompressed, ContentLength -1). Without this the stale false from the
+	// 401 would make scrubResponse treat the complete decompressed retry body as a
+	// chunked stream and forward it UNSCANNED — leaking a reflected secret.
+	res.Uncompressed = res2.Uncompressed
+	// The stdlib's reverse proxy runs removeHopByHopHeaders on the ORIGINAL
+	// response before ModifyResponse, but res2 (the retry response) never went
+	// through that — strip it here too, or a retry upstream's
+	// Connection/Keep-Alive/etc. reach the pod.
+	stripHopByHop(res.Header)
+	res.Header.Del("WWW-Authenticate") // the retry response may carry one too
+	if res2.StatusCode == http.StatusUnauthorized {
+		g.keeper.FlagReauth(handle) // even the refreshed token was rejected — the grant is dead
+	}
+}
+
+// scrubResponse strips the injected secret from a reflected response body
+// (secretless-invariant audit I-1): a credential's configured upstream with a
+// reflection surface — a debug/echo route, a verbose error quoting the received
+// Authorization, a whoami/token-introspection reply, an MCP tool that mirrors
+// its input — could otherwise bounce the real credential the broker injected
+// back to the pod, which controls the request path/method but never the upstream
+// host. The front applies the non-secret gate (a textual, non-SSE response),
+// reads the bytes, and hands them to the keeper — which holds the managed secret
+// and returns the scrubbed body.
+//
+// The body is PLAINTEXT here: the Director stripped the outbound Accept-Encoding,
+// so Go's transport advertised only gzip and transparently decoded it (clearing
+// Content-Encoding). If a non-identity Content-Encoding nonetheless survived (a
+// non-compliant upstream compressing with something we never advertised, e.g.
+// br/zstd), the body is ciphertext we cannot exact-match — so fail CLOSED rather
+// than forward it. Likewise a keeper failure (the two-process keeper is
+// unreachable) fails closed. Either error makes the reverse proxy drop the
+// response (502) instead of forwarding a body it could not verify is secret-free.
+//
+// Residual (forwarded unscanned, documented gaps — not a leak the scrub claims
+// to cover): SSE (text/event-stream); ANY chunked identity response, complete OR
+// streaming (ContentLength < 0 and not transport-decompressed) — this is a
+// deliberate round-2 tradeoff to avoid buffering genuine streams like Gemini
+// streamGenerateContent, but it also forwards a complete-but-chunked reflection
+// (a dynamically generated JSON echo is commonly chunked), so it is the largest
+// remaining I-1 vector; oversized bodies (> maxScanBytes); binary /
+// empty-Content-Type responses; response HEADERS (audit I-3); and the base64 form
+// of a reflected ModeBasic Authorization (git upstreams don't reflect). Closing
+// the chunked/streaming and header vectors needs a per-flush streaming scanner +
+// header scrub (tracked follow-up).
+func (g *Gateway) scrubResponse(handle string, res *http.Response) error {
+	if res.Body == nil {
+		return nil
+	}
+	// A HEAD response carries no body to reflect a secret in — and its
+	// Content-Encoding/Content-Length describe the would-be GET entity, so scanning
+	// it would needlessly fail closed on a gzip-advertising HEAD. Skip it (body-only
+	// scrub; header reflection is the documented I-3 residual either way).
+	if res.Request != nil && res.Request.Method == http.MethodHead {
+		return nil
+	}
+	ct := res.Header.Get("Content-Type")
+	if !isTextual(ct) || isEventStream(ct) {
+		return nil // binary / SSE / empty-CT — forward unscanned (never buffer a stream)
+	}
+	// Scan only a COMPLETE body: one with a bounded declared length, or one the
+	// transport decompressed (res.Uncompressed — a gzip body is a complete unit,
+	// not a stream; the transport decoded it and cleared Content-Length). A
+	// genuinely chunked identity response (ContentLength < 0, not decompressed) is
+	// a STREAM, so forward it unscanned rather than buffer it — buffering would
+	// break incremental delivery for streaming textual responses. A declared
+	// length over the cap is likewise forwarded unscanned.
+	bounded := res.ContentLength >= 0 && res.ContentLength <= maxScanBytes
+	if !bounded && !res.Uncompressed {
+		return nil
+	}
+	if ce := res.Header.Get("Content-Encoding"); ce != "" && !strings.EqualFold(ce, "identity") {
+		return fmt.Errorf("scrubResponse: unscannable Content-Encoding %q", ce) // fail closed
+	}
+	orig := res.Body
+	// Read bounded (a decompressed body has ContentLength == -1, so don't trust it,
+	// and a declared length can lie); +1 over the cap detects an oversized body.
+	buf, err := io.ReadAll(io.LimitReader(orig, maxScanBytes+1))
+	if err != nil {
+		_ = orig.Close()
+		res.Body = http.NoBody                                 // orig closed; avoid a (benign) double close
+		return fmt.Errorf("scrubResponse: read body: %w", err) // fail CLOSED: a truncated body is unverified
+	}
+	if len(buf) == 0 {
+		_ = orig.Close()
+		res.Body = io.NopCloser(bytes.NewReader(nil)) // HEAD/204/304/empty — nothing to scan, don't touch Content-Length
+		return nil
+	}
+	if int64(len(buf)) > maxScanBytes {
+		// Oversized body (a decompressed body larger than the cap, or a lying
+		// Content-Length): forward unscanned, stitching the bytes we already read
+		// back ahead of the unread remainder.
+		res.Body = bodyReadCloser{io.MultiReader(bytes.NewReader(buf), orig), orig}
+		return nil
+	}
+	_ = orig.Close()
+	scrubbed, _, rerr := g.keeper.RedactResponse(handle, buf)
+	if rerr != nil {
+		res.Body = http.NoBody // orig closed; avoid a (benign) double close
+		return rerr            // fail closed
+	}
+	res.Body = io.NopCloser(bytes.NewReader(scrubbed))
+	res.ContentLength = int64(len(scrubbed)) // == len(buf) when nothing was scrubbed
+	res.Header.Set("Content-Length", strconv.Itoa(len(scrubbed)))
+	res.Header.Del("Content-Encoding") // body is now plaintext identity
+	return nil
+}
+
+// bodyReadCloser pairs a Reader (a MultiReader stitching already-read bytes ahead
+// of the unread remainder of an oversized response) with the underlying body's
+// Closer, so forwarding it unscanned still closes the upstream body.
+type bodyReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 // audit reports a proxied request to the Auditor, if one is set.
@@ -391,10 +520,28 @@ func isTextual(ct string) bool {
 	}
 	ct = strings.ToLower(strings.TrimSpace(ct))
 	switch ct {
-	case "application/json", "application/x-www-form-urlencoded":
+	case "application/json", "application/x-www-form-urlencoded", "application/xml":
 		return true
 	}
-	return strings.HasPrefix(ct, "text/")
+	if strings.HasPrefix(ct, "text/") {
+		return true
+	}
+	// RFC 6839 structured-syntax suffixes carry textual JSON/XML too — notably
+	// application/problem+json (RFC 7807 verbose errors, a prime reflection surface)
+	// and vnd.api+json / hal+json / *+xml.
+	return strings.HasSuffix(ct, "+json") || strings.HasSuffix(ct, "+xml")
+}
+
+// isEventStream reports whether ct is a Server-Sent-Events stream
+// (text/event-stream). isTextual returns true for it (it is text/*), but the
+// response scrub must NOT buffer it — reading an SSE body to completion would
+// break the LLM token streaming statusCapture.Flush exists to preserve — so the
+// scrub gate excludes it explicitly and forwards it untouched.
+func isEventStream(ct string) bool {
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(ct), "text/event-stream")
 }
 
 // handleFromAuth extracts the pod's handle from an incoming Authorization

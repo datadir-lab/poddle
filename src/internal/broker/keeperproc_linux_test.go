@@ -3,6 +3,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"os"
@@ -83,6 +84,18 @@ func TestKeeperProcess_TwoProcessBrokerRoundTrip(t *testing.T) {
 	}
 	if fp == "" || fp == secret {
 		t.Errorf("fingerprint should be a non-secret digest, got %q", fp)
+	}
+
+	// Response reflection scrub across two processes (audit I-1): a body echoing
+	// the injected secret is scrubbed KEEPER-side (the front holds no secret to
+	// scan with), so the scrubbed bytes crossing back carry no credential.
+	reflected := []byte(`{"echo":"Bearer ` + secret + `"}`)
+	scrubbed, hits, err := br.custody.RedactResponse(h.Value, reflected)
+	if err != nil {
+		t.Fatalf("RedactResponse across processes: %v", err)
+	}
+	if hits != 1 || bytes.Contains(scrubbed, []byte(secret)) {
+		t.Errorf("two-process response scrub failed: hits=%d scrubbed=%q", hits, scrubbed)
 	}
 
 	// TLS-interception CA across two processes: EnsureCA loads the CA in the KEEPER

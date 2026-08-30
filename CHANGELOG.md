@@ -31,6 +31,14 @@ heading with their advisory IDs, per [SECURITY.md](./SECURITY.md).
 
 ### Security
 
+- **Response reflection scrub.** The egress redactor scrubbed only outbound
+  request bodies; the broker now also scrubs its injected secret out of a
+  reflecting upstream's *response*, so a configured upstream that echoes the
+  credential back (a debug/echo route, a verbose error quoting `Authorization`,
+  an MCP tool mirroring its input) cannot bounce the real secret into a hostile
+  pod. Exact-match (no false positives on model output) and fail-closed on any
+  body it can't verify. Found by a whole-subsystem audit of the "no real secret
+  reaches the pod" invariant.
 - **Broker privilege separation (Tier 2).** Completes the broker-hardening arc
   (Tier 0 parser fuzzing + no-secret-egress invariant, Tier 1 `--cap-drop=all` /
   `no-new-privileges` / read-only container): an OpenSSH-style split of secret

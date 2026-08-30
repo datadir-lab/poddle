@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -117,6 +118,20 @@ type Keeper interface {
 	// scan then targets the SAME secret that's about to hit the wire, not a
 	// stale pre-rotation one.
 	RedactBody(handle string, body []byte) (scrubbed []byte, blocked bool, hits int)
+
+	// RedactResponse scrubs the handle's own managed secret(s) from an upstream
+	// RESPONSE body before it reaches the pod, closing the reflection vector where
+	// a configured upstream echoes the injected credential back (a debug/echo
+	// route, a verbose error quoting Authorization, an MCP tool mirroring input).
+	// Exact-match only (no pattern set → zero false positives) and independent of
+	// egress mode — it protects the secretless invariant, not DLP. Like RedactBody
+	// it takes bytes (boundary-safe) and re-resolves the handle keeper-side for the
+	// sealed secret; the front applies the textual/streaming gate first. A non-nil
+	// error means the scrub could not run — a dead two-process keeper, or the
+	// handle no longer resolving (revoked/expired mid-request) — and the front must
+	// fail CLOSED, dropping the response rather than forwarding a body it can't
+	// verify is secret-free.
+	RedactResponse(handle string, body []byte) (scrubbed []byte, hits int, err error)
 
 	// NeedsReauth, ClearReauth, and FlagReauth manage the set of connections whose
 	// most recent OAuth refresh attempt failed (surfaced to operators via
@@ -408,15 +423,65 @@ func (k *localKeeper) RedactBody(handle string, body []byte) (scrubbed []byte, b
 	if err != nil || redactor == nil {
 		return body, false, 0
 	}
-	managed := []string{cred.Secret}
-	if _, tok, ok := strings.Cut(cred.Secret, ":"); ok {
-		managed = append(managed, tok) // basic: also scrub the token half of user:token
-	}
-	red, n, block := redactor.Scan(body, managed...)
+	red, n, block := redactor.Scan(body, managedSecrets(cred)...)
 	if block {
 		return body, true, n // front writes 403; original body is not forwarded
 	}
 	return red, false, n
+}
+
+// RedactResponse scrubs the handle's own managed secret(s) from an upstream
+// RESPONSE body before it reaches the pod, closing the reflection vector where a
+// credential's configured upstream echoes the injected credential back — a debug
+// or echo route, a verbose error that quotes the received Authorization, a
+// "whoami"/token-introspection reply, an MCP tool that mirrors its input. A
+// hostile pod (which controls the request path/method but never the upstream
+// host) could otherwise probe such a surface and read its own injected real
+// secret out of the response (secretless-invariant audit I-1).
+//
+// It is EXACT-MATCH only — the managed secret string(s), never the egress
+// pattern set — so it has zero false positives and cannot corrupt legitimate
+// response content (e.g. model output that merely resembles a token shape). It
+// runs regardless of egress mode: this protects the secretless invariant, not
+// egress DLP, so "off" (which disables request-body redaction) does not disable
+// it. Boundary-safe (bytes in, bytes out) and re-resolves the handle for the
+// sealed secret, so custody stays keeper-side; a resolve failure leaves the body
+// untouched. The front applies the non-secret textual/size/streaming gate before
+// calling. Returns the scrubbed body and the occurrence count.
+//
+// Scope: it scrubs the secret in the form it actually rides the wire for the
+// header-injecting modes (the raw token of a Bearer/X-Api-Key/X-Goog-Api-Key
+// value, and — for ModeBasic — the token half of "user:token"). The base64
+// wrapping of a reflected Basic Authorization header is out of scope: ModeBasic
+// is git, whose upstreams do not reflect and return binary packfiles.
+//
+// A resolve failure fails CLOSED (returns an error, so the front drops the
+// response) rather than forwarding an unscrubbed body: unlike RedactBody's
+// resolve-fail — which forwards the pod's own OUTBOUND request (no disclosure) —
+// a RedactResponse resolve-fail would disclose the injected secret TO the pod,
+// and the window (a handle revoked/expired between InjectAuth and the response)
+// spans the whole upstream round-trip. This is the same "can't verify the body
+// is secret-free" condition as a dead two-process keeper, and both fail closed.
+func (k *localKeeper) RedactResponse(handle string, body []byte) (scrubbed []byte, hits int, err error) {
+	_, cred, rerr := k.handles.Resolve(handle)
+	if rerr != nil {
+		return nil, 0, fmt.Errorf("redact-response: resolve handle: %w", rerr)
+	}
+	out, n := scrubExact(body, managedSecrets(cred))
+	return out, n, nil
+}
+
+// managedSecrets returns the broker-managed secret string(s) to scrub for cred:
+// the injected secret, plus — for ModeBasic ("user:token") — the token half on
+// its own, since a body may echo just the token. Shared by outbound request
+// egress redaction (RedactBody) and response reflection scrubbing
+// (RedactResponse) so both target the identical secret set.
+func managedSecrets(cred Credential) []string {
+	managed := []string{cred.Secret}
+	if _, tok, ok := strings.Cut(cred.Secret, ":"); ok {
+		managed = append(managed, tok)
+	}
+	return managed
 }
 
 // FlagReauth resolves handle → WriteBackKey and marks the connection as needing
