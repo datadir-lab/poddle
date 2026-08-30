@@ -288,7 +288,17 @@ func (s *Store) Subscribe() (<-chan Event, func()) {
 }
 
 // Verify walks the hash chain from the start. It returns ok=false and the seq of
-// the first row whose content or link no longer matches its stored hash.
+// the first row whose content or link no longer matches its stored hash — so it
+// catches any content edit, reorder, or INTERIOR deletion (a removed middle row
+// breaks the next row's PrevHash), and prefix truncation (the first row's
+// PrevHash must be ""). Two tamperings are inherent to a local, UNKEYED hash
+// chain and Verify cannot catch them: TAIL truncation (dropping the newest rows
+// leaves a prefix that still chains cleanly, and loadTail simply resumes from the
+// new tail) and a writer with direct DB access RE-CHAINING the whole log (the
+// hash is a plain digest, not a signature). Detecting those requires an external
+// anchor of the head across a trust boundary (a co-signing witness / WORM sink) —
+// so this is tamper-EVIDENT against corruption and partial tampering, not
+// tamper-PROOF against a compromised writer.
 func (s *Store) Verify() (ok bool, brokenAt int64, err error) {
 	rows, err := s.db.Query(
 		`SELECT seq,ts,source,pod,identity,kind,upstream,method,path,status,decision,detail,prev_hash,hash FROM events ORDER BY seq ASC`)

@@ -20,9 +20,13 @@ That means one process is the concentration point for the whole host:
 - **One vault, all secrets.** Every pod's real credentials live in one process's
   memory. A full compromise of that process exposes every pod's secrets, not just
   the attacker's own pod.
-- **One audit chain.** A single hash-chained log records all pods' activity. If
-  the writer is compromised it could withhold new events (past events stay
-  tamper-evident; the chain still detects deletion/alteration).
+- **One audit chain.** A single hash-chained log records all pods' activity. A
+  compromised writer can withhold new events, and — with direct DB access — could
+  truncate the tail or re-chain the whole log: the local chain is unkeyed, so it
+  is tamper-evident against corruption and interior edits/deletes, not against a
+  writer that rewrites it. An external anchor of the head (a co-signing witness /
+  WORM sink, an Enterprise capability) is what makes writer tampering detectable
+  across trust domains.
 - **One point of failure.** If the broker crashes or wedges, every pod on the
   host loses brokered egress at once (fail-closed: they lose access, they do not
   fall through to direct egress).
