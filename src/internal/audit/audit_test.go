@@ -95,6 +95,86 @@ func TestStore_VerifyDetectsTampering(t *testing.T) {
 	}
 }
 
+// TestStore_VerifyDetectsInteriorDeletion: removing a middle row breaks the next
+// row's prev_hash link, so Verify catches it (surfacing at the row after the gap).
+func TestStore_VerifyDetectsInteriorDeletion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := s.Append(NewEvent(Event{Pod: "p", Kind: KindRequest})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = s.Close()
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("DELETE FROM events WHERE seq = 2"); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	ok, at, err := s2.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok || at != 3 { // row 3's prev_hash points at the now-missing row 2
+		t.Errorf("verify should catch an interior deletion at seq 3; ok=%v at=%d", ok, at)
+	}
+}
+
+// TestStore_VerifyMissesTailTruncation pins a KNOWN, documented limitation of the
+// local unkeyed hash chain: dropping the newest rows leaves a prefix that still
+// chains cleanly from "", so Verify cannot detect it — detecting tail truncation
+// needs an external anchor of the head (see the Verify godoc). If this test ever
+// starts FAILING, the chain gained truncation resistance: update the godoc and the
+// design docs to match, don't just "fix" the test.
+func TestStore_VerifyMissesTailTruncation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := s.Append(NewEvent(Event{Pod: "p", Kind: KindRequest})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = s.Close()
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("DELETE FROM events WHERE seq = 3"); err != nil { // drop the tail
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	ok, at, err := s2.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Errorf("tail truncation is undetectable by the local chain (needs an external anchor); Verify unexpectedly failed at %d", at)
+	}
+}
+
 func TestStore_QueryFilters(t *testing.T) {
 	s := openTmp(t)
 	must := func(e Event) {

@@ -75,8 +75,17 @@ a rarely-needed opt-in, not the foundation.
   query-strings. Log *that* a secret was redacted (rule + count), never the
   secret. This is enforced at the event-construction layer, not left to callers.
 - **Tamper-evident.** Each row carries `prev_hash` + `hash` = SHA-256 over the
-  canonical event + prev_hash. A verifier walks the chain; any edit/delete breaks
-  it.
+  canonical event + prev_hash. A verifier walks the chain; any edit, reorder, or
+  interior deletion breaks it (a removed middle row breaks the next row's
+  `prev_hash`; a removed prefix breaks the first row's empty `prev_hash`). Two
+  tamperings are inherent to a *local, unkeyed* chain and are **not** caught by
+  `Verify` alone — **tail truncation** (dropping the newest rows leaves a prefix
+  that still chains cleanly) and a writer with direct DB access **re-chaining**
+  the whole log (the hash is a digest, not a signature). Both need an external
+  anchor of the head across a trust boundary — a co-signing witness / WORM sink,
+  the Enterprise capability noted above — so the local chain is tamper-*evident*
+  against corruption/partial tampering, not tamper-*proof* against a compromised
+  writer.
 
 ## Event model
 
