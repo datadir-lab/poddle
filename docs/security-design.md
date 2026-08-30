@@ -43,6 +43,13 @@ e2e-*`; see [TESTING.md](../TESTING.md)).
   credential (a debug/echo route, a verbose error, an MCP tool mirroring input)
   cannot bounce it into the pod. Every brokered request is recorded in a
   tamper-evident audit log.
+- **Cloud-metadata SSRF floor.** The egress forward proxy refuses any connection
+  whose *resolved* address is cloud instance-metadata / link-local (IMDS
+  `169.254.169.254`, `169.254.0.0/16`, `fe80::/10`, AWS IPv6 `fd00:ec2::254`) —
+  at dial time (defeating a hostname or rebinding record aimed at the metadata
+  IP) and regardless of policy, so untrusted pod code can't reach IMDS to steal
+  instance credentials even under an allow-all pod (`src/internal/broker/forward.go`;
+  opt out with `PODDLE_ALLOW_LINK_LOCAL=1`).
 - **Revocation.** `poddle down` revokes a pod's handles; access dies immediately
   because the broker stops honoring them.
 - **Privilege separation (opt-in).** The broker's container is already hardened
