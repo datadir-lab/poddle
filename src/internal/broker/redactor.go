@@ -41,16 +41,7 @@ func (r *Redactor) Scan(body []byte, managed ...string) (out []byte, hits int, b
 	if r == nil || r.mode == "off" || len(body) == 0 {
 		return body, 0, false
 	}
-	out = body
-	for _, s := range managed {
-		if s == "" {
-			continue
-		}
-		if c := bytes.Count(out, []byte(s)); c > 0 {
-			hits += c
-			out = bytes.ReplaceAll(out, []byte(s), []byte(RedactPlaceholder))
-		}
-	}
+	out, hits = scrubExact(body, managed)
 	for _, re := range r.patterns {
 		if !re.Match(out) {
 			continue
@@ -64,4 +55,23 @@ func (r *Redactor) Scan(body []byte, managed ...string) (out []byte, hits int, b
 		return body, hits, true
 	}
 	return out, hits, false
+}
+
+// scrubExact replaces every exact occurrence of each secret in body with
+// RedactPlaceholder, returning the result and the total number of occurrences
+// replaced. Empty secrets are skipped. It is the zero-false-positive core shared
+// by outbound request redaction (Redactor.Scan, alongside its pattern set) and
+// response reflection scrubbing (localKeeper.RedactResponse, exact-match only).
+func scrubExact(body []byte, secrets []string) (out []byte, hits int) {
+	out = body
+	for _, s := range secrets {
+		if s == "" {
+			continue
+		}
+		if c := bytes.Count(out, []byte(s)); c > 0 {
+			hits += c
+			out = bytes.ReplaceAll(out, []byte(s), []byte(RedactPlaceholder))
+		}
+	}
+	return out, hits
 }

@@ -80,6 +80,7 @@ const (
 	mInjectAuth       = "inject"
 	mForceReinject    = "forcereinject"
 	mRedactBody       = "redact"
+	mRedactResponse   = "redactresp"
 	mSCRAMProof       = "scram"
 	mNeedsReauth      = "needsreauth"
 	mClearReauth      = "clearreauth"
@@ -117,6 +118,15 @@ type redactReq struct {
 type redactResp struct {
 	Scrubbed []byte
 	Blocked  bool
+	Hits     int
+}
+
+type redactResponseReq struct {
+	Handle string
+	Body   []byte
+}
+type redactResponseResp struct {
+	Scrubbed []byte
 	Hits     int
 }
 
@@ -347,6 +357,21 @@ func (c *socketKeeperClient) RedactBody(handle string, body []byte) ([]byte, boo
 		return body, true, 0
 	}
 	return r.Scrubbed, r.Blocked, r.Hits
+}
+
+func (c *socketKeeperClient) RedactResponse(handle string, body []byte) ([]byte, int, error) {
+	respBody, err := c.callBG(mRedactResponse, redactResponseReq{Handle: handle, Body: body})
+	if err != nil {
+		// Fail CLOSED: a dead keeper means the response could not be scrubbed, so
+		// the front must NOT forward a possibly-secret-bearing body. Return the
+		// error; the gateway drops the response (502) rather than leak.
+		return nil, 0, fmt.Errorf("keeper RedactResponse failed: %w", err)
+	}
+	var r redactResponseResp
+	if err := gobDecode(respBody, &r); err != nil {
+		return nil, 0, fmt.Errorf("keeper RedactResponse decode failed: %w", err)
+	}
+	return r.Scrubbed, r.Hits, nil
 }
 
 func (c *socketKeeperClient) SCRAMProof(handle string, salt []byte, iter int, authMessage string) ([]byte, error) {
@@ -580,6 +605,16 @@ func dispatchKeeper(k Custody, req rpcRequest) ([]byte, error) {
 		}
 		scrubbed, blocked, hits := k.RedactBody(a.Handle, a.Body)
 		return gobEncode(redactResp{Scrubbed: scrubbed, Blocked: blocked, Hits: hits})
+	case mRedactResponse:
+		var a redactResponseReq
+		if err := gobDecode(req.Body, &a); err != nil {
+			return nil, err
+		}
+		scrubbed, hits, err := k.RedactResponse(a.Handle, a.Body)
+		if err != nil {
+			return nil, err
+		}
+		return gobEncode(redactResponseResp{Scrubbed: scrubbed, Hits: hits})
 	case mSCRAMProof:
 		var a scramReq
 		if err := gobDecode(req.Body, &a); err != nil {
