@@ -288,11 +288,14 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// scrub buffers only COMPLETE textual bodies; SSE, chunked streams, binary, and
 	// oversized responses pass through untouched (see scrubResponse).
 	retried := false
+	reflected := 0 // injected-secret occurrences scrubbed from a reflecting response
 	proxy.ModifyResponse = func(res *http.Response) error {
 		if pub.Mode == ModeOAuthBearer {
 			g.oauthReactiveRetry(res, r, handle, credID, fp, bodyBytes, &retried)
 		}
-		return g.scrubResponse(handle, res)
+		n, err := g.scrubResponse(handle, res)
+		reflected = n // set synchronously by the reverse proxy before ServeHTTP returns
+		return err
 	}
 	sc := &statusCapture{ResponseWriter: w, code: http.StatusOK}
 	proxy.ServeHTTP(sc, r)
@@ -303,6 +306,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if monitored != "" { // monitor mode: this would have been denied under enforcement
 		decision, detail = "monitor", "would deny: "+monitored
+	}
+	if reflected > 0 {
+		// The upstream echoed the injected secret back and the broker scrubbed it —
+		// a misconfiguration or exfiltration probe. Surface it above the routine
+		// redact/monitor cases; it never reached the pod, but operators should see it.
+		decision, detail = "reflect", fmt.Sprintf("scrubbed %d reflected secret(s) from response", reflected)
 	}
 	g.audit(handle, up.Host, method, path, decision, detail, sc.code)
 }
@@ -404,20 +413,24 @@ func (g *Gateway) oauthReactiveRetry(res *http.Response, orig *http.Request, han
 // of a reflected ModeBasic Authorization (git upstreams don't reflect). Closing
 // the chunked/streaming and header vectors needs a per-flush streaming scanner +
 // header scrub (tracked follow-up).
-func (g *Gateway) scrubResponse(handle string, res *http.Response) error {
+// It returns the number of injected-secret occurrences it scrubbed from the
+// response (0 for a forwarded-unscanned or clean body) so the caller can audit a
+// reflection — a nonzero count means the configured upstream echoed the injected
+// credential back, a misconfiguration or an exfiltration probe worth surfacing.
+func (g *Gateway) scrubResponse(handle string, res *http.Response) (hits int, err error) {
 	if res.Body == nil {
-		return nil
+		return 0, nil
 	}
 	// A HEAD response carries no body to reflect a secret in — and its
 	// Content-Encoding/Content-Length describe the would-be GET entity, so scanning
 	// it would needlessly fail closed on a gzip-advertising HEAD. Skip it (body-only
 	// scrub; header reflection is the documented I-3 residual either way).
 	if res.Request != nil && res.Request.Method == http.MethodHead {
-		return nil
+		return 0, nil
 	}
 	ct := res.Header.Get("Content-Type")
 	if !isTextual(ct) || isEventStream(ct) {
-		return nil // binary / SSE / empty-CT — forward unscanned (never buffer a stream)
+		return 0, nil // binary / SSE / empty-CT — forward unscanned (never buffer a stream)
 	}
 	// Scan only a COMPLETE body: one with a bounded declared length, or one the
 	// transport decompressed (res.Uncompressed — a gzip body is a complete unit,
@@ -428,43 +441,43 @@ func (g *Gateway) scrubResponse(handle string, res *http.Response) error {
 	// length over the cap is likewise forwarded unscanned.
 	bounded := res.ContentLength >= 0 && res.ContentLength <= maxScanBytes
 	if !bounded && !res.Uncompressed {
-		return nil
+		return 0, nil
 	}
 	if ce := res.Header.Get("Content-Encoding"); ce != "" && !strings.EqualFold(ce, "identity") {
-		return fmt.Errorf("scrubResponse: unscannable Content-Encoding %q", ce) // fail closed
+		return 0, fmt.Errorf("scrubResponse: unscannable Content-Encoding %q", ce) // fail closed
 	}
 	orig := res.Body
 	// Read bounded (a decompressed body has ContentLength == -1, so don't trust it,
 	// and a declared length can lie); +1 over the cap detects an oversized body.
-	buf, err := io.ReadAll(io.LimitReader(orig, maxScanBytes+1))
-	if err != nil {
+	buf, rerr := io.ReadAll(io.LimitReader(orig, maxScanBytes+1))
+	if rerr != nil {
 		_ = orig.Close()
-		res.Body = http.NoBody                                 // orig closed; avoid a (benign) double close
-		return fmt.Errorf("scrubResponse: read body: %w", err) // fail CLOSED: a truncated body is unverified
+		res.Body = http.NoBody                                     // orig closed; avoid a (benign) double close
+		return 0, fmt.Errorf("scrubResponse: read body: %w", rerr) // fail CLOSED: a truncated body is unverified
 	}
 	if len(buf) == 0 {
 		_ = orig.Close()
 		res.Body = io.NopCloser(bytes.NewReader(nil)) // HEAD/204/304/empty — nothing to scan, don't touch Content-Length
-		return nil
+		return 0, nil
 	}
 	if int64(len(buf)) > maxScanBytes {
 		// Oversized body (a decompressed body larger than the cap, or a lying
 		// Content-Length): forward unscanned, stitching the bytes we already read
 		// back ahead of the unread remainder.
 		res.Body = bodyReadCloser{io.MultiReader(bytes.NewReader(buf), orig), orig}
-		return nil
+		return 0, nil
 	}
 	_ = orig.Close()
-	scrubbed, _, rerr := g.keeper.RedactResponse(handle, buf)
-	if rerr != nil {
+	scrubbed, n, kerr := g.keeper.RedactResponse(handle, buf)
+	if kerr != nil {
 		res.Body = http.NoBody // orig closed; avoid a (benign) double close
-		return rerr            // fail closed
+		return 0, kerr         // fail closed
 	}
 	res.Body = io.NopCloser(bytes.NewReader(scrubbed))
 	res.ContentLength = int64(len(scrubbed)) // == len(buf) when nothing was scrubbed
 	res.Header.Set("Content-Length", strconv.Itoa(len(scrubbed)))
 	res.Header.Del("Content-Encoding") // body is now plaintext identity
-	return nil
+	return n, nil
 }
 
 // bodyReadCloser pairs a Reader (a MultiReader stitching already-read bytes ahead
