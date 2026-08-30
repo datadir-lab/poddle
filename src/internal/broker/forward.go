@@ -5,11 +5,15 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // ForwardProxy is the broker's egress forward proxy for a pod's ARBITRARY
@@ -28,7 +32,9 @@ type ForwardProxy struct {
 	policy       PolicyChecker     // reused: Check(token, host, method); daemon maps token -> pod -> policy
 	auditor      Auditor           // reused: one record per egress attempt
 	leaves       LeafSource        // nil = interception unavailable (always tunnel opaquely)
+	dialer       *net.Dialer       // SSRF-guarded dialer (refuses cloud-metadata/link-local); used by tunnel + both transports
 	tr           http.RoundTripper // re-originates intercepted requests; system roots, no proxy-env
+	fwdTr        http.RoundTripper // plain-HTTP forward path; DefaultTransport clone + the SSRF dial guard
 	loopbackHost string            // if set, a loopback destination is dialed here (the host); see RewriteLoopbackHost
 }
 
@@ -41,9 +47,74 @@ func NewForwardProxy(pc PolicyChecker, a Auditor) *ForwardProxy {
 	// line is invalid over HTTP/1.1 and it carries no HTTP/1 body framing, which
 	// hangs the pod's client. Pinning ALPN to http/1.1 keeps the relay 1.1 end to
 	// end. RootCAs stays nil (system roots) so upstream verification is unchanged.
-	return &ForwardProxy{policy: pc, auditor: a, tr: &http.Transport{
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: egressDialControl(linkLocalEgressAllowed())}
+	// Plain-HTTP forward path: keep DefaultTransport's connection settings (idle
+	// conns, per-op timeouts) but route the dial through the SSRF guard (IMDS is
+	// plain HTTP — the primary metadata-exfil vector) and clear Proxy, so an
+	// HTTP(S)_PROXY in the broker's env can't chain the request onward past the
+	// guard (matching tr below, which also omits Proxy).
+	fwdTr := http.DefaultTransport.(*http.Transport).Clone()
+	fwdTr.DialContext = dialer.DialContext
+	fwdTr.Proxy = nil
+	return &ForwardProxy{policy: pc, auditor: a, dialer: dialer, fwdTr: fwdTr, tr: &http.Transport{
+		DialContext:     dialer.DialContext,
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}},
 	}}
+}
+
+// awsIPv6IMDS is AWS's IPv6 instance-metadata address (a ULA, so
+// IsLinkLocalUnicast does not catch it); denied explicitly alongside link-local.
+var awsIPv6IMDS = net.ParseIP("fd00:ec2::254")
+
+// errBlockedEgress is returned (wrapped) by the dial guard when a connection
+// targets the SSRF deny-floor, so a proxy path can audit it as a deny rather than
+// a generic upstream error.
+var errBlockedEgress = errors.New("egress refused: cloud-metadata/link-local blocked")
+
+// blockedEgressIP reports whether ip is on the SSRF deny-floor: cloud-metadata /
+// link-local addresses (IMDS 169.254.169.254, all of 169.254.0.0/16, fe80::/10,
+// and AWS's fd00:ec2::254) that a hostile pod could target to steal instance
+// credentials. Loopback and private (RFC1918) ranges are intentionally NOT here —
+// loopback datastores and internal services are legitimate, policy-governed
+// destinations, so blocking them would break supported features.
+func blockedEgressIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.Equal(awsIPv6IMDS)
+}
+
+// egressDialControl is a net.Dialer.Control hook that refuses a connection whose
+// RESOLVED address is on the deny-floor. Control runs after DNS resolution, just
+// before connect, on the ACTUAL target address — so it defeats a hostile pod that
+// points a hostname (or a rebinding DNS record) at the metadata IP, which the
+// name-based policy never sees. It is enforced regardless of policy. Returns nil
+// (allow everything) when the floor is disabled via PODDLE_ALLOW_LINK_LOCAL.
+func egressDialControl(allowLinkLocal bool) func(network, address string, c syscall.RawConn) error {
+	if allowLinkLocal {
+		return nil
+	}
+	return func(_, address string, _ syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			host = address
+		}
+		if blockedEgressIP(net.ParseIP(host)) {
+			return fmt.Errorf("poddle: egress to %s: %w (set PODDLE_ALLOW_LINK_LOCAL=1 to allow)", host, errBlockedEgress)
+		}
+		return nil
+	}
+}
+
+// linkLocalEgressAllowed reports whether the operator opted out of the SSRF
+// deny-floor via PODDLE_ALLOW_LINK_LOCAL (a deliberate escape hatch for a pod
+// that genuinely needs cloud-metadata / link-local egress).
+func linkLocalEgressAllowed() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("PODDLE_ALLOW_LINK_LOCAL"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
 }
 
 // SetLeafSource enables TLS interception for pods whose policy opts in, using ls
@@ -135,8 +206,13 @@ func decOrMonitor(monitored, decision, detail string) (string, string) {
 // tunnel handles CONNECT: dial the target and splice the two connections, so TLS
 // stays end-to-end (the proxy never sees the plaintext).
 func (f *ForwardProxy) tunnel(w http.ResponseWriter, r *http.Request, token, host, monitored string) {
-	dst, err := net.Dial("tcp", f.dialTarget(r.Host))
+	dst, err := f.dialer.Dial("tcp", f.dialTarget(r.Host))
 	if err != nil {
+		if errors.Is(err, errBlockedEgress) {
+			http.Error(w, "poddle: egress blocked — cloud-metadata/link-local", http.StatusForbidden)
+			f.emit(token, host, r.Method, "deny", "egress blocked: cloud-metadata/link-local", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		f.emit(token, host, r.Method, "allow", "upstream unreachable", http.StatusBadGateway)
 		return
@@ -177,8 +253,13 @@ func (f *ForwardProxy) forward(w http.ResponseWriter, r *http.Request, token, ho
 			out.Header.Add(k, v)
 		}
 	}
-	resp, err := http.DefaultTransport.RoundTrip(out)
+	resp, err := f.fwdTr.RoundTrip(out)
 	if err != nil {
+		if errors.Is(err, errBlockedEgress) {
+			http.Error(w, "poddle: egress blocked — cloud-metadata/link-local", http.StatusForbidden)
+			f.emit(token, host, r.Method, "deny", "egress blocked: cloud-metadata/link-local", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		f.emit(token, host, r.Method, "allow", "upstream error", http.StatusBadGateway)
 		return
@@ -293,6 +374,12 @@ func (f *ForwardProxy) intercept(w http.ResponseWriter, r *http.Request, token, 
 		out.Host = host
 		resp, err := upstream.Do(out)
 		if err != nil {
+			if errors.Is(err, errBlockedEgress) {
+				drain(req.Body) // dial failed before the body was sent — reposition the keep-alive stream
+				writeStatus(tconn, req, http.StatusForbidden, "poddle: egress blocked — cloud-metadata/link-local")
+				f.emit(token, host, req.Method, "deny", "egress blocked: cloud-metadata/link-local", http.StatusForbidden)
+				continue
+			}
 			writeStatus(tconn, req, http.StatusBadGateway, "bad gateway")
 			f.emit(token, host, req.Method, decision, "upstream error", http.StatusBadGateway)
 			continue

@@ -7,11 +7,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -320,6 +322,78 @@ func dialIntercepted(t *testing.T, proxyAddr string, ca *tlsca.Authority, token 
 // recAuditor records every egress decision the proxy emits. Proxy is called from
 // the proxy's handler goroutine while the test reads the records, so access is
 // mutex-guarded (the -race build flags an unsynchronised slice otherwise).
+// TestBlockedEgressIP pins the SSRF deny-floor: cloud-metadata + link-local are
+// blocked; public, RFC1918 (legitimate internal), and loopback (datastores) are not.
+func TestBlockedEgressIP(t *testing.T) {
+	cases := []struct {
+		ip    string
+		block bool
+	}{
+		{"169.254.169.254", true}, // cloud IMDS
+		{"169.254.0.1", true},     // link-local /16
+		{"fe80::1", true},         // IPv6 link-local
+		{"fd00:ec2::254", true},   // AWS IPv6 IMDS
+		{"8.8.8.8", false},        // public
+		{"10.0.0.5", false},       // RFC1918 — legitimate internal, not floored
+		{"192.168.1.1", false},    // RFC1918
+		{"127.0.0.1", false},      // loopback — legitimate (datastores), not floored
+		{"::1", false},            // IPv6 loopback
+	}
+	for _, c := range cases {
+		if got := blockedEgressIP(net.ParseIP(c.ip)); got != c.block {
+			t.Errorf("blockedEgressIP(%s) = %v, want %v", c.ip, got, c.block)
+		}
+	}
+	if blockedEgressIP(nil) {
+		t.Error("blockedEgressIP(nil) = true, want false")
+	}
+}
+
+// TestEgressDialControl covers the dial-guard hook and its escape hatch.
+func TestEgressDialControl(t *testing.T) {
+	ctrl := egressDialControl(false) // floor enabled
+	if ctrl == nil {
+		t.Fatal("egressDialControl(false) returned nil, want a guard func")
+	}
+	if err := ctrl("tcp", "169.254.169.254:80", nil); err == nil || !errors.Is(err, errBlockedEgress) {
+		t.Errorf("Control(169.254.169.254:80) = %v, want errBlockedEgress", err)
+	}
+	if err := ctrl("tcp", "8.8.8.8:443", nil); err != nil {
+		t.Errorf("Control(8.8.8.8:443) = %v, want nil (public host allowed)", err)
+	}
+	if egressDialControl(true) != nil { // PODDLE_ALLOW_LINK_LOCAL escape hatch
+		t.Error("egressDialControl(true) should return nil (floor disabled)")
+	}
+}
+
+// TestForwardProxy_BlocksMetadataEgress proves the floor holds end-to-end through
+// the plain-HTTP forward path (the primary IMDS vector) REGARDLESS of policy: the
+// allowAll policy would permit it, but the dial guard refuses it with a 403 and a
+// "deny" audit record — and no connection to the metadata IP is ever made.
+func TestForwardProxy_BlocksMetadataEgress(t *testing.T) {
+	aud := &recAuditor{}
+	srv := httptest.NewServer(NewForwardProxy(allowAll{}, aud))
+	t.Cleanup(srv.Close)
+	proxyURL, _ := url.Parse(srv.URL)
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+
+	resp, err := client.Get("http://169.254.169.254/latest/meta-data/iam/security-credentials/")
+	if err != nil {
+		t.Fatalf("request through proxy: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 (egress to IMDS blocked)", resp.StatusCode)
+	}
+	recs := aud.all()
+	if len(recs) != 1 || recs[0].Decision != "deny" {
+		t.Fatalf("audit = %+v, want one record with Decision=deny", recs)
+	}
+	if !strings.Contains(recs[0].Detail, "cloud-metadata") {
+		t.Errorf("audit detail = %q, want it to mention cloud-metadata", recs[0].Detail)
+	}
+}
+
 type recAuditor struct {
 	mu      sync.Mutex
 	records []ProxyRecord

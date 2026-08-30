@@ -31,6 +31,18 @@ heading with their advisory IDs, per [SECURITY.md](./SECURITY.md).
 
 ### Security
 
+- **Cloud-metadata SSRF floor.** The egress forward proxy now refuses any
+  connection whose resolved address is cloud instance-metadata / link-local
+  (IMDS `169.254.169.254`, `169.254.0.0/16`, `fe80::/10`, AWS's IPv6
+  `fd00:ec2::254`) — enforced at dial time (so a hostname or DNS-rebinding record
+  pointing at the metadata IP is caught) and **regardless of policy**, so a pod
+  running untrusted code can't reach IMDS to steal instance credentials even under
+  an allow-all (policy-less) pod. Loopback and private (RFC1918) ranges stay
+  reachable (datastores, internal services). Opt out with `PODDLE_ALLOW_LINK_LOCAL=1`.
+- **Egress-policy host canonicalization.** Host allow/deny/intercept/method rules
+  now fold case and a trailing dot (as DNS does), so a variant like
+  `EVIL.github.com` or `blocked.com.` can no longer slip past a deny carve-out or
+  method rule while resolving to the real host.
 - **Response reflection scrub.** The egress redactor scrubbed only outbound
   request bodies; the broker now also scrubs its injected secret out of a
   reflecting upstream's *response*, so a configured upstream that echoes the
