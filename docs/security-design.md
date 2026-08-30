@@ -38,8 +38,11 @@ e2e-*`; see [TESTING.md](../TESTING.md)).
 - **Defense in depth on egress.** The gateway redacts the broker's managed
   secrets plus high-confidence secret shapes (private keys, `AKIA…`, `ghp_…`)
   from outbound bodies, and can block on detection (`egress = redact | block |
-  off`, `src/internal/broker/redactor.go`). Every brokered request is recorded in
-  a tamper-evident audit log.
+  off`, `src/internal/broker/redactor.go`). It also scrubs the injected secret
+  back out of a reflecting upstream's *response*, so an upstream that echoes the
+  credential (a debug/echo route, a verbose error, an MCP tool mirroring input)
+  cannot bounce it into the pod. Every brokered request is recorded in a
+  tamper-evident audit log.
 - **Revocation.** `poddle down` revokes a pod's handles; access dies immediately
   because the broker stops honoring them.
 - **Privilege separation (opt-in).** The broker's container is already hardened
