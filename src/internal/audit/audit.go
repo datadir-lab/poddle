@@ -50,6 +50,7 @@ const (
 	DecisionBlock   Decision = "block"
 	DecisionDeny    Decision = "deny"
 	DecisionMonitor Decision = "monitor" // would have been denied, but the policy is in monitor mode — allowed and logged
+	DecisionReflect Decision = "reflect" // the upstream echoed the broker's injected secret back; it was scrubbed from the response before the pod saw it
 )
 
 // Event is one audit record. Seq/Time/PrevHash/Hash are assigned by Append; the

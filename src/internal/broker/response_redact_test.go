@@ -78,6 +78,41 @@ func TestGateway_ScrubsReflectedSecretInResponse_Subscription(t *testing.T) {
 	}
 }
 
+// TestGateway_AuditsReflectedSecret proves a scrubbed reflection is surfaced to
+// the auditor (Decision "reflect", secret-free detail): a configured upstream
+// echoing the injected credential is a misconfiguration/exfil signal operators
+// must be able to see, not a silent scrub.
+func TestGateway_AuditsReflectedSecret(t *testing.T) {
+	up := upstreamReflecting(t)
+	const secret = "sk-REALSECRET-reflected-audit"
+	g, handle := gatewayWith(t, Credential{Mode: ModeSubscription, Secret: secret, BaseURL: up.URL})
+	aud := &recAuditor{}
+	g.SetAuditor(aud)
+	gw := serve(t, g)
+
+	code, body := readBody(t, gw, handle, http.MethodPost, "/echo")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", code)
+	}
+	if strings.Contains(body, secret) {
+		t.Fatalf("secret leaked to the pod: %q", body)
+	}
+	recs := aud.all()
+	if len(recs) != 1 {
+		t.Fatalf("want exactly one audit record, got %d: %+v", len(recs), recs)
+	}
+	rec := recs[0]
+	if rec.Decision != "reflect" {
+		t.Errorf("audit Decision = %q, want %q", rec.Decision, "reflect")
+	}
+	if !strings.Contains(rec.Detail, "reflected") {
+		t.Errorf("audit Detail = %q, want it to mention a reflected secret", rec.Detail)
+	}
+	if strings.Contains(rec.Detail, secret) {
+		t.Errorf("audit Detail leaked the secret: %q", rec.Detail)
+	}
+}
+
 func TestGateway_ScrubsReflectedSecretInResponse_APIKey(t *testing.T) {
 	up := upstreamReflecting(t)
 	const secret = "apikey-REALSECRET-must-not-return"
