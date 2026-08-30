@@ -69,27 +69,56 @@ func (p *Policy) InterceptsHost(host string) bool {
 	return p.Intercept
 }
 
+// canonicalHost folds a hostname to the form DNS and net.Dial resolve it as, so a
+// policy comparison can't be evaded by a variant the dial treats as identical:
+// lowercase, with any trailing dot(s) (the FQDN root) stripped. It is applied to
+// BOTH the request host and every stored pattern before comparison — otherwise a
+// hostile pod that CONNECTs to "EVIL.github.com" or "blocked.com." would be
+// matched byte-exact against "evil.github.com"/"blocked.com" (no match) while the
+// dial still reaches the real host, escaping deny carve-outs, intercept_hosts
+// selection, and per-host method rules.
+func canonicalHost(h string) string {
+	return strings.TrimRight(strings.ToLower(h), ".")
+}
+
 // methodsFor returns the allowed methods for host (exact key, then a ".suffix"
 // key, then a "*" catch-all — most specific first), and whether a rule applies.
+// Host and keys are compared canonically (see canonicalHost); exact still wins
+// over suffix regardless of Go's random map-iteration order.
 func (p *Policy) methodsFor(host string) ([]string, bool) {
-	if m, ok := p.Methods[host]; ok {
-		return m, true
-	}
+	host = canonicalHost(host)
+	var suffix, star []string
+	var suffixOK, starOK bool
 	for k, m := range p.Methods {
-		if strings.HasPrefix(k, ".") && (strings.HasSuffix(host, k) || host == k[1:]) {
-			return m, true
+		if k == "*" {
+			star, starOK = m, true
+			continue
+		}
+		ck := canonicalHost(k)
+		if ck == host {
+			return m, true // exact (canonical) match — highest precedence
+		}
+		if !suffixOK && strings.HasPrefix(ck, ".") && (strings.HasSuffix(host, ck) || host == ck[1:]) {
+			suffix, suffixOK = m, true // first suffix hit wins (mirrors the prior first-match loop)
 		}
 	}
-	if m, ok := p.Methods["*"]; ok { // catch-all: any host without a more specific rule
-		return m, true
+	if suffixOK {
+		return suffix, true
+	}
+	if starOK {
+		return star, true // catch-all: any host without a more specific rule
 	}
 	return nil, false
 }
 
 // matchHost reports whether host matches any pattern: exact, or a ".suffix"
-// pattern matching that domain and any subdomain.
+// pattern matching that domain and any subdomain. Host and patterns are compared
+// canonically (see canonicalHost) so a casing/trailing-dot variant can't slip
+// past a deny/allow/intercept rule.
 func matchHost(host string, patterns []string) bool {
+	host = canonicalHost(host)
 	for _, p := range patterns {
+		p = canonicalHost(p)
 		if p == host {
 			return true
 		}

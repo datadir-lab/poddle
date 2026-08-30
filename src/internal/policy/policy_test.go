@@ -31,6 +31,53 @@ func TestPolicy_Decide(t *testing.T) {
 	}
 }
 
+// TestPolicy_HostCanonicalization is the regression guard for the egress-policy
+// audit: host matching must fold case and a trailing dot the way DNS/net.Dial do,
+// so a variant that reaches the same host cannot slip past a deny carve-out, a
+// deny-only rule, intercept selection, or a per-host method rule.
+func TestPolicy_HostCanonicalization(t *testing.T) {
+	// Deny carve-out inside an allowed scope: cased/dotted variants of the denied
+	// host stay denied (they would otherwise match the .github.com allow-list).
+	carve := &Policy{AllowUpstreams: []string{".github.com"}, DenyUpstreams: []string{"evil.github.com"}}
+	for _, host := range []string{"EVIL.github.com", "evil.github.com.", "Evil.GitHub.com", "evil.github.com"} {
+		if allow, _ := carve.Decide(host, "GET"); allow {
+			t.Errorf("deny carve-out bypassed: Decide(%q) allowed, want denied", host)
+		}
+	}
+	if allow, _ := carve.Decide("API.github.com", "GET"); !allow {
+		t.Error("Decide(API.github.com) denied, want allowed (a cased allow-listed sibling)")
+	}
+
+	// Deny-only policy (no allow-list): variants of the denied host stay denied.
+	denyOnly := &Policy{DenyUpstreams: []string{"blocked.com"}}
+	for _, host := range []string{"BLOCKED.com", "blocked.com.", "blocked.COM."} {
+		if allow, _ := denyOnly.Decide(host, "GET"); allow {
+			t.Errorf("deny-only bypassed: Decide(%q) allowed, want denied", host)
+		}
+	}
+
+	// Per-host method rule governs a cased host (exact still beats suffix).
+	methP := &Policy{AllowUpstreams: []string{".github.com"}, Methods: map[string][]string{"api.github.com": {"GET"}}}
+	if allow, _ := methP.Decide("API.github.com", "DELETE"); allow {
+		t.Error("per-host method rule bypassed: DELETE to API.github.com allowed, want denied")
+	}
+	if allow, _ := methP.Decide("API.github.com.", "GET"); !allow {
+		t.Error("GET to API.github.com. denied, want allowed")
+	}
+
+	// Intercept selection: a cased host on intercept_hosts is still TLS-terminated
+	// (else it drops to an opaque tunnel where method rules never run).
+	icP := &Policy{InterceptHosts: []string{"api.github.com"}}
+	for _, host := range []string{"API.github.com", "api.github.com.", "api.github.com"} {
+		if !icP.InterceptsHost(host) {
+			t.Errorf("intercept selection bypassed: InterceptsHost(%q) = false, want true", host)
+		}
+	}
+	if icP.InterceptsHost("other.github.com") {
+		t.Error("InterceptsHost(other.github.com) = true, want false")
+	}
+}
+
 func TestPolicy_GlobalMethodRule(t *testing.T) {
 	// A "*" catch-all restricts methods on every host; a specific host rule wins.
 	p := &Policy{
