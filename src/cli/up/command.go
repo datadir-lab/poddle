@@ -102,6 +102,8 @@ var ensureHostAutoscaler = poddled.EnsureHostAutoscaler
 // pass a spy.
 type podBroker interface {
 	EnsureRunning() error
+	// LockBroker serializes broker recycle+claim against a concurrent `up`.
+	LockBroker() (release func(), err error)
 	Gateway() (string, error)
 	RedisAddr() (string, error)
 	PostgresAddr() (string, error)
@@ -379,21 +381,39 @@ func buildSpec(cmd *cobra.Command, a *app.App, b podBroker, bn brokerNet, o buil
 		}
 	}
 	if identityName != "" || len(tpl.Connectors) > 0 || (policyName != "" && a.Policies != nil) {
-		if err := b.EnsureRunning(); err != nil {
-			return fail(fmt.Errorf("start poddled: %w", err))
-		}
-		// Put the shared broker on this pod's internal lock network and learn its
-		// IP there — that IP is the pod's ONLY route out. Fail-closed: any error
-		// aborts the pod rather than leaving its egress unpinned.
-		if _, err := bn.EnsurePodLockNetwork(o.name); err != nil {
-			return fail(fmt.Errorf("lock network: %w", err))
-		}
-		if err := bn.ConnectBrokerToPod("poddle-broker", o.name); err != nil {
-			return fail(fmt.Errorf("connect broker: %w", err))
-		}
-		brokerIP, err := bn.BrokerIPOnPod("poddle-broker", o.name)
+		// Ensuring the broker and CLAIMING it for this pod must be one atomic step:
+		// the broker is a host singleton that EnsureRunning recycles when no pod is
+		// attached, so a concurrent `up` could otherwise recycle it in the gap
+		// before ConnectBrokerToPod, stranding this pod. Held only across these
+		// podman calls and released before the slow pod work below, so parallel
+		// sessions still start concurrently.
+		brokerIP, err := func() (string, error) {
+			unlock, err := b.LockBroker()
+			if err != nil {
+				return "", err
+			}
+			defer unlock()
+
+			if err := b.EnsureRunning(); err != nil {
+				return "", fmt.Errorf("start poddled: %w", err)
+			}
+			// Put the shared broker on this pod's internal lock network and learn its
+			// IP there — that IP is the pod's ONLY route out. Fail-closed: any error
+			// aborts the pod rather than leaving its egress unpinned.
+			if _, err := bn.EnsurePodLockNetwork(o.name); err != nil {
+				return "", fmt.Errorf("lock network: %w", err)
+			}
+			if err := bn.ConnectBrokerToPod("poddle-broker", o.name); err != nil {
+				return "", fmt.Errorf("connect broker: %w", err)
+			}
+			ip, err := bn.BrokerIPOnPod("poddle-broker", o.name)
+			if err != nil {
+				return "", fmt.Errorf("broker peer ip: %w", err)
+			}
+			return ip, nil
+		}()
 		if err != nil {
-			return fail(fmt.Errorf("broker peer ip: %w", err))
+			return fail(err)
 		}
 
 		addr, err := b.Gateway()

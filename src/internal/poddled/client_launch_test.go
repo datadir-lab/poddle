@@ -2,6 +2,8 @@ package poddled
 
 import (
 	"errors"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +18,11 @@ import (
 type fakeLauncher struct {
 	netErr    error
 	brokerErr error
+	// podNetAttached is what BrokerHasPodNetwork reports: true = a pod still
+	// depends on the running broker, so EnsureRunning must leave it alone.
+	podNetAttached  bool
+	podNetErr       error
+	podNetCallCount int
 
 	netCalls    []string
 	brokerCfg   podman.BrokerConfig
@@ -28,6 +35,11 @@ type fakeLauncher struct {
 func (f *fakeLauncher) EnsureEgressNetwork(name string) error {
 	f.netCalls = append(f.netCalls, name)
 	return f.netErr
+}
+
+func (f *fakeLauncher) BrokerHasPodNetwork(string) (bool, error) {
+	f.podNetCallCount++
+	return f.podNetAttached, f.podNetErr
 }
 
 func (f *fakeLauncher) EnsureBroker(cfg podman.BrokerConfig) error {
@@ -172,5 +184,145 @@ func TestResolveBrokerImage(t *testing.T) {
 	t.Setenv("PODDLE_BROKER_IMAGE", "example.com/custom-broker:v1")
 	if got := resolveBrokerImage(); got != "example.com/custom-broker:v1" {
 		t.Errorf("resolveBrokerImage() = %q, want the env override", got)
+	}
+}
+
+// healthyClient returns a Client whose /health answers 200, so EnsureRunning
+// takes the "already running" path. It serves the daemon's control socket the
+// same way production does: an HTTP server on a Unix socket.
+func healthyClient(t *testing.T) *Client {
+	t.Helper()
+	sock := filepath.Join(t.TempDir(), "poddled.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	c := NewClient(sock)
+	if err := c.Health(); err != nil {
+		t.Fatalf("fixture should be healthy: %v", err)
+	}
+	return c
+}
+
+// A healthy control socket does NOT prove the broker can still egress. With no
+// pod attached (idle host) the broker has lost its route out and answers 502 on
+// every request, so EnsureRunning must fall through and recycle it.
+func TestEnsureRunning_RecyclesHealthyButIdleBroker(t *testing.T) {
+	c := healthyClient(t)
+	fl := &fakeLauncher{podNetAttached: false}
+	c.launcher = fl
+
+	// The recycled broker never becomes healthy again through this fake, so the
+	// health-wait deadline is the expected outcome; what matters is that
+	// EnsureBroker was invoked at all.
+	_ = c.EnsureRunning()
+
+	if fl.podNetCallCount == 0 {
+		t.Error("EnsureRunning must check whether a pod still depends on the broker")
+	}
+	if fl.brokerCalls == 0 {
+		t.Error("an idle (no-pod) broker must be recycled via EnsureBroker, not reused")
+	}
+}
+
+// With a pod still attached, the running broker is serving that pod's only route
+// out. Recycling it would cut the live pod off, so the fast path must hold.
+func TestEnsureRunning_LeavesInUseBrokerAlone(t *testing.T) {
+	c := healthyClient(t)
+	fl := &fakeLauncher{podNetAttached: true}
+	c.launcher = fl
+
+	if err := c.EnsureRunning(); err != nil {
+		t.Fatalf("EnsureRunning on a healthy in-use broker: %v", err)
+	}
+	if fl.brokerCalls != 0 {
+		t.Errorf("must not touch a broker a pod depends on (EnsureBroker called %d times)", fl.brokerCalls)
+	}
+}
+
+// If the attachment cannot be determined, keep the running broker: guessing
+// "idle" and recycling could cut a live pod's only route out.
+func TestEnsureRunning_KeepsBrokerWhenAttachmentUnknown(t *testing.T) {
+	c := healthyClient(t)
+	fl := &fakeLauncher{podNetErr: errors.New("inspect failed")}
+	c.launcher = fl
+
+	if err := c.EnsureRunning(); err != nil {
+		t.Fatalf("EnsureRunning must fail safe, got: %v", err)
+	}
+	if fl.brokerCalls != 0 {
+		t.Error("must not recycle the broker when its attachment is unknown")
+	}
+}
+
+// `up` holds the broker lock across the whole claim and calls EnsureRunning
+// inside it, which takes the lock too. flock is per open file description, so a
+// non-reentrant second acquire would block on the first — from the same process,
+// forever. This test deadlocks (and times out) if reentrancy regresses.
+func TestLockBroker_IsReentrantWithinAClient(t *testing.T) {
+	c := healthyClient(t)
+	c.launcher = &fakeLauncher{podNetAttached: true}
+
+	outer, err := c.LockBroker()
+	if err != nil {
+		t.Fatalf("LockBroker: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.EnsureRunning() }() // takes the lock again, nested
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("nested EnsureRunning under a held lock: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("nested LockBroker deadlocked — the reentrancy guard is gone")
+	}
+	outer()
+
+	// After full release the lock is free again for a fresh acquire.
+	again, err := c.LockBroker()
+	if err != nil {
+		t.Fatalf("re-acquire after release: %v", err)
+	}
+	again()
+}
+
+// Two separate Clients are two processes' worth of state: the second must WAIT
+// for the first, not barge in. That mutual exclusion is what stops a concurrent
+// `up` recycling a broker another `up` just claimed.
+func TestLockBroker_ExcludesASecondHolder(t *testing.T) {
+	c1 := healthyClient(t)
+	c2 := NewClient(c1.socket) // same socket dir -> same lock file
+
+	rel1, err := c1.LockBroker()
+	if err != nil {
+		t.Fatalf("first LockBroker: %v", err)
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		rel2, err := c2.LockBroker()
+		if err == nil {
+			close(acquired)
+			rel2()
+		}
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("a second holder acquired the broker lock while it was held")
+	case <-time.After(300 * time.Millisecond): // still blocked: correct
+	}
+	rel1()
+	select {
+	case <-acquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second holder never acquired the lock after release")
 	}
 }

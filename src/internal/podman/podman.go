@@ -15,6 +15,20 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/sandbox"
 )
 
+// lockNetPrefix names a pod's internal lock network ("poddle-lock-<pod>"): the
+// pod's only route out, which the broker is attached to for that pod's lifetime.
+const lockNetPrefix = "poddle-lock-"
+
+// The containerized broker's pod-facing listener ports. Fixed (not ephemeral)
+// so a broker restart does not strand pods that baked the old port into their
+// env — see EnsureBroker. They live in the broker's own network namespace.
+const (
+	brokerGatewayPort  = "7440" // injecting HTTP gateway
+	brokerForwardPort  = "7441" // egress forward proxy (HTTP_PROXY)
+	brokerRedisPort    = "7442" // L4 Redis
+	brokerPostgresPort = "7443" // L4 Postgres
+)
+
 // Provider talks to a Podman engine. Conn is empty for local, or an ssh URL
 // (e.g. "ssh://user@host/run/user/1000/podman/podman.sock") for a remote host.
 type Provider struct {
@@ -55,7 +69,7 @@ func (p *Provider) Create(s sandbox.Spec) (string, error) {
 	if s.Network != nil {
 		// The lock network is pre-created by the up-flow (EnsurePodLockNetwork)
 		// before Create runs, so the broker can connect to it and read its IP.
-		netName = "poddle-lock-" + s.Name
+		netName = lockNetPrefix + s.Name
 	}
 
 	args := p.podman("run", "-d",
@@ -176,11 +190,40 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 	case state == "":
 		// absent -> create it below
 	case strings.Contains(state, "running") || strings.Contains(state, "Up"):
-		return nil // already running
+		// Running, but not necessarily usable. When the LAST pod goes down its
+		// lock network is removed (RemoveVolumesForPod -> DisconnectBrokerFromPod),
+		// and a broker left attached to no lock network comes back unable to reach
+		// any upstream: every subsequent request is answered 502 "upstream error"
+		// even though the policy allowed it. `podman restart` does NOT clear it —
+		// restoring the container restores the same stale network state — only a
+		// fresh container does. So on an idle host (zero pods) recreate rather than
+		// reuse. Safe precisely because there are no pods: nothing is attached to
+		// this broker, the vault rehydrates from the on-disk connection store, and
+		// the audit chain lives on the /state bind mount.
+		attached, err := p.BrokerHasPodNetwork(cfg.Name)
+		if err != nil || attached {
+			return nil // in use (or undeterminable) -> leave it alone
+		}
+		if rmErr := p.Remove(cfg.Name); rmErr != nil {
+			return nil // could not recycle it; reuse rather than fail the `up`
+		}
+		// fall through to create a fresh one
 	default:
-		// present but stopped/exited/created -> restart it, don't recreate
+		// present but stopped/exited/created -> restart it, don't recreate.
 		if r, err := p.Runner.Run("podman", p.podman("start", cfg.Name)...); err != nil {
-			return fmt.Errorf("podman start %s: %w: %s", cfg.Name, err, r.Stderr)
+			// Not every non-running state is startable: a host reboot (or a lost
+			// rootless pause process) can leave the container wedged in
+			// "stopping"/"removing"/"unknown", where `podman start` fails with
+			// "container state improper" — and, because the name is taken, so does
+			// every future `up`. Force-remove the carcass and fall through to
+			// create a fresh one; the broker is stateless across restarts (vault in
+			// memory, rehydrated from the on-disk connection store; audit db on the
+			// /state bind mount), so recreating it is safe and the singleton holds.
+			if rmErr := p.Remove(cfg.Name); rmErr != nil {
+				return fmt.Errorf("podman start %s: %w: %s (force-remove also failed: %v)",
+					cfg.Name, err, r.Stderr, rmErr)
+			}
+			break // fall out of the switch -> create below
 		}
 		return nil
 	}
@@ -188,6 +231,16 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 	args := p.podman("run", "-d",
 		"--name", cfg.Name,
 		"--network", cfg.EgressNet,
+		// The broker is deliberately fail-closed: on a keeper death (two-process
+		// mode) poddled exits non-zero "so its supervisor restarts it"
+		// (poddled/serve.go). Nothing was actually supervising it — a crash left
+		// the host with no broker until the next `up`, and a reboot left it down
+		// entirely. --restart=always is that supervisor: podman restarts it on
+		// crash, and podman-restart.service brings it back at boot (rootless needs
+		// `systemctl --user enable podman-restart.service` + lingering; see
+		// deploy/cloud-vm/). Pods are deliberately NOT restarted — they are
+		// disposable shells whose state lives on named volumes.
+		"--restart=always",
 		// Least privilege: the broker holds every secret and does no privileged
 		// work, so drop all Linux capabilities, forbid privilege escalation, and
 		// run a read-only rootfs. Its only writes are the control socket and audit
@@ -233,7 +286,23 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 		// privsep spike); no capability or writable rootfs is needed.
 		args = append(args, "-e", "PODDLE_BROKER_PRIVSEP=1")
 	}
-	args = append(args, cfg.Image)
+	// Pin the pod-facing listeners to fixed ports. The daemon defaults to
+	// :0 (ephemeral), which is fine for a bare-host broker but wrong for this
+	// containerized singleton: `up` bakes the broker's host:port into each pod's
+	// HTTP_PROXY / PG / Redis env at creation time, and container env is
+	// immutable. With ephemeral ports every broker restart — a crash restart, a
+	// reboot, podman-restart.service — moves the port and silently strands every
+	// existing pod ("connection refused" at the old port) even though the broker
+	// is healthy and its IP is unchanged. Fixed ports make the broker genuinely
+	// restartable. Safe because these bind inside the broker's OWN network
+	// namespace, reachable only from the egress + per-pod lock networks, so they
+	// cannot collide with the host or with a pod.
+	args = append(args, cfg.Image,
+		"--gateway-bind", "0.0.0.0:"+brokerGatewayPort,
+		"--forward-bind", "0.0.0.0:"+brokerForwardPort,
+		"--l4-redis-bind", "0.0.0.0:"+brokerRedisPort,
+		"--l4-postgres-bind", "0.0.0.0:"+brokerPostgresPort,
+	)
 
 	res, err := p.Runner.Run("podman", args...)
 	if err != nil {
@@ -245,11 +314,24 @@ func (p *Provider) EnsureBroker(cfg BrokerConfig) error {
 	return nil
 }
 
+// BrokerHasPodNetwork reports whether the broker is still attached to at least
+// one pod lock network, i.e. whether any pod is currently relying on it. It is
+// how EnsureBroker tells "idle host, safe to recycle" from "in use, hands off".
+// An inspect error is reported so the caller can fail safe and keep the broker.
+func (p *Provider) BrokerHasPodNetwork(name string) (bool, error) {
+	const tmpl = `{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}`
+	res, err := p.Runner.Run("podman", p.podman("inspect", "-f", tmpl, name)...)
+	if err != nil {
+		return false, fmt.Errorf("podman inspect %s: %w: %s", name, err, res.Stderr)
+	}
+	return strings.Contains(res.Stdout, lockNetPrefix), nil
+}
+
 // EnsurePodLockNetwork creates the internal (no-internet) network a locked
 // pod's egress is pinned to, and returns its name. Idempotent: an
 // already-existing network is fine.
 func (p *Provider) EnsurePodLockNetwork(pod string) (string, error) {
-	name := "poddle-lock-" + pod
+	name := lockNetPrefix + pod
 	res, err := p.Runner.Run("podman", p.podman("network", "create", "--internal", name)...)
 	if err != nil {
 		if strings.Contains(res.Stderr, "already exists") {
@@ -263,7 +345,7 @@ func (p *Provider) EnsurePodLockNetwork(pod string) (string, error) {
 // ConnectBrokerToPod attaches the broker container to a pod's internal lock
 // network, so the pod can reach the broker despite having no other route out.
 func (p *Provider) ConnectBrokerToPod(brokerName, pod string) error {
-	res, err := p.Runner.Run("podman", p.podman("network", "connect", "poddle-lock-"+pod, brokerName)...)
+	res, err := p.Runner.Run("podman", p.podman("network", "connect", lockNetPrefix+pod, brokerName)...)
 	if err != nil {
 		// Idempotent: the shared broker stays attached across a pod's lifetime,
 		// so `move`/autoscale-grow (which re-run buildSpec without a `down`)
@@ -294,7 +376,7 @@ func (p *Provider) BrokerIPOnPod(brokerName, pod string) (string, error) {
 // DisconnectBrokerFromPod detaches the broker from a pod's lock network on
 // teardown. Best-effort: errors (e.g. already disconnected) are ignored.
 func (p *Provider) DisconnectBrokerFromPod(brokerName, pod string) error {
-	_, _ = p.Runner.Run("podman", p.podman("network", "disconnect", "poddle-lock-"+pod, brokerName)...)
+	_, _ = p.Runner.Run("podman", p.podman("network", "disconnect", lockNetPrefix+pod, brokerName)...)
 	return nil
 }
 
@@ -495,7 +577,7 @@ func (p *Provider) RemoveVolumesForPod(pod string) error {
 	// isn't blocked by a still-attached container, then remove the pod's
 	// egress-lockdown network, if any.
 	_ = p.DisconnectBrokerFromPod("poddle-broker", pod)
-	_, _ = p.Runner.Run("podman", p.podman("network", "rm", "poddle-lock-"+pod)...)
+	_, _ = p.Runner.Run("podman", p.podman("network", "rm", lockNetPrefix+pod)...)
 	return nil
 }
 

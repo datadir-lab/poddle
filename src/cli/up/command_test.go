@@ -122,6 +122,11 @@ type spyBroker struct {
 }
 
 func (s *spyBroker) EnsureRunning() error { *s.log = append(*s.log, "ensure"); return nil }
+
+func (s *spyBroker) LockBroker() (func(), error) {
+	*s.log = append(*s.log, "lock")
+	return func() { *s.log = append(*s.log, "unlock") }, nil
+}
 func (s *spyBroker) Gateway() (string, error) {
 	*s.log = append(*s.log, "gateway")
 	return "127.0.0.1:12345", nil
@@ -169,6 +174,7 @@ func (c *captureBroker) SetPolicy(_ string, p *policy.Policy) error {
 type stubBroker struct{}
 
 func (stubBroker) EnsureRunning() error          { return nil }
+func (stubBroker) LockBroker() (func(), error)   { return func() {}, nil }
 func (stubBroker) Gateway() (string, error)      { return "127.0.0.1:0", nil }
 func (stubBroker) RedisAddr() (string, error)    { return "127.0.0.1:0", nil }
 func (stubBroker) PostgresAddr() (string, error) { return "127.0.0.1:0", nil }
@@ -537,7 +543,7 @@ func TestUp_Exec_WithIdentityLifecycle(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// exec replaces attach; the handle persists (poddled outlives up — no revoke).
-	want := []string{"ensure", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up", "exec"}
+	want := []string{"lock", "ensure", "unlock", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up", "exec"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -568,7 +574,7 @@ func TestUp_DetachWithIdentity_Works(t *testing.T) {
 		t.Errorf("detached pod should be created, got %q", f.spec.Name)
 	}
 	// Detached: handle issued + pod created, but NOT attached and NOT revoked.
-	want := []string{"ensure", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up"}
+	want := []string{"lock", "ensure", "unlock", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}
@@ -595,7 +601,7 @@ func TestUp_Identity_IssuesHandleAndAttaches(t *testing.T) {
 	}
 	// Handles are issued before create/attach and persist (poddled outlives up).
 	// once the (instant, faked) attached session ends.
-	want := []string{"ensure", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up", "attach"}
+	want := []string{"lock", "ensure", "unlock", "gateway", "issue", "policy:poddle-default", "egress", "create", "audit:pod.up", "attach"}
 	if !reflect.DeepEqual(log, want) {
 		t.Errorf("lifecycle = %v, want %v", log, want)
 	}

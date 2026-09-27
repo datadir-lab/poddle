@@ -191,17 +191,16 @@ func TestEnsureBroker_NoPrivsepEnvByDefault(t *testing.T) {
 	}
 }
 
+// A running broker that is still serving a pod is reused as-is: no second
+// broker launched, and not recycled either — recycling would cut the live pod's
+// only route out. (The idle, no-pods case is covered by
+// TestEnsureBroker_RecyclesIdleBrokerWithNoPodNetworks.)
 func TestEnsureBroker_SkipsWhenAlreadyRunning(t *testing.T) {
-	f := &exec.Fake{Outputs: map[string]string{"podman": "poddle-broker running\n"}}
-	p := New(f, "")
-	err := p.EnsureBroker(BrokerConfig{
-		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
-	})
-	if err != nil {
-		t.Fatalf("EnsureBroker: %v", err)
-	}
-	if got := joinCalls(f); strings.Contains(got, "run -d") || strings.Contains(got, "start") {
-		t.Errorf("must not launch or start a second broker when one is already running:\n%s", got)
+	got := ensureRunningBroker(t, &runningBrokerRunner{nets: "poddle-egress poddle-lock-app"})
+	for _, bad := range []string{"run -d", "start", "rm -f"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("must not %q a broker that is already running and in use:\n%s", bad, got)
+		}
 	}
 }
 
@@ -350,5 +349,223 @@ func TestDisconnectBrokerFromPod_BestEffortIgnoresError(t *testing.T) {
 	p := New(f, "")
 	if err := p.DisconnectBrokerFromPod("poddle-broker", "box"); err != nil {
 		t.Fatalf("DisconnectBrokerFromPod must be best-effort (never error): %v", err)
+	}
+}
+
+// wedgedBrokerRunner plays a host where the broker container is stuck in a
+// non-startable state (the "stopping" carcass a reboot or a lost rootless pause
+// process leaves behind): `ps` reports it present, `start` fails the way podman
+// really does, and `rm -f` / `run` succeed.
+type wedgedBrokerRunner struct {
+	calls     [][]string
+	state     string // what `ps -a` reports
+	rmFails   bool
+	startErrs int
+}
+
+func (r *wedgedBrokerRunner) Run(name string, args ...string) (exec.Result, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	switch {
+	case hasArg(args, "ps"):
+		return exec.Result{Stdout: "poddle-broker " + r.state + "\n"}, nil
+	case hasArg(args, "start"):
+		r.startErrs++
+		return exec.Result{Stderr: `Error: unable to start container "poddle-broker": ` +
+			"container state improper"}, errors.New("exit status 125")
+	case hasArg(args, "rm"):
+		if r.rmFails {
+			return exec.Result{Stderr: "rm refused"}, errors.New("exit status 2")
+		}
+		return exec.Result{Stdout: "poddle-broker\n"}, nil
+	}
+	return exec.Result{Stdout: "broker-id\n"}, nil
+}
+
+func (r *wedgedBrokerRunner) RunInteractive(name string, args ...string) error { return nil }
+
+func hasArg(args []string, want string) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *wedgedBrokerRunner) transcript() string {
+	var joined string
+	for _, c := range r.calls {
+		joined += strings.Join(c, " ") + "\n"
+	}
+	return joined
+}
+
+// A broker wedged in a non-startable state must not wedge every future `up`:
+// EnsureBroker force-removes the carcass and recreates it.
+func TestEnsureBroker_RecreatesWhenStartFailsOnWedgedState(t *testing.T) {
+	for _, state := range []string{"stopping", "removing", "unknown", "paused"} {
+		t.Run(state, func(t *testing.T) {
+			r := &wedgedBrokerRunner{state: state}
+			p := New(r, "")
+			if err := p.EnsureBroker(BrokerConfig{
+				Name: "poddle-broker", Image: "img", EgressNet: "poddle-egress",
+				RunDir: "/run/poddle", StateDir: "/state",
+			}); err != nil {
+				t.Fatalf("EnsureBroker must self-heal a %q broker, got: %v", state, err)
+			}
+			got := r.transcript()
+			if r.startErrs != 1 {
+				t.Errorf("expected one failed start attempt, got %d", r.startErrs)
+			}
+			if !strings.Contains(got, "rm -f poddle-broker") {
+				t.Errorf("wedged broker must be force-removed:\n%s", got)
+			}
+			if !strings.Contains(got, "run -d --name poddle-broker") {
+				t.Errorf("wedged broker must be recreated:\n%s", got)
+			}
+		})
+	}
+}
+
+// If the carcass cannot even be removed, EnsureBroker must fail closed and say
+// why — never silently proceed to a `run` that will collide on the name.
+func TestEnsureBroker_FailsClosedWhenForceRemoveFails(t *testing.T) {
+	r := &wedgedBrokerRunner{state: "stopping", rmFails: true}
+	p := New(r, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "img", EgressNet: "poddle-egress",
+		RunDir: "/run/poddle", StateDir: "/state",
+	})
+	if err == nil {
+		t.Fatal("EnsureBroker must fail closed when the wedged broker cannot be removed")
+	}
+	if !strings.Contains(err.Error(), "force-remove also failed") {
+		t.Errorf("error should name the failed cleanup, got: %v", err)
+	}
+	if strings.Contains(r.transcript(), "run -d") {
+		t.Errorf("must not attempt create after a failed force-remove:\n%s", r.transcript())
+	}
+}
+
+// runningBrokerRunner plays a host where the broker is already running. nets is
+// what `podman inspect` reports for its network attachments.
+type runningBrokerRunner struct {
+	calls      [][]string
+	nets       string
+	inspectErr bool
+}
+
+func (r *runningBrokerRunner) Run(name string, args ...string) (exec.Result, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	switch {
+	case hasArg(args, "ps"):
+		return exec.Result{Stdout: "poddle-broker running\n"}, nil
+	case hasArg(args, "inspect"):
+		if r.inspectErr {
+			return exec.Result{Stderr: "no such object"}, errors.New("exit status 125")
+		}
+		return exec.Result{Stdout: r.nets + "\n"}, nil
+	}
+	return exec.Result{Stdout: "broker-id\n"}, nil
+}
+
+func (r *runningBrokerRunner) RunInteractive(name string, args ...string) error { return nil }
+
+func (r *runningBrokerRunner) transcript() string {
+	var joined string
+	for _, c := range r.calls {
+		joined += strings.Join(c, " ") + "\n"
+	}
+	return joined
+}
+
+func ensureRunningBroker(t *testing.T, r *runningBrokerRunner) string {
+	t.Helper()
+	if err := New(r, "").EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "img", EgressNet: "poddle-egress",
+		RunDir: "/run/poddle", StateDir: "/state",
+	}); err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	return r.transcript()
+}
+
+// On an idle host (no pod lock networks) the running broker is stale: it answers
+// 502 on every upstream. Recycle it instead of handing back a broken broker.
+func TestEnsureBroker_RecyclesIdleBrokerWithNoPodNetworks(t *testing.T) {
+	got := ensureRunningBroker(t, &runningBrokerRunner{nets: "poddle-egress"})
+	if !strings.Contains(got, "rm -f poddle-broker") {
+		t.Errorf("idle broker must be force-removed:\n%s", got)
+	}
+	if !strings.Contains(got, "run -d --name poddle-broker") {
+		t.Errorf("idle broker must be recreated:\n%s", got)
+	}
+}
+
+// If the attachment cannot be determined, keep the existing broker: guessing
+// "idle" and recycling could cut a live pod's only route out.
+func TestEnsureBroker_KeepsBrokerWhenInspectFails(t *testing.T) {
+	got := ensureRunningBroker(t, &runningBrokerRunner{inspectErr: true})
+	if strings.Contains(got, "rm -f") || strings.Contains(got, "run -d") {
+		t.Errorf("must fail safe and keep the broker when inspect fails:\n%s", got)
+	}
+}
+
+// The broker is fail-closed by design: poddled exits non-zero on a keeper death
+// expecting a supervisor to restart it. --restart=always IS that supervisor, and
+// it is also what brings the broker back after a host reboot. Losing this flag
+// silently reintroduces "no broker until the next `up`".
+func TestEnsureBroker_SetsRestartPolicy(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	if got := joinCalls(f); !strings.Contains(got, "--restart=always") {
+		t.Errorf("broker must be launched under a restart policy:\n%s", got)
+	}
+}
+
+// `up` bakes the broker's address:port into each pod's proxy/datastore env at
+// creation time, and container env is immutable. Ephemeral (:0) listeners would
+// therefore strand every existing pod on each broker restart, so the
+// containerized broker must bind FIXED pod-facing ports.
+func TestEnsureBroker_PinsPodFacingPorts(t *testing.T) {
+	f := &exec.Fake{Outputs: map[string]string{"podman": ""}}
+	p := New(f, "")
+	err := p.EnsureBroker(BrokerConfig{
+		Name: "poddle-broker", Image: "poddle-broker:dev", EgressNet: "poddle-egress",
+		RunDir: "/run/x", StateDir: "/state/x",
+	})
+	if err != nil {
+		t.Fatalf("EnsureBroker: %v", err)
+	}
+	got := joinCalls(f)
+	for _, want := range []string{
+		"--gateway-bind 0.0.0.0:" + brokerGatewayPort,
+		"--forward-bind 0.0.0.0:" + brokerForwardPort,
+		"--l4-redis-bind 0.0.0.0:" + brokerRedisPort,
+		"--l4-postgres-bind 0.0.0.0:" + brokerPostgresPort,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing pinned listener %q in:\n%s", want, got)
+		}
+	}
+	// The flags are CMD args, so they must come AFTER the image ref or podman
+	// treats them as `podman run` flags and the launch fails.
+	if strings.Index(got, "poddle-broker:dev") > strings.Index(got, "--gateway-bind") {
+		t.Errorf("listener flags must follow the image ref:\n%s", got)
+	}
+	// All four must differ, or the daemon fails to bind the second one.
+	seen := map[string]bool{}
+	for _, port := range []string{brokerGatewayPort, brokerForwardPort, brokerRedisPort, brokerPostgresPort} {
+		if seen[port] {
+			t.Errorf("duplicate broker listener port %s", port)
+		}
+		seen[port] = true
 	}
 }

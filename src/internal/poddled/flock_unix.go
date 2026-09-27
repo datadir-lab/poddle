@@ -32,3 +32,26 @@ func tryLockFile(path string) (release func(), held bool, err error) {
 		_ = f.Close() // leave the file; the lock lives on the open fd, not the path
 	}, true, nil
 }
+
+// lockFileBlocking takes an exclusive flock on path, WAITING for a concurrent
+// holder instead of giving up the way tryLockFile does. Callers that must not
+// run concurrently but must also not fail when they collide (two `poddle up`
+// racing to ensure the broker) want this one.
+//
+// As with tryLockFile the kernel drops the lock when the holder exits, so a
+// crashed holder cannot deadlock the next caller.
+func lockFileBlocking(path string) (release func(), err error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	// No LOCK_NB: block until the other process finishes.
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
+}

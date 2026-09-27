@@ -3,9 +3,11 @@
 // HTTP control API (served over a Unix socket in production) that `up`/`down`
 // drive. Pods keep working — and stay reattachable — after the client exits.
 //
-// Egress redaction is daemon-global in this MVP: it is set once at Start (before
-// the gateway serves) to avoid racing the live gateway; per-pod egress needs a
-// per-pod gateway (later).
+// Egress redaction resolves PER POD: the gateway and forward proxy ask
+// EgressMode(handle) for the pod policy's mode on each request (see
+// broker.EgressModer). The mode passed to Start is only the daemon-wide DEFAULT,
+// used for pods that name no policy — it is set once, before the gateway serves,
+// to avoid racing it.
 package poddled
 
 import (
