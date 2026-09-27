@@ -46,6 +46,12 @@ type Client struct {
 	// launcher brings up the broker container. Nil means EnsureRunning
 	// constructs the default (podman.New(exec.OS{}, "")); tests inject a fake.
 	launcher brokerLauncher
+	// brokerLockHeld makes LockBroker reentrant within one Client. `up` takes the
+	// lock around the whole claim sequence and EnsureRunning takes it too; without
+	// this the nested acquire would be a second open file description on the same
+	// file, which blocking flock deadlocks on. Not goroutine-safe — the CLI holds
+	// and releases it on one sequential path.
+	brokerLockHeld bool
 }
 
 // NewClient returns a client for the socket at path (SocketPath() if empty).
@@ -78,6 +84,38 @@ func (c *Client) Health() error {
 	return nil
 }
 
+// LockBroker serializes broker mutation across processes, returning a release
+// func. The broker is a host singleton that `up` both RECYCLES (when idle) and
+// then claims by attaching to its pod's lock network — a decide-then-act
+// sequence spanning several podman calls. Two concurrent `up`s on an idle host
+// would otherwise both see "no pod attached", and the second could tear down the
+// broker the first had just created and wired its pod to, stranding it.
+//
+// Callers should hold it across the whole claim (ensure -> connect -> read peer
+// IP) and release BEFORE the slow work (image pull, container create, setup), so
+// concurrent sessions still start in parallel. Blocking rather than
+// try-and-fail: a colliding `up` should wait out a few container calls, not
+// error. Reentrant within one Client, so a caller holding it may call
+// EnsureRunning (which takes it too) without deadlocking.
+func (c *Client) LockBroker() (release func(), err error) {
+	if c.brokerLockHeld {
+		return func() {}, nil // already held on this path
+	}
+	runDir := filepath.Dir(c.socket)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		return nil, fmt.Errorf("broker run dir: %w", err)
+	}
+	rel, err := lockFileBlocking(filepath.Join(runDir, "broker.lock"))
+	if err != nil {
+		return nil, fmt.Errorf("broker lock: %w", err)
+	}
+	c.brokerLockHeld = true
+	return func() {
+		c.brokerLockHeld = false
+		rel()
+	}, nil
+}
+
 // EnsureRunning starts poddled — as a dual-homed broker container via podman,
 // egress-lockdown's placement — if it isn't already healthy, then waits for it
 // to come up. Fail-closed: if the network or broker can't be brought up, the
@@ -86,17 +124,6 @@ func (c *Client) EnsureRunning() error {
 	l := c.launcher
 	if l == nil {
 		l = podman.New(exec.OS{}, "")
-	}
-	// A healthy control socket is NOT proof the broker can still reach upstreams.
-	// When the last pod goes down, the broker is left attached to no lock network
-	// and loses egress — /health keeps answering while every proxied request comes
-	// back 502 "upstream error". So on an idle host, fall through to EnsureBroker,
-	// which recycles it. With a pod still attached, keep the fast path.
-	if c.Health() == nil {
-		inUse, err := l.BrokerHasPodNetwork(brokerName)
-		if err != nil || inUse {
-			return nil // in use, or undeterminable -> leave the running broker alone
-		}
 	}
 	// The broker container bind-mounts RunDir (its control socket) and StateDir
 	// (its audit db); podman refuses to bind-mount a source that does not exist,
@@ -110,6 +137,26 @@ func (c *Client) EnsureRunning() error {
 	}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return fmt.Errorf("broker state dir: %w", err)
+	}
+
+	release, err := c.LockBroker()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	// A healthy control socket is NOT proof the broker can still reach upstreams.
+	// When the last pod goes down, the broker is left attached to no lock network
+	// and loses egress — /health keeps answering while every proxied request comes
+	// back 502 "upstream error". So on an idle host, fall through to EnsureBroker,
+	// which recycles it. With a pod still attached, keep the fast path. Re-checked
+	// under the lock, so a racing `up` that just created and claimed the broker is
+	// observed as in-use rather than recycled out from under.
+	if c.Health() == nil {
+		inUse, err := l.BrokerHasPodNetwork(brokerName)
+		if err != nil || inUse {
+			return nil // in use, or undeterminable -> leave the running broker alone
+		}
 	}
 	if err := l.EnsureEgressNetwork(egressNetName); err != nil {
 		return err

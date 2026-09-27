@@ -260,3 +260,69 @@ func TestEnsureRunning_KeepsBrokerWhenAttachmentUnknown(t *testing.T) {
 		t.Error("must not recycle the broker when its attachment is unknown")
 	}
 }
+
+// `up` holds the broker lock across the whole claim and calls EnsureRunning
+// inside it, which takes the lock too. flock is per open file description, so a
+// non-reentrant second acquire would block on the first — from the same process,
+// forever. This test deadlocks (and times out) if reentrancy regresses.
+func TestLockBroker_IsReentrantWithinAClient(t *testing.T) {
+	c := healthyClient(t)
+	c.launcher = &fakeLauncher{podNetAttached: true}
+
+	outer, err := c.LockBroker()
+	if err != nil {
+		t.Fatalf("LockBroker: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.EnsureRunning() }() // takes the lock again, nested
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("nested EnsureRunning under a held lock: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("nested LockBroker deadlocked — the reentrancy guard is gone")
+	}
+	outer()
+
+	// After full release the lock is free again for a fresh acquire.
+	again, err := c.LockBroker()
+	if err != nil {
+		t.Fatalf("re-acquire after release: %v", err)
+	}
+	again()
+}
+
+// Two separate Clients are two processes' worth of state: the second must WAIT
+// for the first, not barge in. That mutual exclusion is what stops a concurrent
+// `up` recycling a broker another `up` just claimed.
+func TestLockBroker_ExcludesASecondHolder(t *testing.T) {
+	c1 := healthyClient(t)
+	c2 := NewClient(c1.socket) // same socket dir -> same lock file
+
+	rel1, err := c1.LockBroker()
+	if err != nil {
+		t.Fatalf("first LockBroker: %v", err)
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		rel2, err := c2.LockBroker()
+		if err == nil {
+			close(acquired)
+			rel2()
+		}
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("a second holder acquired the broker lock while it was held")
+	case <-time.After(300 * time.Millisecond): // still blocked: correct
+	}
+	rel1()
+	select {
+	case <-acquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second holder never acquired the lock after release")
+	}
+}
