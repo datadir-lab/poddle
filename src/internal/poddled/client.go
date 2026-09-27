@@ -21,11 +21,21 @@ import (
 	"github.com/datadir-lab/poddle/src/internal/policy"
 )
 
+// brokerName is the shared broker container's singleton name.
+const brokerName = "poddle-broker"
+
+// egressNetName is the shared network the broker uses to reach the internet.
+const egressNetName = "poddle-egress"
+
 // brokerLauncher is the podman surface EnsureRunning needs to bring up the
 // broker container (satisfied by *podman.Provider).
 type brokerLauncher interface {
 	EnsureEgressNetwork(name string) error
 	EnsureBroker(cfg podman.BrokerConfig) error
+	// BrokerHasPodNetwork reports whether any pod still depends on the broker.
+	// EnsureRunning needs it because /health only proves the CONTROL socket
+	// answers — a broker can pass health and still be unable to egress.
+	BrokerHasPodNetwork(name string) (bool, error)
 }
 
 // Client talks to a running poddled over its Unix control socket, and can
@@ -73,8 +83,20 @@ func (c *Client) Health() error {
 // to come up. Fail-closed: if the network or broker can't be brought up, the
 // error is returned and there is no fallback to spawning a host process.
 func (c *Client) EnsureRunning() error {
+	l := c.launcher
+	if l == nil {
+		l = podman.New(exec.OS{}, "")
+	}
+	// A healthy control socket is NOT proof the broker can still reach upstreams.
+	// When the last pod goes down, the broker is left attached to no lock network
+	// and loses egress — /health keeps answering while every proxied request comes
+	// back 502 "upstream error". So on an idle host, fall through to EnsureBroker,
+	// which recycles it. With a pod still attached, keep the fast path.
 	if c.Health() == nil {
-		return nil
+		inUse, err := l.BrokerHasPodNetwork(brokerName)
+		if err != nil || inUse {
+			return nil // in use, or undeterminable -> leave the running broker alone
+		}
 	}
 	// The broker container bind-mounts RunDir (its control socket) and StateDir
 	// (its audit db); podman refuses to bind-mount a source that does not exist,
@@ -89,17 +111,13 @@ func (c *Client) EnsureRunning() error {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return fmt.Errorf("broker state dir: %w", err)
 	}
-	l := c.launcher
-	if l == nil {
-		l = podman.New(exec.OS{}, "")
-	}
-	if err := l.EnsureEgressNetwork("poddle-egress"); err != nil {
+	if err := l.EnsureEgressNetwork(egressNetName); err != nil {
 		return err
 	}
 	cfg := podman.BrokerConfig{
-		Name:      "poddle-broker",
+		Name:      brokerName,
 		Image:     resolveBrokerImage(),
-		EgressNet: "poddle-egress",
+		EgressNet: egressNetName,
 		RunDir:    runDir,
 		StateDir:  stateDir,
 		// In the nightly e2e-coverage job GOCOVERDIR is set; forward it so a
